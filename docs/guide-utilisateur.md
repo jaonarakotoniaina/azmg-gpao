@@ -89,6 +89,42 @@ Elle montre toute l'histoire d'une operation : la chronologie (evenements, chang
 echeances, pieces), les demandes avec leur delai, et les echeances a venir. La zone **Note
 interne** sert a consigner un point factuel qui n'est pas un evenement.
 
+### L'ecran « Brouillons »
+
+Chaque matin, avant votre journee, l'application prepare des textes a votre place et les depose
+dans cet ecran. Elle n'envoie rien, jamais. Vous relisez, vous copiez, vous envoyez vous-meme
+depuis votre messagerie, ce qui garde le fil de discussion dans votre boite.
+
+Ce que vous y trouvez :
+
+- **Les relances.** Une par point qui attend un tiers ou la donneuse d'ordre depuis trop
+  longtemps. Le niveau (N1, N2 ou N3) vient du temps d'attente en heures ouvrees du client, et le
+  texte est redige dans la langue de votre interlocuteur, avec les dates des echanges qui le
+  justifient.
+- **Le reporting de la veille**, deja redige dossier par dossier, a recopier dans le classeur ou
+  a comparer avec ce que vous auriez ecrit. L'ecriture dans le classeur, elle, se fait dans
+  l'ecran « Export du reporting ».
+- **L'onglet de la semaine**, le lundi, avec les chiffres de la semaine ecoulee.
+- **Les tableaux de situation par client**, a preparer quand vous voulez : tapez le nom du client
+  dans le champ « Situation d'un client ». Chaque dossier y figure avec son statut au format du
+  reporting client et sa prochaine echeance.
+- **Les comparatifs de cotations fret**, construits depuis les offres recues sur un dossier.
+
+Trois choses a savoir :
+
+1. **Chaque brouillon cite ses sources.** Cliquez sur « Lire » : sous le texte, l'application
+   indique combien d'evenements l'ont nourri, et un lien mene a la demande. Si une phrase vous
+   surprend, remontez a l'evenement.
+2. **Les cases vides d'un comparatif sont voulues.** L'application ne lit que ce qui est ecrit
+   dans les offres ; elle ne devine aucun prix. Une ligne du brouillon vous dit combien d'offres
+   n'avaient pas de prix lisible, a vous de les completer en regardant le mail.
+3. **Deux boutons seulement.** « Je l'ai envoye » quand c'est parti de votre messagerie,
+   « Ecarter » quand le brouillon ne sert pas. Dans les deux cas, rien n'est envoye par
+   l'application, et la decision est tracee une seule fois.
+
+Si l'ecran est vide, c'est que rien n'attend : la preparation tourne chaque jour a partir de 6 h.
+Le bouton **Preparer maintenant** la relance a la demande, sans jamais creer de doublon.
+
 ---
 
 ## Manager de compte
@@ -212,7 +248,11 @@ L'ecran **Parametres** a quatre onglets.
   le seuil de confiance du typage automatique et la part des envois tiree au sort pour le controle
   qualite.
 - **Automatisations** : un interrupteur par automatisation et un interrupteur general. Le mode
-  « brouillon » prepare un texte pret a relire, il **n'envoie rien**.
+  « brouillon » prepare un texte pret a relire, il **n'envoie rien**. Couper l'interrupteur
+  « Preparation des relances » arrete leur preparation du matin sans toucher au reste ;
+  l'interrupteur general met en pause toute la preparation, ce qui est la bonne manoeuvre pendant
+  une fermeture du client ou une semaine de conges du poste. Dans les deux cas, les brouillons
+  deja prepares restent lisibles dans leur ecran.
 - **Equipe** : la liste des comptes utilisateurs et leur role.
 
 ### Les roles

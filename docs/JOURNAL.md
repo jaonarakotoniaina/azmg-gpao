@@ -67,14 +67,14 @@ Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull
 
 ### Phase 5 : automatisations du poste (en cours)
 
-- [ ] 5.1 Socle des brouillons : table, sources citees, cycle de vie (prepare, utilise, ecarte)
-- [ ] 5.2 Relances N1, N2 et N3 preparees chaque matin selon les delais d'attente
-- [ ] 5.3 Daily et onglet « sem » pre-remplis
-- [ ] 5.4 Tableaux de situation par client
-- [ ] 5.5 Comparatif de cotations fret depuis les offres recues
-- [ ] 5.6 Tache cron de preparation du matin
-- [ ] 5.7 Ecran « Brouillons »
-- [ ] 5.8 Auto-revue, rapport final, pull request
+- [x] 5.1 Socle des brouillons : table, sources citees, cycle de vie (prepare, utilise, ecarte)
+- [x] 5.2 Relances N1, N2 et N3 preparees chaque matin selon les delais d'attente
+- [x] 5.3 Daily et onglet « sem » pre-remplis
+- [x] 5.4 Tableaux de situation par client
+- [x] 5.5 Comparatif de cotations fret depuis les offres recues
+- [x] 5.6 Tache cron de preparation du matin
+- [x] 5.7 Ecran « Brouillons »
+- [x] 5.8 Auto-revue, rapport final, pull request
 
 ---
 
@@ -434,12 +434,6 @@ complet dans le navigateur :
    du lot, sans quoi une reponse pouvait etre enregistree avant la demande qu'elle fait avancer,
    et ouvrir une seconde demande au lieu de rejoindre le fil.
 
-**Reste a faire**
-
-Phase 5 (automatisations du poste) : relances N1, N2 et N3 preparees chaque matin, daily et onglet
-« sem » pre-remplis, tableaux de situation par client, comparatif de cotations fret. Tout en
-brouillon, aucune action sortante sans validation humaine.
-
 **Dettes techniques**
 
 - Le rattachement au fil ne regarde que `References` et `In-Reply-To`. Un client qui repond sans
@@ -450,3 +444,214 @@ brouillon, aucune action sortante sans validation humaine.
   mieux vaut un dossier a corriger qu'un message perdu.
 - Le mode `imap` n'est pas teste contre un vrai serveur : la session cloud n'en a aucun. Son code
   suit celui de Sourcing, deja en production, mais il faudra le verifier sur la boite reelle.
+
+---
+
+## 2026-11-07 : phase 5, automatisations du poste
+
+Tout ce que l'application prepare reste un brouillon. **Aucune route n'envoie de message**, aucun
+adaptateur SMTP n'est appele par la preparation, et les deux seules actions offertes au poste sont
+« je l'ai envoye » et « ecarter », qui ne tracent qu'une decision.
+
+**Ce qui est livre**
+
+- **Table `brouillons`** : type, cible (dossier et demande), titre, texte, donnees structurees,
+  **identifiants des evenements cites**, cycle de vie (`prepare`, `utilise`, `ecarte`), niveau de
+  relance, cle d'unicite. La cle est ce qui rend la preparation du matin rejouable : un second
+  passage ne cree pas de doublon et, surtout, n'ecrase pas un brouillon deja traite.
+- **Relances N1, N2 et N3** : le niveau vient du temps d'attente en heures ouvrees du client, pas
+  d'un compteur de passages (voir `docs/DECISIONS.md`). Seuls les niveaux superieurs a celui deja
+  emis sur la demande sont proposes. Le texte est redige en francais, anglais ou espagnol selon le
+  domaine de l'interlocuteur, et reprend les faits dates des derniers echanges.
+- **Daily et onglet « sem » pre-remplis**, construits par les memes fonctions que l'export, donc
+  au meme format : le daily porte la description numerotee orientee resultat, l'onglet de semaine
+  les chiffres et les syntheses, **sans aucune reference de dossier**.
+- **Tableaux de situation par client** : un bloc par dossier, avec le statut au format exact du
+  reporting client, la mention « validation DO attendue » le cas echeant, le temps d'attente en
+  heures ouvrees et la prochaine echeance. Aucun code technique n'y figure.
+- **Comparatif de cotations fret** : prix, devise, cut-off, ETD, ETA, transit et validite lus dans
+  les offres recues sur le dossier. Un champ absent reste **vide**, et une ligne du brouillon
+  compte les offres sans prix lisible. Le choix du transitaire revient a la DO, le brouillon le
+  dit.
+- **Tache cron `preparation_matin`** a partir de 6 h, heure d'Antananarivo : relances, daily de la
+  veille, et le lundi l'onglet de la semaine ecoulee, pour tous les comptes actifs. Un compte en
+  echec ne prive pas les autres de leurs brouillons.
+- **Ecran « Brouillons »** : liste par etat, nombre d'evenements cites, copie en un clic, lien vers
+  la demande, preparation a la demande et situation d'un client.
+
+**Verifications**
+
+| Critere de la section 10 | Verification |
+|---|---|
+| Aucune action sortante sans validation humaine | aucune route n'envoie ; un test verifie que le brouillon reste `prepare` et que le niveau de relance de la demande ne bouge pas ; un parcours Playwright passe par les deux boutons |
+| Chaque brouillon cite les evenements sources | teste sur les cinq types de brouillon ; le parcours Playwright lit le compte des sources a l'ecran |
+
+31 tests sur les brouillons, 305 tests Vitest et 19 parcours Playwright au vert.
+
+**Auto-revue : ce qui a ete corrige**
+
+1. **Deux boucles a requetes multiples.** `relancesAPreparer` lisait les evenements demande par
+   demande et `preparerSituationClient` faisait trois requetes par dossier. Les deux font
+   desormais une requete groupee et repartissent les resultats en memoire.
+2. **Une decision pouvait etre prise deux fois.** `deciderBrouillon` acceptait de trancher un
+   brouillon deja traite, ce qui ecrasait l'auteur et l'horodatage de la premiere decision. La
+   mise a jour est conditionnee a l'etat `prepare` et renvoie un conflit 409 sinon.
+3. **Un code technique dans un texte destine au client.** Une echeance sans libelle etait nommee
+   par son type brut (« etd ») ; elle prend maintenant le libelle du referentiel. Meme correction
+   pour « en attente de le poste ».
+4. **Le tick ne declenchait aucune tache planifiee.** Depuis la phase 1, `tick()` ne vidait que la
+   file `jobs_queue` : les taches de `TACHES` existaient sans jamais partir. Le tick parcourt
+   maintenant les taches dues et le budget du passage leur reserve une minute.
+
+**Dettes techniques de la phase 5**
+
+- **La langue est deduite du domaine** de l'interlocuteur (`.es` espagnol, `.com` anglais, le reste
+  francais). C'est grossier : un transitaire francais en `.com` recevra un brouillon en anglais. Le
+  poste le voit et le corrige en relisant, mais une langue stockee sur l'interlocuteur, apprise de
+  la premiere correction, serait plus juste.
+- **L'extraction des offres de fret est a expressions regulieres**, calibree sur des formulations
+  usuelles. Elle ne lira pas une offre presentee en tableau ou en piece jointe PDF. La tache IA
+  `extraire_elements` pourra l'enrichir, avec la meme regle du champ vide.
+- **Les sources d'un daily sont plafonnees a 200 evenements** par jour. Au-dela, la liste citee est
+  tronquee, sans que le texte du brouillon s'en trouve change.
+- **Le daily et l'onglet de semaine sont des textes a relire**, pas une ecriture dans le classeur.
+  L'ecriture reste dans l'ecran « Export du reporting », qui est le seul a toucher au fichier.
+
+---
+
+# Rapport final
+
+Etat au 7 novembre 2026, branche `claude/vigilant-archimedes-3ufdaa`. Les cinq phases de la
+section 10 de `CLAUDE.md` sont livrees.
+
+## Ce qui est livre
+
+**Socle.** TypeScript de bout en bout, Express 5, Drizzle sur `pg`, React 19 avec Vite, Tailwind,
+TanStack Query et lucide-react, zod partage entre le front et le back, Vitest et Playwright. Les
+choix sont ceux d'AZMG Sourcing, repris tels quels. 24 tables, migrations rejouables sur base vide
+et **compatibles PostgreSQL 9.6** (`bigserial`, aucune colonne d'identite, aucun `gen_random_uuid`,
+aucun `MERGE`), verifiees par la CI sur 9.6.
+
+**Authentification et roles.** Mot de passe argon2id, sessions en base, cookie httpOnly, CSRF a
+double jeton, reinitialisation par email. Quatre roles : `admin`, `manager`, `collaborateur` et
+`client_lecture`, ce dernier prevu et desactive. Le perimetre est applique a chaque requete : un
+collaborateur ne voit que ses postes, un manager que ses comptes.
+
+**Metier.** Dossier, demande, evenement, avec les quinze familles T00 a T14, les dix natures et
+leur effet, les sept statuts et leur correspondance exacte au reporting client. Chaque transition
+est horodatee avec son auteur, et le temps passe par statut et par acteur est calcule en **heures
+ouvrees du client** (Barcelone), week-end et feries compris, selon la regle du compte : feries
+espagnols non travailles, feries propres a Madagascar travailles.
+
+**Pilotage.** Saisie rapide, file du jour, fiche dossier avec chronologie complete, tableau de
+bord (flux, stock, age du stock, delais, attente par acteur, SLA, qualite, charge estimee,
+comparaison a la semaine precedente), echeancier avec alertes J-2 et J0, check-lists avant envoi,
+controle qualite avec echantillonnage hebdomadaire idempotent, digest de validation DO.
+
+**Reporting.** Import d'un classeur au format existant (lecture de « Suivi Quotidien »), et export
+qui **ecrit dans une copie du classeur fourni sans toucher a sa structure** : onglets, en-tetes,
+largeurs de colonnes, fusions, styles, formats de date et formules sont preserves octet pour
+octet. Verifie par un test de comparaison, et independamment avec openpyxl.
+
+**Typage.** Moteur de regles (33 regles initiales sur les domaines, les mots de l'objet et les
+libelles) puis tache IA `typer_evenement`. File « A classer » sous le seuil de confiance, et chaque
+correction manuelle propose une nouvelle regle, qui n'entre en vigueur qu'apres acceptation par un
+manager. Mesure honnete sur un jeu temoin de 20 mails fictifs ecrits apres le reglage : 85 %.
+
+**Collecte des mails.** Adaptateur a trois implementations, `apps_script` (webhook signe en HMAC),
+`imap` et `mock`, plus l'import de fichiers `.eml` et `.mbox` pour l'historique. Dedoublonnage par
+`Message-ID`, rattachement au fil, horodatage d'origine conserve, pieces jointes rangees hors du
+dossier public.
+
+**Automatisations.** Relances N1 a N3, daily, onglet de semaine, situations client et comparatifs
+de cotations, tous **en brouillon** et tous citant leurs evenements sources.
+
+**IA sans cout API.** Interface `AiProvider` avec `agent` par defaut en production (table
+`ai_tasks` servie par `GET /api/agent/ia/taches` et `POST /api/agent/ia/taches/:id/resultat`,
+sortie validee par zod, trois essais), `api` et `mock`. Prompts versionnes en francais, un par
+tache. L'instruction prete a coller est dans `docs/agent-ia.md`.
+
+**Connecteur Claude.** Onze outils MCP, dont les outils d'ecriture laissent une trace « Claude »
+dans le journal des actions. Decrit dans `docs/connecteur-claude.md`.
+
+**Confidentialite.** Aucune donnee reelle du client dans le depot, les tests ou le seed. Le hors
+perimetre T00 n'apparait dans aucune vue ni aucun export, et un test le verifie a chaque niveau.
+Aucune appreciation du client envers le collaborateur n'est extraite, stockee en champ structure
+ni reprise dans un export. Aucun tiret long dans l'interface, les exports, les brouillons ni les
+prompts, avec un test qui echoue si l'un apparait et un filtre sur toute sortie de Claude.
+
+**Tests.** 305 tests Vitest et 19 parcours Playwright au vert, build de production OK, lint et
+typecheck propres.
+
+## Comment le deployer
+
+La procedure complete est dans `README.md`. En resume :
+
+1. **Une fois, dans cPanel** : creer la base `azmg_gpao` et son utilisateur, le sous-domaine
+   `gpao.intranet.azmg-solutions.com` avec son certificat, l'application Node (« Setup Node.js
+   App ») pointant sur `app.js`, le `.env` de production hors du dossier public, et le jeton
+   GitHub en lecture seule dans `~/.azmg-github-token`.
+2. **Trois lignes de cron**, donnees mot pour mot dans le README : le deploiement automatique
+   toutes les cinq minutes, le tick applicatif toutes les cinq minutes (il vide la file et
+   declenche les taches planifiees, dont la preparation des brouillons du matin), et la sauvegarde
+   quotidienne a 2 h 30.
+3. **Ensuite, plus rien a faire** : un push sur `main` declenche GitHub Actions (lint, typecheck,
+   tests sur PostgreSQL 9.6, build), qui publie l'artefact sur la branche `release` ; le cron
+   o2switch le recupere, sauvegarde la base, joue les migrations, redemarre Passenger et verifie
+   `/health`. En cas d'echec, retour automatique a la version precedente et email d'alerte.
+4. **Premier compte** : `node dist/server/cli.js creer-admin <email> "<nom>"`.
+
+## Ce qu'il reste a fournir
+
+Le detail est dans [`docs/A_FOURNIR.md`](A_FOURNIR.md), par ordre de priorite. Les trois elements
+qui comptent vraiment :
+
+1. **Les acces o2switch** (base, secret de session, sous-domaine, jeton GitHub). Bloquants pour la
+   mise en ligne, pas pour la suite du developpement.
+2. **Un classeur `SUIVI_MENSUEL_MASENZ` reel, ou une copie anonymisee.** L'import et l'export sont
+   testes sur un classeur fictif qui reproduit la structure decrite ; ils doivent etre verifies une
+   fois sur la vraie mise en forme avant le premier export en production.
+3. **L'acces a la boite Gmail de suivi** et le secret partage du webhook, pour passer la collecte
+   de `mock` a `apps_script`.
+
+Tant qu'un element manque, l'adaptateur concerne reste en `mock` et l'application fonctionne
+entierement.
+
+## Dettes techniques
+
+Les dettes de chaque phase sont detaillees dans son entree du journal. Les plus structurantes :
+
+- **Le rattachement au fil ne regarde que `References` et `In-Reply-To`.** Un correspondant qui
+  repond sans ces en-tetes ouvrira un nouveau fil.
+- **Le mode `imap` n'a jamais tourne contre un vrai serveur** : la session de developpement n'en a
+  aucun. Son code suit celui de Sourcing, deja en production, mais il demande une verification sur
+  la boite reelle.
+- **85 % de bon classement sur le jeu temoin**, c'est tout juste le critere. Le moteur a besoin des
+  vrais messages, et c'est le role de la proposition de regle a chaque correction.
+- **L'extraction des offres de fret est a expressions regulieres** : elle ne lira pas un tableau ni
+  une piece jointe PDF.
+- **La langue d'un brouillon est deduite du domaine** de l'interlocuteur, ce qui se trompera sur un
+  transitaire francais en `.com`.
+- **Le role `client_lecture` est prevu et non teste** : son parcours devra l'etre avant d'ouvrir un
+  acces a la DO.
+
+## Les cinq ameliorations prioritaires suivantes
+
+1. **Verifier l'import et l'export sur le vrai classeur.** C'est le seul endroit ou l'application
+   ecrit dans un fichier que le client lit directement. Une formule cassee ou un style perdu se
+   verrait tout de suite, et un test de comparaison sur une copie anonymisee fermerait le sujet
+   definitivement.
+2. **Brancher la collecte des mails en `apps_script` sur la boite de suivi**, puis importer
+   l'historique en `.mbox`. C'est ce qui fait passer la GPAO de la saisie manuelle au pilotage
+   reel, et ce qui donnera au moteur de typage les messages dont il a besoin pour depasser 85 %.
+3. **Apprendre la langue et les habitudes de chaque interlocuteur.** Une langue stockee sur
+   l'interlocuteur, apprise de la premiere correction, remplacerait la deduction par domaine ; le
+   meme mecanisme servirait a memoriser le delai de reponse habituel d'un transitaire, et donc a
+   relancer au bon moment plutot qu'a heure fixe.
+4. **Ouvrir le tableau de bord en lecture a la donneuse d'ordre** (role `client_lecture`, deja
+   prevu). C'est ce qui remplacerait une partie des tableaux de situation envoyes a la main, et le
+   cout en est faible : le perimetre est deja applique partout.
+5. **Mesurer la charge reelle par famille.** Les temps standards utilises pour la charge estimee
+   sont des hypotheses. Les confronter aux temps observes sur trois mois rendrait l'indicateur de
+   charge exploitable pour dimensionner le poste, ce qui est la question que se posera le
+   commanditaire au moment d'ouvrir un deuxieme compte client.

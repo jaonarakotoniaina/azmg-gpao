@@ -185,3 +185,67 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   Un typage qui ecrase une saisie ferait perdre le travail de classement et decouragerait l'usage
   de la file « A classer ».
 - Retour arriere : l'option `typerAutomatiquement` d'`ajouterEvenement` controle tout le mecanisme.
+
+## 2026-11-07 : le niveau de relance vient du temps d'attente, pas du compteur
+
+- Sujet : comment choisir entre N1, N2 et N3 quand une demande attend depuis longtemps sans
+  qu'aucune relance n'ait ete emise.
+- Options : incrementer d'un niveau a chaque passage (N1 puis N2 puis N3, un par jour), ou
+  deduire le niveau du temps d'attente en heures ouvrees.
+- Choix : deduire le niveau du temps d'attente, et ne proposer que les niveaux superieurs a celui
+  deja emis sur la demande.
+- Raison : une demande reprise apres deux semaines de silence merite un N3 tout de suite, pas un
+  N1 polimment etonne. Et un poste qui a relance par telephone peut noter le niveau atteint sur la
+  demande : l'application ne repropose alors que la suite.
+- Consequence : les seuils (16, 32 et 56 heures ouvrees par defaut) sont dans les parametres,
+  section SLA, et se reglent sans redeploiement.
+- Retour arriere : `relancesAPreparer` concentre tout le calcul.
+
+## 2026-11-07 : un brouillon n'est jamais envoye par l'application
+
+- Sujet : la phase 5 prepare des relances et des reportings. Faut-il un bouton « envoyer » ?
+- Options : envoi par SMTP avec fenetre d'annulation (le modele d'AZMG Sourcing), ou brouillon a
+  copier et envoi manuel par le poste.
+- Choix : brouillon seulement. Aucune route n'envoie, aucun adaptateur SMTP n'est appele par la
+  preparation. Les deux seules actions sont « je l'ai envoye » et « ecarter », qui ne font que
+  tracer la decision.
+- Raison : la section 6 de CLAUDE.md est explicite, « aucun mail ne part automatiquement vers un
+  client, un transitaire ou la DO ». A la difference d'un candidat qui recoit un accuse de
+  reception, ici chaque message engage le compte client devant un transitaire ou devant la
+  donneuse d'ordre. Le cout d'un message maladroit est sans commune mesure avec le temps gagne.
+- Consequence : le poste copie le texte et l'envoie depuis sa messagerie, ce qui garde aussi le
+  fil de discussion dans sa boite.
+- Retour arriere : l'ajout d'un envoi passerait par un adaptateur `envoi_mail` a deux
+  implementations, sur le modele de la collecte, et par un mode d'automatisation dedie. Rien dans
+  le modele de donnees ne s'y oppose : `statut` accueillerait un etat `envoye`.
+
+## 2026-11-07 : le comparatif de cotations lit, il ne devine pas
+
+- Sujet : l'extraction des prix, cut-off, ETD, ETA, transit et validite des offres de fret recues.
+- Options : une tache IA `extraire_elements` sur chaque offre, ou des expressions regulieres avec
+  cases vides quand le texte ne dit rien.
+- Choix : expressions regulieres, champ absent laisse vide, et une ligne du brouillon qui compte
+  les offres sans prix lisible.
+- Raison : ce tableau sert a choisir un transitaire et un prix, et c'est la DO qui tranche. Un
+  chiffre invente ou mal lu y ferait plus de degats qu'une case vide que le poste complete en
+  regardant le mail. La regle « jamais de donnee inventee » de la section 6 pese plus lourd que le
+  confort.
+- Consequence : le taux de remplissage depend de la redaction des transitaires. La tache IA
+  `extraire_elements` pourra enrichir le resultat plus tard, avec la meme regle du champ vide.
+- Retour arriere : `extraireOffre` est une fonction pure, testee sur un texte complet et sur un
+  texte sans aucune donnee.
+
+## 2026-11-07 : le tick declenche les taches planifiees
+
+- Sujet : les taches periodiques existaient depuis la phase 1 mais rien ne les appelait, le tick
+  ne vidant que la file `jobs_queue`.
+- Options : une ligne de cron par tache, ou un seul tick qui decide des taches dues.
+- Choix : un seul tick. Il vide la file, puis parcourt les taches dont la periode est echue,
+  d'apres `cron_runs`.
+- Raison : une seule ligne de cron a installer dans cPanel, et une seule a surveiller. Le verrou
+  consultatif couvre deja l'ensemble, et chaque tache absorbe ses propres erreurs : un echec ne
+  prive pas les suivantes de leur passage.
+- Consequence : le budget du passage est partage. La file se voit reserver au plus le budget moins
+  une minute, pour que les taches periodiques aient toujours de quoi tourner.
+- Retour arriere : `PERIODICITES` dans `src/server/taches-periodiques.ts` decrit tout, et chaque
+  tache reste executable seule en ligne de commande.

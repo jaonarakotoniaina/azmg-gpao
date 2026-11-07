@@ -310,6 +310,16 @@ Dans cPanel, « Cron Jobs », ajouter exactement ces trois lignes :
 
 Adapter `20` au numero de version Node affiche par cPanel.
 
+La deuxieme ligne suffit pour tout l'asynchrone : chaque passage vide la file `jobs_queue`, puis
+declenche les taches planifiees dont la periode est echue (`cron_runs` garde la trace du dernier
+passage, de sorte qu'une tache quotidienne ne part qu'une fois par jour). La preparation des
+brouillons du matin (relances, reporting de la veille, onglet de semaine le lundi) part ainsi a
+partir de 6 h, heure d'Antananarivo, avant la journee du poste. Pour la declencher a la main :
+
+```bash
+cd ~/azmg-gpao/current && node dist/server/cron.js preparation_matin
+```
+
 ## Chaine de deploiement
 
 La session de developpement et GitHub Actions ne se connectent jamais a o2switch : l'acces SSH y
