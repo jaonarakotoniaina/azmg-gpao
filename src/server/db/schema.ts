@@ -529,6 +529,47 @@ export const journalActions = pgTable(
   (t) => [index('journal_actions_date_idx').on(t.creeLe), index('journal_actions_entite_idx').on(t.entite, t.entiteId)],
 );
 
+/**
+ * Brouillons prepares par l'application (phase 5).
+ *
+ * Regle d'or de CLAUDE.md : l'IA prepare, l'humain envoie. Rien dans cette table ne part tout
+ * seul : un brouillon est un texte a relire, que le poste copie dans son client de messagerie.
+ * `sources` cite les evenements qui l'ont produit, pour qu'on puisse toujours verifier d'ou
+ * vient une affirmation.
+ */
+export const brouillons = pgTable(
+  'brouillons',
+  {
+    id: id(),
+    compteId: ref('compte_id')
+      .notNull()
+      .references(() => comptesClients.id, { onDelete: 'cascade' }),
+    /** `relance`, `daily`, `semaine`, `situation_client`, `comparatif_cotations`. */
+    type: text('type').notNull(),
+    dossierId: ref('dossier_id').references(() => dossiers.id, { onDelete: 'cascade' }),
+    demandeId: ref('demande_id').references(() => demandes.id, { onDelete: 'cascade' }),
+    titre: text('titre').notNull(),
+    /** Texte pret a relire, deja filtre des tirets longs. */
+    contenu: text('contenu').notNull(),
+    /** Donnees structurees du brouillon (lignes d'un comparatif, indicateurs du daily). */
+    donnees: jsonb('donnees').notNull().default({}),
+    /** Identifiants des evenements cites, exigence de la section 10. */
+    sources: jsonb('sources').notNull().default([]),
+    /** `prepare`, `utilise` (le poste l'a envoye lui-meme), `ecarte`. */
+    statut: text('statut').notNull().default('prepare'),
+    /** Niveau de relance pour un brouillon de relance : 1, 2 ou 3. */
+    niveau: integer('niveau'),
+    /** Cle de regroupement : un seul brouillon du meme type par cible et par periode. */
+    cleUnicite: text('cle_unicite').notNull().unique(),
+    prepareLe: horodatage('prepare_le').notNull().defaultNow(),
+    decideLe: horodatage('decide_le'),
+    decideParId: ref('decide_par_id').references(() => utilisateurs.id, { onDelete: 'set null' }),
+    creeLe: creeLe(),
+    majLe: majLe(),
+  },
+  (t) => [index('brouillons_compte_statut_idx').on(t.compteId, t.statut, t.type), index('brouillons_demande_idx').on(t.demandeId)],
+);
+
 /** Imports de classeurs : trace de ce qui a ete cree, pour un import rejouable sans doublon. */
 export const imports = pgTable('imports', {
   id: id(),

@@ -65,10 +65,16 @@ Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull
 
 **Phase 4 terminee.**
 
-### Phase 5 : automatisations du poste (a venir)
+### Phase 5 : automatisations du poste (en cours)
 
-Relances N1, N2, N3 preparees chaque matin, daily et onglet « sem » pre-remplis, tableaux de
-situation par client, comparatif de cotations fret. Tout en brouillon.
+- [ ] 5.1 Socle des brouillons : table, sources citees, cycle de vie (prepare, utilise, ecarte)
+- [ ] 5.2 Relances N1, N2 et N3 preparees chaque matin selon les delais d'attente
+- [ ] 5.3 Daily et onglet « sem » pre-remplis
+- [ ] 5.4 Tableaux de situation par client
+- [ ] 5.5 Comparatif de cotations fret depuis les offres recues
+- [ ] 5.6 Tache cron de preparation du matin
+- [ ] 5.7 Ecran « Brouillons »
+- [ ] 5.8 Auto-revue, rapport final, pull request
 
 ---
 

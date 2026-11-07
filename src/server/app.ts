@@ -21,6 +21,7 @@ import { routesExport } from './modules/export/routes';
 import { etatMcp, noterAppel, routesMcp } from './modules/mcp/routes';
 import { routesAgent, routesTypage } from './modules/typage/routes';
 import { routesCollecte, routesWebhookCollecte } from './modules/collecte/routes';
+import { routesBrouillons } from './modules/brouillons/routes';
 
 export function creerApplication() {
   const app = express();
@@ -102,6 +103,7 @@ export function creerApplication() {
   app.use('/api/export', routesExport);
   app.use('/api/typage', routesTypage);
   app.use('/api/collecte', routesCollecte);
+  app.use('/api/brouillons', routesBrouillons);
   app.use('/api', (_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
 
   // Application React de pilotage.
