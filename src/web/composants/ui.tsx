@@ -250,21 +250,49 @@ export function Dialogue({ ouvert, onFermer, titre, children, pied }: { ouvert: 
   );
 }
 
-export function Onglets<T extends string>({ onglets, actif, onChange }: { onglets: { id: T; libelle: ReactNode }[]; actif: T; onChange: (id: T) => void }) {
+/**
+ * Barre d'onglets accessible. Le contenu de l'onglet actif doit etre enveloppe dans
+ * <Panneau prefixe={...} id={ongletActif}> pour que la relation onglet / panneau soit annoncee.
+ */
+export function Onglets<T extends string>({
+  onglets,
+  actif,
+  onChange,
+  prefixe = 'onglet',
+  libelle = 'Sections de la page',
+}: {
+  onglets: { id: T; libelle: ReactNode }[];
+  actif: T;
+  onChange: (id: T) => void;
+  prefixe?: string;
+  libelle?: string;
+}) {
   return (
-    <div role="tablist" className="mb-4 flex flex-wrap gap-1 border-b border-ligne">
+    <div role="tablist" aria-label={libelle} className="mb-4 flex flex-wrap gap-1 border-b border-ligne">
       {onglets.map((o) => (
         <button
           key={o.id}
+          id={`${prefixe}-${o.id}`}
           role="tab"
           type="button"
           aria-selected={actif === o.id}
+          aria-controls={`${prefixe}-panneau-${o.id}`}
+          tabIndex={actif === o.id ? 0 : -1}
           onClick={() => onChange(o.id)}
           className={cx('-mb-px border-b-2 px-3 py-2 text-sm', actif === o.id ? 'border-violet font-semibold text-texte' : 'border-transparent text-texte-doux hover:text-texte')}
         >
           {o.libelle}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Panneau d'un onglet : porte le role et l'identifiant attendus par la barre d'onglets. */
+export function Panneau({ prefixe = 'onglet', id, children }: { prefixe?: string; id: string; children: ReactNode }) {
+  return (
+    <div role="tabpanel" id={`${prefixe}-panneau-${id}`} aria-labelledby={`${prefixe}-${id}`} tabIndex={0}>
+      {children}
     </div>
   );
 }

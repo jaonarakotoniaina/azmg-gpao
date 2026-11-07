@@ -5,7 +5,7 @@ puis `git log -20`, et reprendre a la premiere tache non terminee.
 
 ## Plan des phases
 
-### Phase 1 : socle et saisie (en cours)
+### Phase 1 : socle et saisie (terminee)
 
 - [x] 1.1 Depots de reference clones en lecture seule, stack et conventions reprises de AZMG Sourcing
 - [x] 1.2 Projet initialise : TypeScript, Express 5, Drizzle, React, Vite, Tailwind, Vitest, Playwright
@@ -18,10 +18,12 @@ puis `git log -20`, et reprendre a la premiere tache non terminee.
 - [x] 1.9 Saisie rapide en un appel, file du jour, recherche de dossiers
 - [x] 1.10 Import du classeur de suivi (onglet « Suivi Quotidien »), rejouable sans doublon
 - [x] 1.11 Seed de demonstration fictif
-- [ ] 1.12 Interface React : connexion, file du jour, saisie rapide, fiche dossier, parametres
-- [ ] 1.13 Tests unitaires et d'integration, parcours Playwright
-- [ ] 1.14 Chaine de release GitHub Actions et script de deploiement o2switch
-- [ ] 1.15 README, guide utilisateur, auto-revue de fin de phase
+- [x] 1.12 Interface React : connexion, file du jour, saisie rapide, fiche dossier, parametres
+- [x] 1.13 Tests unitaires et d'integration, parcours Playwright
+- [x] 1.14 Chaine de release GitHub Actions et script de deploiement o2switch
+- [x] 1.15 README, guide utilisateur, auto-revue de fin de phase
+
+**Phase 1 terminee.**
 
 ### Phase 2 : pilotage (a venir)
 
@@ -105,3 +107,78 @@ Interface React, tests automatises, chaine de release, README et guide utilisate
 - `tempsDemande` fait une requete par demande pour retrouver le debut du statut courant. La file
   du jour utilise deja une version en lot (`tempsDemandeAvecHoraires`) ; la fiche dossier devra
   suivre si un dossier porte beaucoup de demandes.
+
+---
+
+## 2026-11-07 : interface, tests, deploiement, fin de la phase 1
+
+**Fait**
+
+- **Interface React** (charte AZMG-Solutions reprise de Sourcing, `theme.ts` et `tailwind.config.ts`
+  a l'identique) : connexion, mot de passe oublie et reinitialisation ; file du jour avec quatre
+  indicateurs, cinq filtres et une action rapide de changement de statut par carte ; saisie rapide
+  en un ecran utilisable au telephone ; liste des dossiers ; fiche dossier avec chronologie fusionnee
+  (evenements, transitions, echeances, pieces), demandes et echeances ; fiche demande avec temps par
+  statut et par acteur ; echeancier avec alerte a deux jours ; import de classeur ; parametres en
+  quatre onglets.
+- **Tests** : 118 tests Vitest et 6 parcours Playwright sur le build de production.
+- **Chaine de deploiement** : `release.yml` (lint, typecheck, tests sur `postgres:9.6`, build,
+  Playwright, publication sur la branche `release`), `verification.yml` pour les branches et les
+  pull requests, `auto-deploy.sh`, `sauvegarde.sh` et `restauration.sh` adaptes depuis Sourcing.
+- **Documentation** : `README.md` (installation locale, mise en place o2switch en dix etapes,
+  lignes de cron exactes, sauvegarde et restauration, modes simules) et `docs/guide-utilisateur.md`
+  (une page par role, en francais simple).
+
+**Verifications de fin de phase**
+
+| Critere de la section 10 | Verification |
+|---|---|
+| Creer un dossier et une demande en moins de 30 s au clavier | parcours Playwright qui chronometre la saisie |
+| Chaque transition est horodatee | test d'integration sur `transitions_statut` et parcours Playwright |
+| Temps par statut juste, week-end et ferie inclus | 22 tests sur le moteur d'heures ouvrees, plus 3 tests de cumul |
+| Import d'un classeur fictif sans doublon | 27 tests d'import, dont le double import, plus un parcours Playwright |
+| Aucun tiret long | test qui balaie l'interface, les referentiels, les scripts, la documentation et le classeur |
+| Migrations rejouables sur base vide | verifie a la main sur une base neuve, puis rejouees : 0 entree ajoutee au second passage |
+| Build de production | `npm run build` vert, parcours Playwright executes sur ce build |
+
+**Auto-revue : ce qui a ete corrige**
+
+1. **Requete N+1 sur la fiche dossier.** Chaque demande declenchait deux requetes pour retrouver
+   le debut de son statut courant. Ajout de `tempsDesDemandes`, qui lit tous les debuts en une
+   requete groupee et les horaires une fois par compte.
+2. **Collision de cle de dossier.** Renommer un dossier pouvait violer l'index unique et remonter
+   une erreur 500. La collision est detectee et renvoie un 409 qui nomme le dossier en conflit.
+3. **Accessibilite des onglets.** Les onglets n'etaient pas relies a leur contenu. Ajout de
+   `aria-controls`, `aria-labelledby`, de la gestion du `tabIndex` et d'un composant `Panneau`
+   portant `role="tabpanel"`.
+4. **Libelles bruts dans l'interface.** La chronologie affichait `en_cours vers attente_do` et
+   `cut_off`, la saisie rapide affichait `whatsapp` et `entrant`. Tout passe desormais par les
+   libelles du referentiel.
+5. **Grammaire.** « en attente de le poste » devenu « en attente du poste » (forme contractee
+   `complementActeur`).
+6. **Rattachement au poste.** Un dossier cree en saisie rapide n'etait rattache a aucun poste : la
+   demande disparaissait de la file du jour de la personne qui venait de la saisir.
+7. **Doublon a l'import.** Le classeur ecrit « Client (Pays) » dans une seule colonne et ne porte
+   pas l'operation : l'import creait un second dossier a cote de celui ouvert par le poste. Il
+   separe maintenant le client du pays et rapproche sur client et produit.
+8. **Couverture du test « aucun tiret long »** etendue aux scripts, a `deploy/`, a `docs/` et au
+   `README.md`, puisque le message d'alerte de deploiement part par email.
+
+**Reste a faire (phases suivantes)**
+
+Phase 2 (pilotage) : tableau de bord, echeancier complet avec alertes dans la file, check-lists
+avant envoi, controle qualite avec echantillonnage, digest DO, export du reporting de la section 9
+dans un classeur existant sans en modifier la structure, connecteur MCP. Le lecteur et l'ecrivain
+ZIP necessaires a cet export sont deja en place et testes.
+
+**Dettes techniques**
+
+- Le filtrage du perimetre sur la file du jour se fait en deux temps (requete large puis filtre par
+  identifiants). A fusionner en une seule requete avec jointure sur les postes quand les volumes
+  le justifieront.
+- Les plages horaires et les calendriers de feries se modifient par l'API des parametres ou en
+  base, pas encore dans l'ecran Parametres, qui les affiche en lecture seule.
+- `src/server/modules/index.ts` ne declare qu'un gestionnaire de file de demonstration (`ping`) :
+  les vrais traitements asynchrones arrivent en phase 2.
+- Aucune route de telechargement de piece : la table `pieces` existe et est affichee, mais le
+  stockage de fichiers sera branche avec la collecte des mails en phase 4.

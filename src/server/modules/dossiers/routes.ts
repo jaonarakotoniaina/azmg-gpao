@@ -9,7 +9,7 @@ import { journaliser } from '../../lib/evenements';
 import { exigerCompte, perimetreDe } from '../../lib/perimetre';
 import { exigerConnexion, exigerEcriture } from '../auth/middleware';
 import { chercherDossiers, chronologieDossier, lireDossier, modifierDossier, trouverOuCreerDossier } from './service';
-import { demandesDuDossier, tempsDemande } from '../demandes/service';
+import { demandesDuDossier, tempsDesDemandes } from '../demandes/service';
 import { dossierSchema, echeanceSchema, modificationDossierSchema, modificationEcheanceSchema } from '@shared/validation';
 import { FAMILLE_HORS_PERIMETRE } from '@shared/constantes';
 
@@ -52,9 +52,8 @@ routesDossiers.get('/:id', async (req, res) => {
   exigerCompte(p, dossier.compteId);
 
   const demandes = await demandesDuDossier(id);
-  const avecTemps = await Promise.all(
-    demandes.map(async (d) => ({ ...d, temps: await tempsDemande(d) })),
-  );
+  const temps = await tempsDesDemandes(demandes);
+  const avecTemps = demandes.map((d) => ({ ...d, temps: temps.get(d.id) }));
   const echeancesDossier = await db
     .select()
     .from(schema.echeances)

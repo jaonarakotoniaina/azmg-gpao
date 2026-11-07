@@ -37,13 +37,27 @@ const RACINE = path.resolve(__dirname, '..');
 
 /** Fichiers porteurs de texte destine a un humain : interface, referentiels, prompts, modeles. */
 function fichiersATexte(): string[] {
-  const dossiers = ['src/web', 'src/shared', 'src/server/ai', 'src/server/emails', 'src/server/db/referentiel.ts', 'src/server/modules'];
+  // Tout ce qui porte du texte lu par un humain : interface, referentiels, prompts, modeles,
+  // documentation, et les scripts dont le message d'alerte part par email.
+  const dossiers = [
+    'src/web',
+    'src/shared',
+    'src/server/ai',
+    'src/server/emails',
+    'src/server/db/referentiel.ts',
+    'src/server/modules',
+    'scripts',
+    'deploy',
+    'docs',
+    'README.md',
+    '.env.example',
+  ];
   const sortie: string[] = [];
   const parcourir = (chemin: string) => {
     if (!fs.existsSync(chemin)) return;
     const stat = fs.statSync(chemin);
     if (stat.isFile()) {
-      if (/\.(ts|tsx|html|css|md|txt|json)$/.test(chemin)) sortie.push(chemin);
+      if (/\.(ts|tsx|html|css|md|txt|json|sh|yml|js|example)$/.test(chemin) || chemin.endsWith('.env.example')) sortie.push(chemin);
       return;
     }
     for (const entree of fs.readdirSync(chemin)) parcourir(path.join(chemin, entree));

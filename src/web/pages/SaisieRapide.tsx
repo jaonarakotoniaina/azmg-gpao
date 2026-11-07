@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { api, messageErreur } from '../lib/api';
-import { libelleFamilleCourt, libelleInterlocuteur, libelleNature, libelleStatut } from '../lib/format';
+import { libelleFamilleCourt, libelleInterlocuteur, libelleNature, libelleSource, libelleStatut } from '../lib/format';
 import { Alerte, Badge, Bouton, Carte, Case, ChampSelect, ChampTexte, ChampZone, EntetePage, useNotifier } from '../composants/ui';
 import {
   DEFINITIONS_NATURES,
@@ -19,6 +19,13 @@ import {
   type Sens,
   type Source,
 } from '@shared/constantes';
+
+/** Le sens vu par le poste : ce qui arrive, ce qui part, ce qui reste interne. */
+const LIBELLES_SENS: Record<Sens, string> = {
+  entrant: 'recu',
+  sortant: 'envoye',
+  interne: 'interne',
+};
 
 interface Compte {
   id: number;
@@ -237,7 +244,7 @@ export default function SaisieRapide() {
               <ChampSelect libelle="Sens" value={sens} onChange={(e) => setSens(e.target.value as Sens)}>
                 {sensPossibles.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {LIBELLES_SENS[s]}
                   </option>
                 ))}
               </ChampSelect>
@@ -252,7 +259,7 @@ export default function SaisieRapide() {
               <ChampSelect libelle="Source" value={source} onChange={(e) => setSource(e.target.value as Source)}>
                 {SOURCES.filter((s) => s !== 'import').map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {libelleSource(s)}
                   </option>
                 ))}
               </ChampSelect>

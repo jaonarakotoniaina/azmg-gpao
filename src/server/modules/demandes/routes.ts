@@ -9,7 +9,7 @@ import { journaliser } from '../../lib/evenements';
 import { lireParametres } from '../../lib/parametres';
 import { compteParDefaut, exigerCompte, perimetreDe, posteSurCompte } from '../../lib/perimetre';
 import { exigerConnexion, exigerEcriture } from '../auth/middleware';
-import { calculerSla, changerStatut, creerDemande, demandesDuDossier, enregistrerRelance, fileDuJour, tempsDemande } from './service';
+import { calculerSla, changerStatut, creerDemande, demandesDuDossier, enregistrerRelance, fileDuJour, tempsDemande, tempsDesDemandes } from './service';
 import { evenementsDeLaDemande, ajouterEvenement } from '../evenements/service';
 import { lireDossier, trouverOuCreerDossier } from '../dossiers/service';
 import { changementStatutSchema, demandeSchema, filtresFileSchema, modificationDemandeSchema, saisieRapideSchema } from '@shared/validation';
@@ -247,7 +247,8 @@ routesDemandes.get('/dossier/:id/liste', async (req, res) => {
   const dossier = await lireDossier(id);
   exigerCompte(await perimetreDe(req.utilisateur!), dossier.compteId);
   const demandes = await demandesDuDossier(id);
-  res.json(await Promise.all(demandes.map(async (d) => ({ ...d, temps: await tempsDemande(d) }))));
+  const temps = await tempsDesDemandes(demandes);
+  res.json(demandes.map((d) => ({ ...d, temps: temps.get(d.id) })));
 });
 
 export { lireParametres };

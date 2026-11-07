@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, messageErreur } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { libelleActeur, libelleReporting } from '../lib/format';
-import { Alerte, Badge, Bouton, Carte, ChampTexte, Chargement, EntetePage, Interrupteur, Onglets, Vide, useNotifier } from '../composants/ui';
+import { Alerte, Badge, Bouton, Carte, ChampTexte, Chargement, EntetePage, Interrupteur, Onglets, Panneau, Vide, useNotifier } from '../composants/ui';
 import { AUTOMATISATIONS, type Parametres as ParametresType } from '@shared/parametres';
 import { DEFINITIONS_NATURES, DEFINITIONS_STATUTS, FAMILLES, LIBELLES_ROLES, type Role } from '@shared/constantes';
 
@@ -86,6 +86,8 @@ export default function Parametres() {
         <Onglets
           actif={onglet}
           onChange={setOnglet}
+          prefixe="parametres"
+          libelle="Sections des parametres"
           onglets={[
             { id: 'referentiels', libelle: 'Referentiels' },
             { id: 'delais', libelle: 'Delais et horaires' },
@@ -96,6 +98,7 @@ export default function Parametres() {
       </div>
 
       {onglet === 'referentiels' && (
+        <Panneau prefixe="parametres" id="referentiels">
         <div className="space-y-4">
           <Carte titre="Familles de demandes" id="familles">
             <p className="mb-3 text-sm text-texte-doux">
@@ -201,9 +204,11 @@ export default function Parametres() {
             </div>
           </Carte>
         </div>
+        </Panneau>
       )}
 
       {onglet === 'delais' && (
+        <Panneau prefixe="parametres" id="delais">
         <div className="space-y-4">
           <Carte titre="Horaires ouvres du client" id="horaires">
             <p className="mb-3 text-sm text-texte-doux">
@@ -294,9 +299,11 @@ export default function Parametres() {
             </div>
           </Carte>
         </div>
+        </Panneau>
       )}
 
       {onglet === 'automatisations' && (
+        <Panneau prefixe="parametres" id="automatisations">
         <Carte titre="Modes d&rsquo;automatisation" id="automatisations">
           <Alerte ton="bleu">
             Regle d&rsquo;or : l&rsquo;IA prepare, l&rsquo;humain envoie. Aucun mail ne part automatiquement vers un client, un
@@ -336,9 +343,11 @@ export default function Parametres() {
             })}
           </ul>
         </Carte>
+        </Panneau>
       )}
 
       {onglet === 'equipe' && (
+        <Panneau prefixe="parametres" id="equipe">
         <Carte titre="Comptes utilisateurs" id="equipe">
           {!peut('admin', 'manager') ? (
             <Vide>Seuls un administrateur et un manager voient la liste des comptes.</Vide>
@@ -370,6 +379,7 @@ export default function Parametres() {
             </div>
           )}
         </Carte>
+        </Panneau>
       )}
     </>
   );

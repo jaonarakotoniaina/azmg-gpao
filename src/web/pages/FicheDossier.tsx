@@ -15,7 +15,7 @@ import {
   libelleStatut,
   tonStatut,
 } from '../lib/format';
-import { Alerte, Badge, Bouton, Carte, ChampZone, Chargement, EntetePage, Onglets, Vide, useNotifier } from '../composants/ui';
+import { Alerte, Badge, Bouton, Carte, ChampZone, Chargement, EntetePage, Onglets, Panneau, Vide, useNotifier } from '../composants/ui';
 import { LIBELLES_ECHEANCES, LIBELLES_STATUTS_DOSSIER, type Statut, type StatutDossier, type TypeEcheance } from '@shared/constantes';
 
 interface Temps {
@@ -176,6 +176,8 @@ export default function FicheDossier() {
       <Onglets
         actif={onglet}
         onChange={setOnglet}
+        prefixe="dossier"
+        libelle="Sections du dossier"
         onglets={[
           { id: 'chronologie', libelle: `Chronologie (${chronologie?.length ?? 0})` },
           { id: 'demandes', libelle: `Demandes (${ouvertes.length} ouverte(s) sur ${demandes.length})` },
@@ -184,6 +186,7 @@ export default function FicheDossier() {
       />
 
       {onglet === 'chronologie' && (
+        <Panneau prefixe="dossier" id="chronologie">
         <Carte id="chrono">
           {!chronologie?.length ? (
             <Vide>Aucun evenement enregistre sur ce dossier.</Vide>
@@ -222,9 +225,11 @@ export default function FicheDossier() {
             </ol>
           )}
         </Carte>
+        </Panneau>
       )}
 
       {onglet === 'demandes' && (
+        <Panneau prefixe="dossier" id="demandes">
         <Carte id="demandes">
           {!demandes.length ? (
             <Vide>Aucune demande sur ce dossier.</Vide>
@@ -269,9 +274,11 @@ export default function FicheDossier() {
             </div>
           )}
         </Carte>
+        </Panneau>
       )}
 
       {onglet === 'echeances' && (
+        <Panneau prefixe="dossier" id="echeances">
         <div className="grid gap-4 lg:grid-cols-2">
           <Carte titre="Echeances" id="echeances">
             {!echeances.length ? (
@@ -311,6 +318,7 @@ export default function FicheDossier() {
             )}
           </Carte>
         </div>
+        </Panneau>
       )}
     </>
   );

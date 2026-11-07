@@ -144,6 +144,18 @@ export async function modifierDossier(id: number, modifs: Partial<EntreeDossier>
   if (modifs.statut === 'clos' || modifs.statut === 'annule') valeurs.clotureLe = new Date();
   if (modifs.statut === 'ouvert') valeurs.clotureLe = null;
 
+  // Renommer un dossier peut le faire entrer en collision avec un dossier existant du meme
+  // compte : on le dit clairement plutot que de laisser remonter une violation de contrainte.
+  if (valeurs.cleRapprochement && valeurs.cleRapprochement !== dossier.cleRapprochement) {
+    const [collision] = await db
+      .select({ id: schema.dossiers.id, libelle: schema.dossiers.libelle })
+      .from(schema.dossiers)
+      .where(and(eq(schema.dossiers.compteId, dossier.compteId), eq(schema.dossiers.cleRapprochement, String(valeurs.cleRapprochement))));
+    if (collision && collision.id !== id) {
+      throw new ErreurHttp(409, `Un dossier identique existe deja sur ce compte : « ${collision.libelle} »`);
+    }
+  }
+
   const [maj] = await db.update(schema.dossiers).set(valeurs).where(eq(schema.dossiers.id, id)).returning();
   await journaliser('dossier_modifie', {
     utilisateurId: auteur.utilisateurId,

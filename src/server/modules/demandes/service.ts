@@ -273,6 +273,37 @@ export async function tempsDemande(demande: Demande, maintenant = new Date()): P
   };
 }
 
+/**
+ * Temps de plusieurs demandes en un seul aller-retour : les debuts de statut sont lus en une
+ * requete et les horaires une fois par compte. A utiliser des qu'on affiche une liste
+ * (fiche dossier, exports), pour ne pas multiplier les requetes par le nombre de demandes.
+ */
+export async function tempsDesDemandes(demandes: Demande[], maintenant = new Date()): Promise<Map<number, TempsDemande>> {
+  const sortie = new Map<number, TempsDemande>();
+  if (!demandes.length) return sortie;
+
+  const debuts = await db
+    .select({
+      demandeId: schema.transitionsStatut.demandeId,
+      debut: sql<Date>`max(${schema.transitionsStatut.survenuLe})`.as('debut'),
+    })
+    .from(schema.transitionsStatut)
+    .where(inArray(schema.transitionsStatut.demandeId, demandes.map((d) => d.id)))
+    .groupBy(schema.transitionsStatut.demandeId);
+  const parDemande = new Map(debuts.map((d) => [d.demandeId, new Date(d.debut)]));
+
+  const horairesParCompte = new Map<number, HorairesOuvres>();
+  for (const compteId of new Set(demandes.map((d) => d.compteId))) {
+    horairesParCompte.set(compteId, await horairesDuCompte(compteId));
+  }
+
+  for (const d of demandes) {
+    const debut = parDemande.get(d.id) ?? d.ouverteLe;
+    sortie.set(d.id, tempsDemandeAvecHoraires(d, debut, horairesParCompte.get(d.compteId)!, maintenant));
+  }
+  return sortie;
+}
+
 /** Variante sans acces base, quand les horaires sont deja connus (calculs en lot). */
 export function tempsDemandeAvecHoraires(demande: Demande, debutStatut: Date, horaires: HorairesOuvres, maintenant = new Date()): TempsDemande {
   const enCours = estFerme(demande.statut) ? 0 : minutesOuvrees(horaires, debutStatut, maintenant);
