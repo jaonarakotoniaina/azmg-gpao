@@ -67,6 +67,22 @@ tient en une page, y compris sur telephone, et l'enregistrement prend moins de 3
   resume, decrivez l'etat du dossier et l'action qui debloque, pas ce que le client a pense. La
   GPAO sert a piloter des dossiers, pas a vous noter.
 
+### La file « A classer »
+
+Quand un message arrive, l'application essaie de le classer toute seule : famille, nature,
+interlocuteur. Elle y arrive dans la grande majorite des cas. Quand elle n'est pas assez sure,
+elle ne devine pas : le message part dans **A classer** et vous attend.
+
+Pour chaque message, vous voyez l'indice de confiance et la raison du classement propose. Vous
+choisissez la bonne famille, la bonne nature, et vous cliquez sur Classer.
+
+Chaque correction **propose une regle** pour les prochains messages du meme genre. Cette regle ne
+classe rien tant qu'un manager ou un administrateur ne l'a pas acceptee, dans l'onglet « Regles
+proposees » : une regle tiree d'un seul message se trompe souvent, et une mauvaise regle fausserait
+silencieusement toute la file du jour.
+
+Plus vous corrigez, moins il y a a corriger.
+
 ### La fiche dossier
 
 Elle montre toute l'histoire d'une operation : la chronologie (evenements, changements de statut,

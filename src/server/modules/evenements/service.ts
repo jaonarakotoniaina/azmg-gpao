@@ -34,11 +34,24 @@ export interface EntreeEvenement {
   contenu?: string | null;
   filId?: string | null;
   messageId?: string | null;
+  /** Adresse de l'expediteur : sert au typage par domaine et aux propositions de regle. */
+  expediteur?: string | null;
+  destinataires?: string[];
   confianceTypage?: number | null;
   justificatifs?: unknown[];
   /** Pour une nature qui cree une demande : priorite et echeance a lui donner. */
   priorite?: Priorite;
   echeanceLe?: Date | null;
+}
+
+/** Options de l'ajout d'un evenement. */
+export interface OptionsAjout {
+  /**
+   * Type automatiquement l'evenement quand sa famille ou sa nature manque (phase 3).
+   * Le typage n'est applique que s'il depasse le seuil de confiance ; sinon l'evenement est
+   * enregistre tel quel et part dans la file « A classer ».
+   */
+  typerAutomatiquement?: boolean;
 }
 
 export interface ResultatEvenement {
@@ -105,7 +118,11 @@ function verifierSens(nature: Nature, sens: Sens) {
  * Dedoublonnage : un `messageId` deja connu renvoie l'evenement existant sans rien modifier,
  * ce qui rend l'import d'un fil deux fois sans effet (critere de la phase 4).
  */
-export async function ajouterEvenement(entree: EntreeEvenement, auteur: Auteur): Promise<ResultatEvenement> {
+export async function ajouterEvenement(entree: EntreeEvenement, auteur: Auteur, opts: OptionsAjout = {}): Promise<ResultatEvenement> {
+  // Typage automatique avant toute verification : il peut fournir la famille qui manque.
+  if (opts.typerAutomatiquement && (!entree.famille || !entree.nature)) {
+    entree = await completerParTypage(entree);
+  }
   verifierSens(entree.nature, entree.sens);
   if (!entree.demandeId && !entree.dossierId) throw new ErreurHttp(400, 'Un evenement doit etre rattache a une demande ou a un dossier');
 
@@ -165,6 +182,8 @@ export async function ajouterEvenement(entree: EntreeEvenement, auteur: Auteur):
       source: entree.source,
       filId: entree.filId ?? null,
       messageId: entree.messageId ?? null,
+      expediteur: entree.expediteur ?? null,
+      destinataires: entree.destinataires ?? [],
       survenuLe,
       objet: entree.objet ?? null,
       resume: entree.resume ?? null,
@@ -211,6 +230,34 @@ export async function ajouterEvenement(entree: EntreeEvenement, auteur: Auteur):
   });
 
   return { evenement, demande, demandeCreee, statutApplique, horsPerimetre };
+}
+
+/**
+ * Complete une entree d'evenement par le typage automatique.
+ * Les champs deja fournis par l'humain ne sont jamais ecrases : le typage ne comble que les trous.
+ */
+async function completerParTypage(entree: EntreeEvenement): Promise<EntreeEvenement> {
+  const { typerMessage } = await import('../typage/service');
+  const compteId = entree.dossierId
+    ? (await db.select({ compteId: schema.dossiers.compteId }).from(schema.dossiers).where(eq(schema.dossiers.id, entree.dossierId)))[0]?.compteId
+    : undefined;
+
+  const resultat = await typerMessage(
+    { objet: entree.objet, corps: entree.contenu ?? entree.resume, expediteur: entree.expediteur, destinataires: entree.destinataires, sens: entree.sens },
+    { compteId },
+  );
+  if (!resultat.applicable) {
+    // Sous le seuil : on garde la confiance pour que l'evenement apparaisse dans « A classer ».
+    return { ...entree, confianceTypage: resultat.typage.confiance, justificatifs: resultat.typage.justificatifs };
+  }
+  return {
+    ...entree,
+    famille: entree.famille ?? resultat.typage.famille ?? null,
+    nature: entree.nature ?? resultat.typage.nature ?? entree.nature,
+    interlocuteur: entree.interlocuteur ?? resultat.typage.interlocuteur ?? null,
+    confianceTypage: resultat.typage.confiance,
+    justificatifs: resultat.typage.justificatifs,
+  };
 }
 
 async function lireDemande(id: number): Promise<Demande> {
@@ -284,5 +331,11 @@ export async function corrigerTypage(
     entiteId: evenementId,
     details: { avant: { famille: evenement.famille, nature: evenement.nature, interlocuteur: evenement.interlocuteur }, apres: modifs },
   });
+
+  // Chaque correction propose une regle, qui attend l'accord d'un administrateur avant de classer
+  // quoi que ce soit (section 10, phase 3).
+  const { proposerRegle } = await import('../typage/service');
+  await proposerRegle(evenementId, modifs, auteur).catch(() => null);
+
   return maj;
 }

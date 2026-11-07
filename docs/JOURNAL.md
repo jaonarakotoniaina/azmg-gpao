@@ -41,10 +41,17 @@ Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull
 
 **Phase 2 terminee.**
 
-### Phase 3 : typage (a venir)
+### Phase 3 : typage (terminee)
 
-Moteur de regles puis tache IA `typer_evenement`, file « A classer », proposition de regle a
-chaque correction manuelle, T00 exclu partout.
+- [x] 3.1 Fournisseur IA interchangeable (`agent`, `api`, `mock`), table `ai_tasks`, API agent
+- [x] 3.2 Moteur de regles de typage (domaine, mots de l'objet, libelles) et referentiel initial
+- [x] 3.3 Service de typage : regles d'abord, IA ensuite, file « A classer » sous le seuil
+- [x] 3.4 Proposition d'une nouvelle regle a chaque correction manuelle
+- [x] 3.5 Jeu d'evaluation de 60 mails fictifs annotes, jeu temoin et script de mesure
+- [x] 3.6 Ecran « A classer »
+- [x] 3.7 Auto-revue, journal, mise a jour de la pull request
+
+**Phase 3 terminee.**
 
 ### Phase 4 : synchronisation des mails (a venir)
 
@@ -281,3 +288,85 @@ l'outil `corriger_typage` existent deja et attendent le moteur.
   sans doute une vue consolidee par la suite.
 - `construireColonneSemaine` appelle `construireBlocJour`, qui refait les memes requetes : a
   mutualiser si l'export devient lent sur un gros mois.
+
+---
+
+## 2026-11-07 : typage (phase 3)
+
+**Fait**
+
+- **Fournisseur IA interchangeable** (`src/server/ai/service.ts`) : `agent` par defaut en
+  production (la tache attend dans `ai_tasks` qu'une routine Claude Code la releve, cout nul),
+  `api` si une cle est fournie, `mock` deterministe pour les tests. Toute sortie passe par le
+  filtre « aucun tiret long », quel que soit le fournisseur.
+- **API agent** : `GET /api/agent/ia/taches` sert les taches en attente avec leur prompt et leur
+  schema, `POST /api/agent/ia/taches/:id/resultat` recoit la sortie. Elle est validee par zod ;
+  une sortie invalide repart en file, puis la tache est abandonnee au bout de trois essais.
+- **Moteur de regles** (33 regles livrees) : domaine de l'expediteur, mots-cles de l'objet et du
+  corps, mots d'exclusion, sens impose. Les regles se cumulent (l'une donne la famille, l'autre la
+  nature), la plus prioritaire gagne, et la confiance monte avec le nombre de signaux.
+- **Service de typage** : regles d'abord, IA ensuite, file « A classer » en dernier recours. Le
+  hors perimetre est tranche par les regles et ne part jamais a l'IA.
+- **Proposition de regle** a chaque correction manuelle, en attente d'acceptation.
+- **Ecran « A classer »** : messages a classer avec leur indice de confiance et la raison du
+  classement propose, et l'onglet des regles proposees avec Accepter ou Ecarter.
+- **Colonne `expediteur`** ajoutee aux evenements : elle sert au typage par domaine, a la
+  proposition de regle, et servira a la collecte des mails en phase 4.
+
+**La mesure, et ce qu'elle a appris**
+
+| Jeu | Famille | Nature | Les deux |
+|---|---|---|---|
+| Principal, 65 mails, qui a servi a regler les regles | 98,5 % | 100 % | **98,5 %** |
+| Temoin, 20 mails, jamais utilise pour les regler | 95 % | 90 % | **85 %** |
+
+Le critere de la section 10 est de 85 % en famille **et** nature. Il est tenu sur les deux jeux,
+mais seul le second compte vraiment : apres reglage, le jeu principal est monte a 100 %, ce qui ne
+prouvait que du surapprentissage. Le jeu temoin, ecrit apres coup avec d'autres tournures, donnait
+alors 75 %. C'est lui qui a revele le defaut decrit ci-dessous.
+
+85 % sur le jeu temoin, c'est tout juste le critere : le moteur demande a etre enrichi au fil des
+vrais messages. C'est precisement le role de la proposition de regle a chaque correction.
+
+**Auto-revue : ce qui a ete corrige**
+
+1. **Les points de fin de phrase cassaient toutes les correspondances.** Le normalisateur gardait
+   le point pour preserver les noms de domaine, si bien que « en piece jointe. » n'etait jamais
+   reconnu comme « en piece jointe » : tout mot-cle place en fin de phrase passait a travers. Le
+   point n'est desormais conserve que lorsqu'il relie deux caracteres. Ce seul defaut coutait
+   10 points sur le jeu temoin.
+2. **Les deductions par defaut etaient effacees avant d'etre comptees.** Les justificatifs issus
+   des regles ecrasaient ceux des deductions, donc la penalite de confiance ne s'appliquait
+   jamais : un typage deduit du seul sens du message etait applique avec une confiance de 0,90 au
+   lieu de 0,78, et n'allait donc pas dans « A classer » comme il aurait du. Les deductions
+   s'ajoutent maintenant apres les regles et restent visibles.
+3. **Pas de tolerance au pluriel.** « cotations » ne reconnaissait pas « cotation », « surestaries »
+   ne reconnaissait pas « surestarie ». Un mot d'au moins quatre lettres accepte maintenant un
+   « s » ou un « x » final.
+4. **Des regles proposees inutilisables.** Une correction sur un objet comme « Point sur le
+   dossier » proposait une regle sur les mots « point » et « dossier », qui aurait classe a peu
+   pres n'importe quoi. Ces mots de contexte sont ecartes, et une proposition sans mot distinctif
+   n'est plus creee du tout.
+
+**Verifications**
+
+251 tests Vitest et 15 parcours Playwright au vert. Les trois criteres de la phase 3 sont couverts :
+le taux de classement sur les deux jeux, l'absence totale du hors perimetre dans la file, la
+chronologie, les demandes et l'export, et l'absence de remarque interne dans les justificatifs
+comme dans le prompt.
+
+**Reste a faire**
+
+Phase 4 (synchronisation des mails) : adaptateur `collecte_mail` en trois implementations
+(`apps_script`, `imap`, `mock`), import de fichiers `.eml` et `.mbox`, dedoublonnage par
+identifiant de message. Le dedoublonnage et la colonne `expediteur` sont deja en place et testes.
+
+**Dettes techniques**
+
+- Le jeu temoin a maintenant ete regarde : il ne peut plus servir de mesure vierge. Un troisieme
+  jeu devra etre tire des vrais messages a la phase 4, une fois la boite de suivi branchee.
+- Les regles ne regardent que l'objet et le corps. L'expediteur n'est utilise que par domaine
+  exact ; un annuaire des interlocuteurs connus (ce transitaire, cette autorite) ferait gagner
+  sur l'interlocuteur, qui est le champ le moins bien devine.
+- `typerMessage` relit les regles en base a chaque appel. A mettre en cache court si la collecte
+  de la phase 4 amene des volumes.

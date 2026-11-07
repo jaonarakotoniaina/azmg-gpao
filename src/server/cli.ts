@@ -9,6 +9,7 @@ import './charger-env';
 import { migrer, fermerDb } from './db/client';
 import './modules';
 import { initialiserChecklistsEtGrilles, initialiserReferentiel } from './db/referentiel';
+import { initialiserRegles } from './modules/typage/service';
 import { config } from './config';
 import { ROLES, type Role } from '@shared/constantes';
 
@@ -18,7 +19,8 @@ async function principal() {
     await migrer();
     const { ajoutees } = await initialiserReferentiel();
     await initialiserChecklistsEtGrilles();
-    console.log(`Migrations appliquees. Referentiels : ${ajoutees} entree(s) ajoutee(s).`);
+    const regles = await initialiserRegles();
+    console.log(`Migrations appliquees. Referentiels : ${ajoutees} entree(s), regles de typage : ${regles.ajoutees}.`);
   } else if (commande === 'seed') {
     if (config.production && !process.env.FORCER_SEED) throw new Error('Le seed de demonstration est desactive en production.');
     const { seedDemo } = await import('./db/seed');

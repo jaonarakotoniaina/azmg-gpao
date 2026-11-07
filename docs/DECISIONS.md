@@ -133,3 +133,55 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Raison : la tracabilite d'un classement est necessaire a la phase 3 (correction du typage et
   proposition de regle), sans quoi une erreur de classement serait invisible et irreparable.
 - Retour arriere : sans objet, le filtre est centralise (`conditionPerimetre`, `estHorsPerimetre`).
+
+## 2026-11-07 : les regles de typage passent avant l'IA
+
+- Sujet : l'ordre entre le moteur de regles et la tache IA `typer_evenement`.
+- Options : tout confier a l'IA, ou faire passer les regles d'abord.
+- Choix : les regles d'abord. L'IA ne traite que ce qu'aucune regle ne tranche, et son resultat
+  n'est applique que s'il depasse le seuil de confiance.
+- Raison : trois raisons qui se cumulent. Les regles sont gratuites, alors que le mode `agent`
+  impose un delai d'attente le temps que la routine passe. Elles sont instantanees, ce qui compte
+  pour une saisie rapide de 30 secondes. Et surtout elles sont **explicables** : quand le manager
+  demande pourquoi un mail est en T04, on lui montre la regle, et il la corrige lui-meme.
+- Retour arriere : `typerMessage` accepte `sansIa`, et l'ordre inverse tiendrait en quelques lignes.
+
+## 2026-11-07 : une regle proposee ne classe rien avant d'etre acceptee
+
+- Sujet : que faire de la regle deduite d'une correction manuelle (critere de la phase 3).
+- Options : l'activer aussitot, ou la mettre en attente d'un accord.
+- Choix : elle est enregistree avec `proposee = true` et ne classe rien tant qu'un administrateur
+  ou un manager ne l'a pas acceptee dans l'ecran « A classer ».
+- Raison : une regle tiree d'un seul message se trompe souvent, et une mauvaise regle contamine
+  silencieusement la file du jour, les indicateurs et le reporting. Le cout d'un clic est sans
+  commune mesure avec le cout d'un classement faux repete. Les mots trop generiques (« dossier »,
+  « point », « suite ») sont d'ailleurs ecartes a la source : une proposition sans mot distinctif
+  n'est pas creee du tout.
+- Retour arriere : passer `proposee: false` a la creation dans `proposerRegle`.
+
+## 2026-11-07 : un jeu temoin a cote du jeu d'evaluation
+
+- Sujet : mesurer honnetement le typage.
+- Options : le seul jeu de 60 mails annotes demande par CLAUDE.md, ou un second jeu temoin.
+- Choix : deux jeux. `mails-annotes.ts` (65 mails) a servi a construire les regles ;
+  `mails-temoins.ts` (20 mails) a ete ecrit **apres** le reglage, avec d'autres tournures, et
+  n'a jamais servi a les ajuster.
+- Raison : apres reglage, le jeu principal est monte a 100 %, ce qui ne prouvait rien d'autre que
+  du surapprentissage. Le jeu temoin a immediatement donne 75 %, et c'est ce chiffre qui disait la
+  verite. Il a conduit a corriger un vrai defaut du normalisateur (voir ci-dessous) et le score
+  temoin est remonte a 85 %. Le critere de la section 10 est evalue sur les deux jeux, mais c'est
+  le temoin qui est regarde.
+- Consequence assumee : 85 % sur le jeu temoin, c'est tout juste le critere. Le moteur demande a
+  etre enrichi au fil des vrais messages, et c'est exactement le role de la proposition de regle a
+  chaque correction.
+- Retour arriere : sans objet, les deux jeux sont independants du code de production.
+
+## 2026-11-07 : le typage ne comble que les trous
+
+- Sujet : que fait le typage automatique quand un humain a deja renseigne la famille ou la nature.
+- Options : recalculer et ecraser, ou ne completer que ce qui manque.
+- Choix : ne completer que ce qui manque. Un champ saisi par un humain n'est jamais ecrase.
+- Raison : la correction manuelle est la source de verite, et c'est elle qui alimente les regles.
+  Un typage qui ecrase une saisie ferait perdre le travail de classement et decouragerait l'usage
+  de la file « A classer ».
+- Retour arriere : l'option `typerAutomatiquement` d'`ajouterEvenement` controle tout le mecanisme.

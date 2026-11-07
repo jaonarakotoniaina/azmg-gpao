@@ -206,6 +206,41 @@ export async function seedDemo() {
       }
     }
 
+    // Deux messages volontairement ambigus, pour que la file « A classer » ne soit pas vide en
+    // demonstration : leur typage automatique reste sous le seuil de confiance.
+    const aClasser = [
+      {
+        objet: 'Suite a notre echange',
+        resume: 'Comme convenu, je reviens vers vous avec les elements.',
+        expediteur: 'contact@exemple-fictif.test',
+        jours: -1,
+      },
+      {
+        objet: 'Point sur le dossier',
+        resume: 'Quelques precisions apres notre appel de ce matin.',
+        expediteur: 'achats@client-fictif.test',
+        jours: 0,
+      },
+    ];
+    for (const m of aClasser) {
+      await ajouterEvenement(
+        {
+          dossierId: dossiers[0],
+          sens: 'entrant',
+          nature: 'information',
+          source: 'mail',
+          objet: m.objet,
+          resume: m.resume,
+          contenu: m.resume,
+          expediteur: m.expediteur,
+          survenuLe: instant(m.jours),
+        },
+        auteur,
+        { typerAutomatiquement: true },
+      );
+      bilan.evenements++;
+    }
+
     // Echeances fictives pour l'echeancier et les alertes J-2 et J0.
     const echeancesDemo = [
       { dossier: 0, type: 'cut_off' as const, libelle: 'Cut-off aerien', jours: 2 },

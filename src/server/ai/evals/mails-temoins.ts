@@ -1,0 +1,175 @@
+/**
+ * Jeu temoin : 20 mails FICTIFS annotes, ecrits **apres** le reglage des regles et jamais
+ * utilises pour les ajuster.
+ *
+ * Le jeu principal (`mails-annotes.ts`) a servi a construire le moteur : y obtenir un bon score
+ * ne prouve donc pas grand-chose. Ce second jeu, volontairement ecrit avec d'autres tournures,
+ * donne la seule mesure honnete de ce que le typage sait faire sur des messages qu'il n'a jamais
+ * vus. C'est ce chiffre qu'il faut regarder.
+ *
+ * Donnees entierement inventees, comme pour le jeu principal.
+ */
+import type { MailAnnote } from './mails-annotes';
+
+export const MAILS_TEMOINS: MailAnnote[] = [
+  {
+    reference: 'TEM-01',
+    expediteur: 'shipping@nordic-lines.test',
+    objet: 'Tarif groupage Barcelone Casablanca',
+    corps: 'Bonjour, notre proposition pour un groupage maritime s eleve a 840 euros tout compris. Validite 15 jours.',
+    sens: 'entrant',
+    attendu: { famille: 'T01', nature: 'reponse_tiers', interlocuteur: 'transitaire' },
+  },
+  {
+    reference: 'TEM-02',
+    expediteur: 'elysa@azmg-solutions.test',
+    objet: 'Jeu documentaire complet',
+    corps: 'En piece jointe le connaissement signe, la liste de colisage et le certificat d origine.',
+    sens: 'sortant',
+    attendu: { famille: 'T02', nature: 'envoi_livrable', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-03',
+    expediteur: 'do@masenz-fictif.test',
+    objet: 'Devis Tunisie',
+    corps: 'Bon pour accord sur le montant propose. Tu peux envoyer au client.',
+    sens: 'entrant',
+    attendu: { famille: 'T13', nature: 'validation_do', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-04',
+    expediteur: 'tresorerie@omega-labs.test',
+    objet: 'Notre reglement',
+    corps: 'Le virement a ete emis ce matin. Vous trouverez le SWIFT en piece jointe.',
+    sens: 'entrant',
+    attendu: { famille: 'T04', nature: 'reponse_tiers', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-05',
+    expediteur: 'elysa@azmg-solutions.test',
+    objet: 'Deuxieme rappel facture',
+    corps: 'Sans retour de votre part, je me permets de revenir vers vous au sujet du solde restant du.',
+    sens: 'sortant',
+    attendu: { famille: 'T04', nature: 'relance_emise', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-06',
+    expediteur: 'reglementation@autorite-fictive.test',
+    objet: 'Dossier d enregistrement incomplet',
+    corps: 'Votre demande d autorisation de mise sur le marche ne peut aboutir sans le certificat GMP a jour.',
+    sens: 'entrant',
+    attendu: { famille: 'T05', nature: 'reponse_tiers', interlocuteur: 'autorite' },
+  },
+  {
+    reference: 'TEM-07',
+    expediteur: 'news@veille-secteur.test',
+    objet: 'Les tendances nutraceutiques 2027',
+    corps: 'Notre newsletter mensuelle est en ligne. Pour ne plus recevoir ces envois, cliquez ici.',
+    sens: 'entrant',
+    attendu: { famille: 'T00', nature: 'information' },
+  },
+  {
+    reference: 'TEM-08',
+    expediteur: 'elysa@azmg-solutions.test',
+    objet: 'Prix special Oman',
+    corps: 'Le prospect demande une remise de 8 pour cent. Peux tu valider avant que je reponde ?',
+    sens: 'sortant',
+    attendu: { famille: 'T08', nature: 'demande_validation_do', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-09',
+    expediteur: 'labo@controle-fictif.test',
+    objet: 'Resultats d analyse du lot',
+    corps: 'Veuillez trouver ci joint le certificat d analyse conforme aux specifications.',
+    sens: 'entrant',
+    attendu: { famille: 'T07', nature: 'reponse_tiers', interlocuteur: 'qualite' },
+  },
+  {
+    reference: 'TEM-10',
+    expediteur: 'achats@kappa-import.test',
+    objet: 'Suivi de notre envoi',
+    corps: 'Auriez vous le numero de suivi de notre colis parti la semaine derniere ?',
+    sens: 'entrant',
+    attendu: { famille: 'T14', nature: 'demande_entrante', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-11',
+    expediteur: 'do@masenz-fictif.test',
+    objet: 'Recapitulatif hebdomadaire',
+    corps: 'Merci de preparer un recapitulatif des dossiers en cours pour la reunion de lundi.',
+    sens: 'entrant',
+    attendu: { famille: 'T06', nature: 'consigne_do', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-12',
+    expediteur: 'noreply@plateforme-fictive.test',
+    objet: 'Confirmation de connexion',
+    corps: 'Message automatique, ne pas repondre. Une nouvelle connexion a votre compte a ete detectee.',
+    sens: 'entrant',
+    attendu: { famille: 'T00', nature: 'information' },
+  },
+  {
+    reference: 'TEM-13',
+    expediteur: 'elysa@azmg-solutions.test',
+    objet: 'Bilan de la journee',
+    corps: 'Veuillez trouver ci joint le compte rendu du jour et les priorites pour demain matin.',
+    sens: 'sortant',
+    attendu: { famille: 'T09', nature: 'envoi_livrable', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-14',
+    expediteur: 'rh@universite-fictive.test',
+    objet: 'Suivi de notre etudiante',
+    corps: 'Serait il possible de nous transmettre l evaluation de stage de notre etudiante ?',
+    sens: 'entrant',
+    attendu: { famille: 'T10', nature: 'demande_entrante', interlocuteur: 'stagiaire' },
+  },
+  {
+    reference: 'TEM-15',
+    expediteur: 'do@masenz-fictif.test',
+    objet: 'Re : Changement de conditionnement',
+    corps: 'Ne convient pas. On garde le conditionnement actuel jusqu a la fin du stock.',
+    sens: 'entrant',
+    attendu: { famille: 'T13', nature: 'refus_do', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-16',
+    expediteur: 'exposants@foire-fictive.test',
+    objet: 'Plan du hall et acces exposant',
+    corps: 'Pour information, le plan du hall est joint. Votre stand se situe allee C.',
+    sens: 'entrant',
+    attendu: { famille: 'T11', nature: 'information' },
+  },
+  {
+    reference: 'TEM-17',
+    expediteur: 'direction@sigma-pharma.test',
+    objet: 'Courrier officiel pour notre ambassade',
+    corps: 'Nous aurions besoin d une lettre d invitation officielle pour la demande de visa de notre equipe.',
+    sens: 'entrant',
+    attendu: { famille: 'T12', nature: 'demande_entrante', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-18',
+    expediteur: 'elysa@azmg-solutions.test',
+    objet: 'Proforma modifiee',
+    corps: 'Je vous transmets la proforma corrigee avec le nouvel incoterm demande.',
+    sens: 'sortant',
+    attendu: { famille: 'T03', nature: 'envoi_livrable', interlocuteur: 'client' },
+  },
+  {
+    reference: 'TEM-19',
+    expediteur: 'ops@terminal-fictif.test',
+    objet: 'Conteneur en attente au terminal',
+    corps: 'Pour information, des frais de detention s appliquent depuis ce matin sur votre conteneur.',
+    sens: 'entrant',
+    attendu: { famille: 'T14', nature: 'information', interlocuteur: 'transporteur' },
+  },
+  {
+    reference: 'TEM-20',
+    expediteur: 'qualite@alpha-pharma.test',
+    objet: 'Validation du bon a tirer',
+    corps: 'Nous validons le bon a tirer de l etiquette. Vous pouvez lancer l impression.',
+    sens: 'entrant',
+    attendu: { famille: 'T07', nature: 'reponse_tiers', interlocuteur: 'qualite' },
+  },
+];

@@ -51,6 +51,9 @@ jobs:
       - name: Tests unitaires et d'integration
         run: npm test
 
+      - name: Mesure du typage sur les jeux de mails fictifs
+        run: npm run eval
+
       - name: Build de production
         run: npm run build
         env:

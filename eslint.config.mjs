@@ -21,5 +21,6 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: { 'react-hooks/rules-of-hooks': 'error', 'react-hooks/exhaustive-deps': 'warn' },
   },
-  { files: ['scripts/**', 'src/server/cli.ts', 'src/server/db/seed.ts', 'e2e/**', 'tests/**'], rules: { 'no-console': 'off' } },
+  // Scripts en ligne de commande et jeux d'evaluation : leur sortie console est leur interface.
+  { files: ['scripts/**', 'src/server/cli.ts', 'src/server/db/seed.ts', 'src/server/ai/evals/**', 'e2e/**', 'tests/**'], rules: { 'no-console': 'off' } },
 );

@@ -229,6 +229,12 @@ export const evenements = pgTable(
     /** Identifiants du fil et du message d'origine : dedoublonnage de la collecte (phase 4). */
     filId: text('fil_id'),
     messageId: text('message_id'),
+    /**
+     * Adresse de l'expediteur. Sert au typage par domaine (une regle peut viser un transitaire
+     * connu) et a la proposition de regle apres une correction manuelle.
+     */
+    expediteur: text('expediteur'),
+    destinataires: jsonb('destinataires').notNull().default([]),
     /** Horodatage d'origine du message, conserve tel quel (distinct de la date de saisie). */
     survenuLe: horodatage('survenu_le').notNull(),
     objet: text('objet'),

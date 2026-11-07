@@ -23,7 +23,8 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/server/cli.ts migrate",
     "db:seed": "tsx --env-file-if-exists=.env src/server/cli.ts seed",
     "cron": "tsx --env-file-if-exists=.env src/server/cron.ts",
-    "cli": "tsx --env-file-if-exists=.env src/server/cli.ts"
+    "cli": "tsx --env-file-if-exists=.env src/server/cli.ts",
+    "eval": "tsx src/server/ai/evals/run.ts"
   },
   "dependencies": {
     "compression": "^1.8.1",

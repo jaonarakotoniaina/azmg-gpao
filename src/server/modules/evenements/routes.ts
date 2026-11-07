@@ -25,7 +25,8 @@ routesEvenements.post('/', exigerEcriture, async (req, res) => {
     const dossier = await lireDossier(d.dossierId!);
     exigerCompte(p, dossier.compteId);
   }
-  const resultat = await ajouterEvenement(d as never, auteurDe(req));
+  // Le typage automatique ne comble que les trous : un champ saisi par un humain prime toujours.
+  const resultat = await ajouterEvenement(d as never, auteurDe(req), { typerAutomatiquement: true });
   res.status(201).json({
     evenement: resultat.evenement,
     demande: resultat.demande,

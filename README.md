@@ -111,6 +111,7 @@ ADMIN_PASSWORD='un-mot-de-passe-solide' npm run cli creer-admin vous@azmg-soluti
 | `npm run db:generate` | Genere une migration apres modification du schema |
 | `npm run cron` | Execute un passage du cron (`tick` par defaut) |
 | `npm run cli` | Commandes d'administration (`migrate`, `seed`, `creer-admin`, `creer-utilisateur`) |
+| `npm run eval` | Mesure du typage sur les jeux de mails fictifs annotes |
 
 Le classeur de test fictif se regenere avec :
 
@@ -141,7 +142,8 @@ src/
     db/                schema Drizzle, referentiels initiaux, seed
     lib/               file de traitements, journal, securite, perimetre, xlsx
     modules/           auth, comptes, dossiers, demandes, evenements, import, pilotage,
-                       indicateurs, qualite, digest, export, mcp
+                       indicateurs, qualite, digest, export, mcp, typage
+    ai/                fournisseur IA, prompts versionnes, jeux d'evaluation
   web/           interface React
 drizzle/         migrations SQL versionnees
 tests/           tests Vitest, classeur fictif dans tests/fixtures
@@ -349,7 +351,7 @@ l'application fonctionne entierement. Les elements manquants sont listes dans
 
 | Integration | Variables | Sans elles |
 |---|---|---|
-| IA | `AI_PROVIDER`, `AGENT_API_TOKEN`, `ANTHROPIC_API_KEY` | typage et redactions manuels |
+| IA | `AI_PROVIDER`, `AGENT_API_TOKEN`, `ANTHROPIC_API_KEY` | le typage repose sur les seules regles, ce qui suffit deja (voir [`docs/agent-ia.md`](docs/agent-ia.md)) |
 | Collecte des mails | `APPS_SCRIPT_SECRET` ou `IMAP_*` | saisie rapide et import seulement |
 | Envoi des emails | `SMTP_*` | les liens de reinitialisation sont traces dans le journal |
 | Connecteur Claude | `AZMG_MCP_TOKEN` | la route `/mcp` reste fermee (voir [`docs/connecteur-claude.md`](docs/connecteur-claude.md)) |

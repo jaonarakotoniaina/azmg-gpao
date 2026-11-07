@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, FileSpreadsheet } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, FileSpreadsheet, Inbox } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -12,11 +12,19 @@ interface Lien {
   libelle: string;
   icone: ReactNode;
   roles?: Role[];
+  /** Nombre affiche a droite du lien : ce qui attend une action. */
+  compteur?: number;
 }
 
 export function Layout() {
   const { utilisateur, deconnecter } = useAuth();
   const [menuOuvert, setMenuOuvert] = useState(false);
+  const { data: aClasser } = useQuery({
+    queryKey: ['a-classer'],
+    queryFn: () => api.get<unknown[]>('/api/evenements/a-classer'),
+    staleTime: 60_000,
+    refetchInterval: 180_000,
+  });
   const { data: parametres } = useQuery({
     queryKey: ['parametres'],
     queryFn: () => api.get<{ integrationsSimulees: string[]; parametres: { pauseAutomatisations: boolean } }>('/api/parametres'),
@@ -28,6 +36,7 @@ export function Layout() {
     { vers: '/tableau-de-bord', libelle: 'Tableau de bord', icone: <LayoutDashboard className="h-4 w-4" aria-hidden /> },
     { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
     { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden /> },
+    { vers: '/a-classer', libelle: 'A classer', icone: <Inbox className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'], compteur: aClasser?.length },
     { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
     { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },
     { vers: '/qualite', libelle: 'Qualite', icone: <ClipboardCheck className="h-4 w-4" aria-hidden /> },
@@ -104,6 +113,7 @@ export function Layout() {
                 >
                   {l.icone}
                   <span className="flex-1">{l.libelle}</span>
+                  {l.compteur ? <Badge ton="ambre">{l.compteur}</Badge> : null}
                 </NavLink>
               </li>
             ))}

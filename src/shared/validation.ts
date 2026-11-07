@@ -139,6 +139,8 @@ export const evenementSchema = z
     contenu: z.string().trim().max(50_000).nullish(),
     filId: z.string().trim().max(200).nullish(),
     messageId: z.string().trim().max(400).nullish(),
+    expediteur: z.string().trim().max(320).nullish(),
+    destinataires: z.array(z.string().trim().max(320)).max(50).optional(),
     priorite: z.enum(PRIORITES).optional(),
     echeanceLe: instantOptionnel,
   })

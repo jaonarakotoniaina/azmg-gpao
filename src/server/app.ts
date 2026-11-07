@@ -19,6 +19,7 @@ import { routesIndicateurs } from './modules/indicateurs/routes';
 import { routesDigest, routesQualite } from './modules/qualite/routes';
 import { routesExport } from './modules/export/routes';
 import { etatMcp, noterAppel, routesMcp } from './modules/mcp/routes';
+import { routesAgent, routesTypage } from './modules/typage/routes';
 
 export function creerApplication() {
   const app = express();
@@ -62,6 +63,9 @@ export function creerApplication() {
   const dossierPublic = [path.join(__dirname, 'public'), path.join(config.racine, 'src', 'server', 'public')].find((d) => fs.existsSync(d));
   if (dossierPublic) app.use('/public', express.static(dossierPublic, { maxAge: config.production ? '7d' : 0 }));
 
+  // API agent : la routine Claude Code releve les taches IA. Jeton dedie, hors session.
+  app.use('/api/agent', routesAgent);
+
   // Connecteur Claude (MCP) : conversation claude.ai, cle AZMG_MCP_TOKEN en en-tete fixe
   // (docs/connecteur-claude.md). Monte avant la session : il s'authentifie par son propre jeton.
   app.use('/mcp', routesMcp);
@@ -90,6 +94,7 @@ export function creerApplication() {
   app.use('/api/qualite', routesQualite);
   app.use('/api/digest', routesDigest);
   app.use('/api/export', routesExport);
+  app.use('/api/typage', routesTypage);
   app.use('/api', (_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
 
   // Application React de pilotage.

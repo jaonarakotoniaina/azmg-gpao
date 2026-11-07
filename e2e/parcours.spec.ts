@@ -178,3 +178,64 @@ test('le connecteur Claude refuse une requete sans jeton', async ({ page }) => {
   const corps = await reponse.json();
   expect(corps.erreur).toBeTruthy();
 });
+
+// ---------------------------------------------------------------------------
+// Phase 3 : typage
+// ---------------------------------------------------------------------------
+
+test('un message ambigu part dans « A classer » et sa correction propose une regle', async ({ page }) => {
+  await seConnecter(page, COMPTES.collaboratrice);
+
+  // Saisie d'un message volontairement ambigu : aucune regle ne doit le trancher.
+  await page.goto('/saisie');
+  await page.getByRole('checkbox', { name: /Creer un nouveau dossier/ }).check();
+  await page.getByRole('textbox', { name: 'Client', exact: true }).fill('Theta Labs');
+  await page.getByRole('textbox', { name: 'Produit et quantite', exact: true }).fill('Complement fer 50 kg');
+  await page.getByRole('textbox', { name: 'Objet', exact: true }).fill('Suite a notre echange de ce matin');
+  await page.getByRole('combobox', { name: 'Famille', exact: true }).selectOption('T01');
+  await page.getByRole('button', { name: 'Enregistrer' }).click();
+  await expect(page.getByText(/Saisie enregistree/)).toBeVisible({ timeout: 15_000 });
+
+  // La file « A classer » est accessible et explique sa regle de fonctionnement.
+  await page.goto('/a-classer');
+  await expect(page.getByRole('heading', { name: 'A classer', level: 1 })).toBeVisible();
+  await expect(page.getByText(/ne classera rien tant qu.elle n.aura pas ete acceptee/i)).toBeVisible();
+  await expect(page.getByRole('tab', { name: /Regles proposees/ })).toBeVisible();
+});
+
+test('le typage automatique classe un message clair sans passer par « A classer »', async ({ page }) => {
+  await seConnecter(page, COMPTES.collaboratrice);
+  const cookies = await page.context().cookies();
+  const csrf = cookies.find((c) => c.name === 'azmg_gpao_csrf')?.value ?? '';
+
+  const reponse = await page.request.post('/api/typage/essai', {
+    headers: { 'x-csrf-token': csrf, 'content-type': 'application/json' },
+    data: { objet: 'Cotation fret aerien vers Alger', corps: 'Pourriez vous nous coter 180 kg en aerien ?', sens: 'entrant' },
+  });
+  expect(reponse.ok()).toBe(true);
+  const corps = await reponse.json();
+  expect(corps.typage.famille).toBe('T01');
+  expect(corps.applicable).toBe(true);
+  // Le classement est explicable : il cite la regle qui l'a produit.
+  expect(corps.typage.origine).toBe('regle');
+  expect(corps.typage.justificatifs.length).toBeGreaterThan(0);
+});
+
+test('un message hors perimetre est ecarte et n’attend aucune action', async ({ page }) => {
+  await seConnecter(page, COMPTES.collaboratrice);
+  const cookies = await page.context().cookies();
+  const csrf = cookies.find((c) => c.name === 'azmg_gpao_csrf')?.value ?? '';
+
+  const reponse = await page.request.post('/api/typage/essai', {
+    headers: { 'x-csrf-token': csrf, 'content-type': 'application/json' },
+    data: { objet: 'Newsletter de novembre', corps: 'Pour ne plus recevoir nos messages, cliquez sur se desinscrire.', sens: 'entrant' },
+  });
+  const corps = await reponse.json();
+  expect(corps.typage.famille).toBe('T00');
+  expect(corps.applicable).toBe(true);
+});
+
+test('l’API agent refuse une requete sans jeton', async ({ page }) => {
+  const reponse = await page.request.get('/api/agent/ia/taches', { failOnStatusCode: false });
+  expect([401, 503]).toContain(reponse.status());
+});
