@@ -19,7 +19,7 @@ import { horairesDuCompte, lireParametres } from '../../lib/parametres';
 import { tempsDemandeAvecHoraires, type Demande } from '../demandes/service';
 import { construireBlocJour, construireColonneSemaine, nomOngletSemaine } from '../export/service';
 import { retirerTiretsLongs } from '@shared/tirets';
-import { formaterDuree, type HorairesOuvres } from '@shared/heures-ouvrees';
+import { formaterDuree, minutesParJourOuvre, type HorairesOuvres } from '@shared/heures-ouvrees';
 import { FAMILLE_HORS_PERIMETRE, LIBELLES_ECHEANCES, libelleStatut, statutReporting, type Acteur, type TypeEcheance } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
@@ -124,15 +124,17 @@ export async function listerBrouillons(compteId: number, opts: { statut?: string
 // Relances N1, N2, N3
 // ---------------------------------------------------------------------------
 
+export type Langue = 'fr' | 'en' | 'es';
+
 /** Langue deduite du domaine de l'interlocuteur, pour rediger dans la bonne langue. */
-export function langueDe(adresse: string | null | undefined): 'fr' | 'en' | 'es' {
+export function langueDe(adresse: string | null | undefined): Langue {
   const domaine = (adresse ?? '').split('@')[1]?.toLowerCase() ?? '';
   if (/\.(es|mx|ar|co|cl|pe)$/.test(domaine)) return 'es';
   if (/\.(com|co\.uk|uk|us|ae|sa|in|sg)$/.test(domaine)) return 'en';
   return 'fr';
 }
 
-const FORMULES: Record<'fr' | 'en' | 'es', { bonjour: string; relance: (n: number) => string; attente: (d: string) => string; fin: string }> = {
+const FORMULES: Record<Langue, { bonjour: string; relance: (n: number) => string; attente: (d: string) => string; fin: string }> = {
   fr: {
     bonjour: 'Bonjour,',
     relance: (n) => (n === 1 ? 'Je me permets de revenir vers vous concernant le point ci-dessous.' : n === 2 ? 'Sans retour de votre part, je reviens vers vous sur ce point.' : 'Ce dossier reste bloque faute de retour. Pouvez-vous nous indiquer une date ?'),
@@ -153,6 +155,29 @@ const FORMULES: Record<'fr' | 'en' | 'es', { bonjour: string; relance: (n: numbe
   },
 };
 
+const UNITES: Record<Langue, { jour: [string, string]; heure: [string, string]; et: string; moinsDUneHeure: string }> = {
+  fr: { jour: ['jour', 'jours'], heure: ['heure', 'heures'], et: 'et', moinsDUneHeure: 'moins d’une heure' },
+  en: { jour: ['day', 'days'], heure: ['hour', 'hours'], et: 'and', moinsDUneHeure: 'less than an hour' },
+  es: { jour: ['dia', 'dias'], heure: ['hora', 'horas'], et: 'y', moinsDUneHeure: 'menos de una hora' },
+};
+
+/**
+ * Duree d'attente en mots, dans la langue du brouillon.
+ *
+ * `formaterDuree` abrege en francais (« 3 j 2 h »), ce qui est juste dans l'interface mais detonne
+ * dans un message adresse a un transitaire anglophone ou hispanophone.
+ */
+export function dureeLocalisee(minutes: number, langue: Langue, minutesParJour = 540): string {
+  const u = UNITES[langue];
+  const jours = Math.floor(minutes / minutesParJour);
+  const heures = Math.floor((minutes - jours * minutesParJour) / 60);
+  const morceaux: string[] = [];
+  if (jours) morceaux.push(`${jours} ${jours > 1 ? u.jour[1] : u.jour[0]}`);
+  if (heures) morceaux.push(`${heures} ${heures > 1 ? u.heure[1] : u.heure[0]}`);
+  if (!morceaux.length) return u.moinsDUneHeure;
+  return morceaux.join(` ${u.et} `);
+}
+
 export interface RelanceAPreparer {
   demande: Demande;
   dossier: string;
@@ -162,6 +187,8 @@ export interface RelanceAPreparer {
   sources: number[];
   /** Resumes des derniers evenements, repris tels quels dans le brouillon. */
   faits: { le: Date; resume: string }[];
+  /** Longueur d'un jour ouvre du compte, pour exprimer l'attente en jours justes. */
+  minutesParJour: number;
 }
 
 /**
@@ -235,6 +262,7 @@ export async function relancesAPreparer(compteId: number, maintenant = new Date(
         .filter((e) => e.resume)
         .slice(0, 3)
         .map((e) => ({ le: e.survenuLe, resume: e.resume! })),
+      minutesParJour: minutesParJourOuvre(horaires),
     });
   }
 
@@ -254,7 +282,7 @@ export function redigerRelance(relance: RelanceAPreparer): string {
     }
   }
 
-  lignes.push('', f.attente(formaterDuree(relance.minutesAttente)), '', f.fin);
+  lignes.push('', f.attente(dureeLocalisee(relance.minutesAttente, langue, relance.minutesParJour)), '', f.fin);
   return retirerTiretsLongs(lignes.join('\n'));
 }
 

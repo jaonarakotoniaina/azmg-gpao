@@ -486,7 +486,7 @@ adaptateur SMTP n'est appele par la preparation, et les deux seules actions offe
 | Aucune action sortante sans validation humaine | aucune route n'envoie ; un test verifie que le brouillon reste `prepare` et que le niveau de relance de la demande ne bouge pas ; un parcours Playwright passe par les deux boutons |
 | Chaque brouillon cite les evenements sources | teste sur les cinq types de brouillon ; le parcours Playwright lit le compte des sources a l'ecran |
 
-31 tests sur les brouillons, 305 tests Vitest et 19 parcours Playwright au vert.
+33 tests sur les brouillons, 307 tests Vitest et 19 parcours Playwright au vert.
 
 **Auto-revue : ce qui a ete corrige**
 
@@ -499,7 +499,10 @@ adaptateur SMTP n'est appele par la preparation, et les deux seules actions offe
 3. **Un code technique dans un texte destine au client.** Une echeance sans libelle etait nommee
    par son type brut (« etd ») ; elle prend maintenant le libelle du referentiel. Meme correction
    pour « en attente de le poste ».
-4. **Le tick ne declenchait aucune tache planifiee.** Depuis la phase 1, `tick()` ne vidait que la
+4. **Un brouillon anglais portait une duree en francais.** `formaterDuree` abrege « 3 j 2 h », ce
+   qui est juste dans l'interface mais detonne dans un message adresse a un transitaire anglophone
+   ou hispanophone. Une duree en mots, dans la langue du brouillon, la remplace.
+5. **Le tick ne declenchait aucune tache planifiee.** Depuis la phase 1, `tick()` ne vidait que la
    file `jobs_queue` : les taches de `TACHES` existaient sans jamais partir. Le tick parcourt
    maintenant les taches dues et le budget du passage leur reserve une minute.
 
@@ -580,7 +583,7 @@ Aucune appreciation du client envers le collaborateur n'est extraite, stockee en
 ni reprise dans un export. Aucun tiret long dans l'interface, les exports, les brouillons ni les
 prompts, avec un test qui echoue si l'un apparait et un filtre sur toute sortie de Claude.
 
-**Tests.** 305 tests Vitest et 19 parcours Playwright au vert, build de production OK, lint et
+**Tests.** 307 tests Vitest et 19 parcours Playwright au vert, build de production OK, lint et
 typecheck propres.
 
 ## Comment le deployer

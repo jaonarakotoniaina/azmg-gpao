@@ -15,6 +15,7 @@ import { ajouterEvenement } from '../src/server/modules/evenements/service';
 import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
 import {
   deciderBrouillon,
+  dureeLocalisee,
   extraireOffre,
   langueDe,
   listerBrouillons,
@@ -169,6 +170,26 @@ describe('relances N1, N2 et N3', () => {
     expect(texte).toContain('02/11/2026');
     expect(texte).toContain('Demande de cotation envoyee');
     expect(texte).toContain('Alpha Pharma');
+  });
+
+  it('exprime l’attente dans la langue du brouillon', () => {
+    // `formaterDuree` abrege en francais (« 3 j 2 h ») : un brouillon anglais ou espagnol ne doit
+    // pas porter d'unite francaise.
+    expect(dureeLocalisee(540 * 3 + 120, 'fr')).toBe('3 jours et 2 heures');
+    expect(dureeLocalisee(540 * 3 + 120, 'en')).toBe('3 days and 2 hours');
+    expect(dureeLocalisee(540 * 3 + 120, 'es')).toBe('3 dias y 2 horas');
+    expect(dureeLocalisee(540, 'en')).toBe('1 day');
+    expect(dureeLocalisee(30, 'en')).toBe('less than an hour');
+    expect(dureeLocalisee(0, 'fr')).toBe('moins d’une heure');
+  });
+
+  it('n’embarque aucune unite francaise dans un brouillon anglais', async () => {
+    await demandeEnAttente({ depuis: t('2026-10-26T09:00'), destinataire: 'sales@forwarder-fictif.com' });
+    const [relance] = await relancesAPreparer(compteId, t('2026-11-04T09:00'));
+    const texte = redigerRelance(relance);
+    expect(texte).toContain('Hello,');
+    expect(texte).toMatch(/pending for \d+ days?/);
+    expect(texte).not.toMatch(/\d+ j\b|heures?|jours?/);
   });
 
   it('redige dans la langue de l’interlocuteur', () => {
