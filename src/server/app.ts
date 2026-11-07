@@ -20,6 +20,7 @@ import { routesDigest, routesQualite } from './modules/qualite/routes';
 import { routesExport } from './modules/export/routes';
 import { etatMcp, noterAppel, routesMcp } from './modules/mcp/routes';
 import { routesAgent, routesTypage } from './modules/typage/routes';
+import { routesCollecte, routesWebhookCollecte } from './modules/collecte/routes';
 
 export function creerApplication() {
   const app = express();
@@ -66,6 +67,11 @@ export function creerApplication() {
   // API agent : la routine Claude Code releve les taches IA. Jeton dedie, hors session.
   app.use('/api/agent', routesAgent);
 
+  // Webhook de collecte des mails : authentifie par signature HMAC, hors session (phase 4).
+  // Monte sur son chemin exact, pour que son analyseur de corps brut ne consomme pas le corps
+  // multipart de la route d'import, montee plus bas sur /api/collecte.
+  app.use('/api/collecte/apps-script', routesWebhookCollecte);
+
   // Connecteur Claude (MCP) : conversation claude.ai, cle AZMG_MCP_TOKEN en en-tete fixe
   // (docs/connecteur-claude.md). Monte avant la session : il s'authentifie par son propre jeton.
   app.use('/mcp', routesMcp);
@@ -95,6 +101,7 @@ export function creerApplication() {
   app.use('/api/digest', routesDigest);
   app.use('/api/export', routesExport);
   app.use('/api/typage', routesTypage);
+  app.use('/api/collecte', routesCollecte);
   app.use('/api', (_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
 
   // Application React de pilotage.

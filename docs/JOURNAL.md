@@ -53,10 +53,17 @@ Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull
 
 **Phase 3 terminee.**
 
-### Phase 4 : synchronisation des mails (a venir)
+### Phase 4 : synchronisation des mails (terminee)
 
-Adaptateur `collecte_mail` en trois implementations (`apps_script`, `imap`, `mock`), import de
-fichiers `.eml` et `.mbox`, dedoublonnage par identifiant de message.
+- [x] 4.1 Adaptateur `collecte_mail` : `apps_script` (webhook signe), `imap`, `mock`
+- [x] 4.2 Import ponctuel de fichiers `.eml` et `.mbox` pour l'historique
+- [x] 4.3 Dedoublonnage par identifiant de message, rattachement au fil, horodatage d'origine conserve
+- [x] 4.4 Pieces jointes rangees hors du dossier public, servies par une route authentifiee
+- [x] 4.5 `docs/apps-script.md` : script complet et mise en place
+- [x] 4.6 Ecran « Import des mails »
+- [x] 4.7 Auto-revue, journal, mise a jour de la pull request
+
+**Phase 4 terminee.**
 
 ### Phase 5 : automatisations du poste (a venir)
 
@@ -370,3 +377,70 @@ identifiant de message. Le dedoublonnage et la colonne `expediteur` sont deja en
   sur l'interlocuteur, qui est le champ le moins bien devine.
 - `typerMessage` relit les regles en base a chaque appel. A mettre en cache court si la collecte
   de la phase 4 amene des volumes.
+
+---
+
+## 2026-11-07 : synchronisation des mails (phase 4)
+
+**Fait**
+
+- **Adaptateur `collecte_mail`** en trois implementations derriere une seule interface :
+  `apps_script` (un script Google pousse les messages vers un webhook signe), `imap` (relevage
+  direct), `mock` (aucune collecte, la GPAO vit de la saisie et de l'import). Le choix est fait
+  par la configuration : secret absent, c'est `mock`, et l'application fonctionne quand meme.
+- **Webhook signe** : la signature HMAC porte sur les octets recus. Sans elle, quiconque
+  connaitrait l'adresse pourrait injecter de faux mails dans le pilotage du poste.
+- **Import `.eml` et `.mbox`**, avec decoupage du format mbox et retablissement des lignes du
+  corps que ce format echappe. Un export Google Takeout se depose directement.
+- **Dedoublonnage** sur l'identifiant RFC 5322, pose en index unique. **Rattachement au fil** par
+  la tete de la chaine `References`. **Horodatage d'origine conserve** : les delais se comptent
+  sur la date du message, pas sur celle de la collecte, sans quoi un relevage en retard fausserait
+  tous les indicateurs.
+- **Pieces jointes** rangees hors du dossier public, sous un chemin derive de l'empreinte du
+  contenu (le nom d'origine, qui peut citer un client, n'apparait pas sur le disque), avec liste
+  blanche d'extensions et plafond de taille. Une seule porte d'entree : une route authentifiee qui
+  verifie le perimetre de l'utilisateur.
+- **Ecran « Import des mails »** et `docs/apps-script.md` : script complet, mise en place pas a pas,
+  tableau de diagnostic.
+
+**Verifications**
+
+Les trois criteres de la phase 4 sont couverts par des tests, et le dernier par un parcours
+complet dans le navigateur :
+
+| Critere | Verification |
+|---|---|
+| Un fil importe deux fois ne cree aucun doublon | test d'integration et parcours Playwright, qui importent le meme fil deux fois de suite |
+| Un mail sortant de demande de validation passe la demande en « En attente DO » | test sur un fil de trois mails, sans aucune saisie |
+| La reponse de la DO la fait repasser en cours | meme test, avec verification des transitions horodatees sur les dates des mails |
+
+274 tests Vitest et 17 parcours Playwright au vert.
+
+**Auto-revue : ce qui a ete corrige**
+
+1. **L'analyseur du webhook mangeait le corps de l'import.** Le webhook etait monte sur
+   `/api/collecte` avec un analyseur de corps brut en `*/*`, necessaire pour verifier la
+   signature ; il consommait donc le corps multipart de la route d'import, qui echouait avec
+   « Unexpected end of form ». Le webhook est monte sur son chemin exact. Le defaut n'apparaissait
+   pas dans les tests d'integration, qui appellent le service sans passer par Express : c'est le
+   parcours Playwright qui l'a trouve.
+2. **Les messages sont traites du plus ancien au plus recent**, quel que soit l'ordre d'arrivee
+   du lot, sans quoi une reponse pouvait etre enregistree avant la demande qu'elle fait avancer,
+   et ouvrir une seconde demande au lieu de rejoindre le fil.
+
+**Reste a faire**
+
+Phase 5 (automatisations du poste) : relances N1, N2 et N3 preparees chaque matin, daily et onglet
+« sem » pre-remplis, tableaux de situation par client, comparatif de cotations fret. Tout en
+brouillon, aucune action sortante sans validation humaine.
+
+**Dettes techniques**
+
+- Le rattachement au fil ne regarde que `References` et `In-Reply-To`. Un client qui repond sans
+  ces en-tetes (certains webmails) ouvrira un nouveau fil. Un rapprochement de secours sur l'objet
+  normalise et l'interlocuteur serait utile, mais demande d'etre calibre sur de vrais messages.
+- Le dossier ouvert automatiquement quand le fil est inconnu prend la partie locale de l'adresse
+  de l'expediteur comme nom de client. C'est volontairement grossier et signale « a reclasser » :
+  mieux vaut un dossier a corriger qu'un message perdu.
+- Le mode `imap` n'est pas teste contre un vrai serveur : la session cloud n'en a aucun. Son code
+  suit celui de Sourcing, deja en production, mais il faudra le verifier sur la boite reelle.

@@ -17,6 +17,7 @@ const Export = lazy(() => import('./pages/Export'));
 const Qualite = lazy(() => import('./pages/Qualite'));
 const DigestDo = lazy(() => import('./pages/DigestDo'));
 const AClasser = lazy(() => import('./pages/AClasser'));
+const ImportMails = lazy(() => import('./pages/ImportMails'));
 const Parametres = lazy(() => import('./pages/Parametres'));
 const MotDePasseOublie = lazy(() => import('./pages/MotDePasseOublie'));
 const Reinitialiser = lazy(() => import('./pages/Reinitialiser'));
@@ -56,6 +57,7 @@ export function App() {
             <Route path="qualite" element={<Qualite />} />
             <Route path="digest" element={<DigestDo />} />
             <Route path="a-classer" element={<AClasser />} />
+            <Route path="import-mails" element={<ImportMails />} />
             <Route path="parametres" element={<Parametres />} />
             <Route path="*" element={<p>Page introuvable.</p>} />
           </Route>

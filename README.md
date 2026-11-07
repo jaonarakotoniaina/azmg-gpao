@@ -13,7 +13,8 @@ Le modele reste generique : d'autres comptes et d'autres postes rejoignent la GP
 - Production : `https://gpao.intranet.azmg-solutions.com`
 - Documentation : [`docs/JOURNAL.md`](docs/JOURNAL.md), [`docs/DECISIONS.md`](docs/DECISIONS.md),
   [`docs/A_FOURNIR.md`](docs/A_FOURNIR.md), [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md),
-  [`docs/connecteur-claude.md`](docs/connecteur-claude.md), [`docs/agent-ia.md`](docs/agent-ia.md)
+  [`docs/connecteur-claude.md`](docs/connecteur-claude.md), [`docs/agent-ia.md`](docs/agent-ia.md),
+  [`docs/apps-script.md`](docs/apps-script.md)
 
 ## Sommaire
 
@@ -142,7 +143,7 @@ src/
     db/                schema Drizzle, referentiels initiaux, seed
     lib/               file de traitements, journal, securite, perimetre, xlsx
     modules/           auth, comptes, dossiers, demandes, evenements, import, pilotage,
-                       indicateurs, qualite, digest, export, mcp, typage
+                       indicateurs, qualite, digest, export, mcp, typage, collecte
     ai/                fournisseur IA, prompts versionnes, jeux d'evaluation
   web/           interface React
 drizzle/         migrations SQL versionnees
@@ -352,7 +353,7 @@ l'application fonctionne entierement. Les elements manquants sont listes dans
 | Integration | Variables | Sans elles |
 |---|---|---|
 | IA | `AI_PROVIDER`, `AGENT_API_TOKEN`, `ANTHROPIC_API_KEY` | le typage repose sur les seules regles, ce qui suffit deja (voir [`docs/agent-ia.md`](docs/agent-ia.md)) |
-| Collecte des mails | `APPS_SCRIPT_SECRET` ou `IMAP_*` | saisie rapide et import seulement |
+| Collecte des mails | `APPS_SCRIPT_SECRET` ou `IMAP_*` | saisie rapide et import de fichiers `.eml` ou `.mbox` (voir [`docs/apps-script.md`](docs/apps-script.md)) |
 | Envoi des emails | `SMTP_*` | les liens de reinitialisation sont traces dans le journal |
 | Connecteur Claude | `AZMG_MCP_TOKEN` | la route `/mcp` reste fermee (voir [`docs/connecteur-claude.md`](docs/connecteur-claude.md)) |
 

@@ -25,8 +25,12 @@ La procedure pas a pas est dans `README.md`.
 | Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer au moment de la phase 4 |
 | Ou, a defaut : acces IMAP de la boite de suivi | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD` | a fournir |
 
-Sans ces elements, `COLLECTE_MAIL` reste en `mock` : la GPAO vit de la saisie rapide et de l'import,
-ce qui est exactement le perimetre des phases 1 a 3.
+Sans ces elements, `COLLECTE_MAIL` reste en `mock` : la GPAO vit de la saisie rapide et de
+l'import de fichiers `.eml` ou `.mbox`, qui fonctionne sans aucun acces a la boite.
+
+La mise en place du script Google est decrite pas a pas dans
+[`docs/apps-script.md`](apps-script.md). Elle ne demande ni mot de passe d'application, ni
+ouverture de port : seul le secret partage circule, et encore, jamais en clair.
 
 ## 3. Envoi des emails (brouillons et notifications internes)
 

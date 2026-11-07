@@ -141,6 +141,19 @@ Deux choses y vivent.
   correction, part des envois conformes aux check-lists, et la liste des points de check-list les
   plus souvent manques. C'est cette derniere liste qui dit sur quoi porter l'effort.
 
+### L'import des mails
+
+Quand la boite de suivi est branchee, les mails arrivent tout seuls : ils sont classes, rattaches
+a leur fil, et font avancer les demandes sans aucune saisie. Un mail de demande de validation
+envoye a la DO passe la demande en attente DO ; sa reponse la fait repasser en cours.
+
+L'ecran **Import des mails** sert a reprendre l'historique anterieur a la mise en place. Il accepte
+des fichiers `.eml` et `.mbox` : dans Gmail, l'export passe par Google Takeout.
+
+Vous pouvez importer deux fois le meme fichier sans crainte : chaque message porte un identifiant
+unique, et un message deja connu n'est jamais enregistre deux fois. Le bilan vous dit combien ont
+ete enregistres et combien etaient deja la.
+
 ### L'export du reporting
 
 La page **Export du reporting** complete votre classeur `SUIVI_MENSUEL` :

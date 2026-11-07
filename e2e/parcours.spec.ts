@@ -239,3 +239,66 @@ test('l’API agent refuse une requete sans jeton', async ({ page }) => {
   const reponse = await page.request.get('/api/agent/ia/taches', { failOnStatusCode: false });
   expect([401, 503]).toContain(reponse.status());
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4 : collecte des mails
+// ---------------------------------------------------------------------------
+
+test('l’import d’un fil de mails ne cree aucun doublon au second passage', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/import-mails');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  // Deux messages d'un meme fil : une demande du client, puis la demande de validation a la DO.
+  const entete = (id: string, de: string, a: string, objet: string, date: string, references?: string) =>
+    [
+      `Message-ID: ${id}`,
+      `From: ${de}`,
+      `To: ${a}`,
+      `Subject: ${objet}`,
+      `Date: ${date}`,
+      references ? `References: ${references}` : null,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+    ]
+      .filter((l): l is string => l !== null)
+      .join('\r\n');
+
+  const premier = `${entete('<e2e1@exemple-fictif.test>', 'achat@alpha-fictif.test', 'elysa@azmg-solutions.com', 'Proforma a modifier', 'Mon, 02 Mar 2026 09:00:00 +0100')}\r\n\r\nPourriez vous nous etablir la proforma en dollars ?`;
+  const second = `${entete('<e2e2@exemple-fictif.test>', 'elysa@azmg-solutions.com', 'do@client-fictif.test', 'Re : Proforma a modifier', 'Mon, 02 Mar 2026 11:00:00 +0100', '<e2e1@exemple-fictif.test>')}\r\n\r\nMerci de valider la modification de devise.`;
+
+  const fichiers = [
+    { name: 'premier.eml', mimeType: 'message/rfc822', buffer: Buffer.from(premier, 'utf8') },
+    { name: 'second.eml', mimeType: 'message/rfc822', buffer: Buffer.from(second, 'utf8') },
+  ];
+
+  // Le bilan est lu dans sa carte, et non dans la notification : le meme texte apparait aussi
+  // dans le rappel du dernier passage, ce qui rendrait la recherche ambigue.
+  const bilan = page.locator('section#bilan');
+
+  await page.getByLabel('Fichiers .eml ou .mbox').setInputFiles(fichiers);
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(bilan.getByText('Messages lus')).toBeVisible({ timeout: 20_000 });
+  await expect(bilan.locator('div', { hasText: /^Enregistres2$/ })).toBeVisible();
+  await expect(bilan.locator('div', { hasText: /^Deja connus0/ })).toBeVisible();
+
+  // Second import du meme fil : tout est reconnu comme deja connu, rien n'est recree.
+  await page.getByLabel('Fichiers .eml ou .mbox').setInputFiles(fichiers);
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(bilan.locator('div', { hasText: /^Enregistres0$/ })).toBeVisible({ timeout: 20_000 });
+  await expect(bilan.locator('div', { hasText: /^Deja connus2/ })).toBeVisible();
+
+  // La demande du fil est passee en attente DO, sans aucune saisie.
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Proforma a modifier' })).toHaveCount(1);
+  await expect(page.locator('article', { hasText: 'Proforma a modifier' }).getByText('En attente DO')).toBeVisible();
+});
+
+test('le webhook de collecte refuse une charge non signee', async ({ page }) => {
+  const reponse = await page.request.post('/api/collecte/apps-script', {
+    headers: { 'content-type': 'application/json' },
+    data: { compteId: 1, messages: [] },
+    failOnStatusCode: false,
+  });
+  expect([401, 503]).toContain(reponse.status());
+});
