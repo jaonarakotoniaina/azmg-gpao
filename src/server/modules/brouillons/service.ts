@@ -20,7 +20,7 @@ import { tempsDemandeAvecHoraires, type Demande } from '../demandes/service';
 import { construireBlocJour, construireColonneSemaine, nomOngletSemaine } from '../export/service';
 import { retirerTiretsLongs } from '@shared/tirets';
 import { formaterDuree, type HorairesOuvres } from '@shared/heures-ouvrees';
-import { FAMILLE_HORS_PERIMETRE, libelleStatut, statutReporting, type Acteur } from '@shared/constantes';
+import { FAMILLE_HORS_PERIMETRE, LIBELLES_ECHEANCES, libelleStatut, statutReporting, type Acteur, type TypeEcheance } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
 export type Brouillon = typeof schema.brouillons.$inferSelect;
@@ -80,12 +80,18 @@ export async function enregistrerBrouillon(entree: EntreeBrouillon, auteur: Aute
 
 /** Marque un brouillon comme utilise ou ecarte. L'application n'envoie toujours rien. */
 export async function deciderBrouillon(id: number, statut: 'utilise' | 'ecarte', auteur: Auteur): Promise<Brouillon> {
+  // Un brouillon ne se tranche qu'une fois : sans ce garde-fou, un second clic effacerait
+  // l'auteur et l'horodatage de la premiere decision.
   const [maj] = await db
     .update(schema.brouillons)
     .set({ statut, decideLe: new Date(), decideParId: auteur.utilisateurId, majLe: new Date() })
-    .where(eq(schema.brouillons.id, id))
+    .where(and(eq(schema.brouillons.id, id), eq(schema.brouillons.statut, 'prepare')))
     .returning();
-  if (!maj) throw new ErreurHttp(404, 'Brouillon introuvable');
+  if (!maj) {
+    const [existe] = await db.select({ statut: schema.brouillons.statut }).from(schema.brouillons).where(eq(schema.brouillons.id, id));
+    if (!existe) throw new ErreurHttp(404, 'Brouillon introuvable');
+    throw new ErreurHttp(409, `Ce brouillon a deja ete traite (${existe.statut === 'utilise' ? 'envoye' : 'ecarte'}).`);
+  }
   await journaliser('brouillon_decide', {
     utilisateurId: auteur.utilisateurId,
     auteurType: auteur.type,
@@ -187,6 +193,8 @@ export async function relancesAPreparer(compteId: number, maintenant = new Date(
   const debuts = await debutsDeStatut(lignes.map((l) => l.demande));
   const sorties: RelanceAPreparer[] = [];
 
+  // Niveau de relance de chaque demande eligible, calcule avant de toucher aux evenements.
+  const eligibles: { demande: Demande; dossier: string; niveau: 1 | 2 | 3; minutesAttente: number }[] = [];
   for (const { demande, dossier } of lignes) {
     const temps = tempsDemandeAvecHoraires(demande, debuts.get(demande.id) ?? demande.ouverteLe, horaires, maintenant);
     const attente = temps.statutCourant / 60;
@@ -194,23 +202,36 @@ export async function relancesAPreparer(compteId: number, maintenant = new Date(
     if (!niveau) continue;
     // Une relance deja emise a ce niveau ou au-dela n'est pas reproposee.
     if (demande.niveauRelance >= niveau) continue;
+    eligibles.push({ demande, dossier, niveau: niveau as 1 | 2 | 3, minutesAttente: temps.statutCourant });
+  }
+  if (!eligibles.length) return [];
 
-    const evenements = await db
-      .select()
-      .from(schema.evenements)
-      .where(eq(schema.evenements.demandeId, demande.id))
-      .orderBy(desc(schema.evenements.survenuLe))
-      .limit(4);
+  // Un seul passage sur les evenements des demandes retenues, plutot qu'une requete par demande.
+  const evenements = await db
+    .select()
+    .from(schema.evenements)
+    .where(inArray(schema.evenements.demandeId, eligibles.map((e) => e.demande.id)))
+    .orderBy(desc(schema.evenements.survenuLe));
+  const parDemande = new Map<number, typeof evenements>();
+  for (const e of evenements) {
+    if (!e.demandeId) continue;
+    const liste = parDemande.get(e.demandeId) ?? [];
+    // Les quatre derniers suffisent : le brouillon ne cite que des faits recents.
+    if (liste.length < 4) liste.push(e);
+    parDemande.set(e.demandeId, liste);
+  }
 
-    const dernierSortant = evenements.find((e) => e.sens === 'sortant');
+  for (const { demande, dossier, niveau, minutesAttente } of eligibles) {
+    const recents = parDemande.get(demande.id) ?? [];
+    const dernierSortant = recents.find((e) => e.sens === 'sortant');
     sorties.push({
       demande,
       dossier,
-      niveau: niveau as 1 | 2 | 3,
-      minutesAttente: temps.statutCourant,
+      niveau,
+      minutesAttente,
       destinataire: dernierSortant?.destinataires ? ((dernierSortant.destinataires as string[])[0] ?? null) : null,
-      sources: evenements.map((e) => e.id),
-      faits: evenements
+      sources: recents.map((e) => e.id),
+      faits: recents
         .filter((e) => e.resume)
         .slice(0, 3)
         .map((e) => ({ le: e.survenuLe, resume: e.resume! })),
@@ -359,6 +380,22 @@ export async function preparerSemaine(compteId: number, jourDansLaSemaine: strin
 // Tableau de situation par client
 // ---------------------------------------------------------------------------
 
+/** Complement correct apres « en attente » : « du poste », « de la DO », jamais « de le poste ». */
+function complementActeur(acteur: Acteur): string {
+  switch (acteur) {
+    case 'poste':
+      return 'de notre cote';
+    case 'do':
+      return 'de la validation de la donneuse d’ordre';
+    case 'client':
+      return 'de votre retour';
+    case 'tiers':
+      return 'du retour d’un tiers';
+    default:
+      return 'de personne';
+  }
+}
+
 export async function preparerSituationClient(compteId: number, client: string, auteur: Auteur, maintenant = new Date()) {
   const dossiers = await db
     .select()
@@ -368,32 +405,64 @@ export async function preparerSituationClient(compteId: number, client: string, 
   if (!dossiers.length) throw new ErreurHttp(404, `Aucun dossier pour le client « ${client} »`);
 
   const horaires = await horairesDuCompte(compteId);
+  const ids = dossiers.map((d) => d.id);
+
+  // Trois requetes pour tout le client, au lieu de trois par dossier.
+  const toutesDemandes = await db
+    .select()
+    .from(schema.demandes)
+    .where(and(inArray(schema.demandes.dossierId, ids), sql`${schema.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`))
+    .orderBy(desc(schema.demandes.ouverteLe));
+  const debuts = await debutsDeStatut(toutesDemandes);
+
+  const prochaines = toutesDemandes.length
+    ? await db
+        .select()
+        .from(schema.echeances)
+        .where(
+          and(
+            inArray(schema.echeances.dossierId, ids),
+            eq(schema.echeances.annulee, false),
+            sql`${schema.echeances.honoreeLe} IS NULL`,
+          ),
+        )
+        .orderBy(asc(schema.echeances.echeanceLe))
+    : [];
+  const derniersEvenements = await db
+    .select({ id: schema.evenements.id, dossierId: schema.evenements.dossierId })
+    .from(schema.evenements)
+    .where(inArray(schema.evenements.dossierId, ids))
+    .orderBy(desc(schema.evenements.survenuLe));
+
+  const parDossier = <T extends { dossierId: number | null }>(liste: T[]) => {
+    const carte = new Map<number, T[]>();
+    for (const item of liste) {
+      if (item.dossierId === null) continue;
+      const deja = carte.get(item.dossierId) ?? [];
+      deja.push(item);
+      carte.set(item.dossierId, deja);
+    }
+    return carte;
+  };
+  const demandesParDossier = parDossier(toutesDemandes);
+  const echeancesParDossier = parDossier(prochaines);
+  const evenementsParDossier = parDossier(derniersEvenements);
+
   const lignes: string[] = [];
   const sources: number[] = [];
   const donnees: Record<string, unknown>[] = [];
 
   for (const dossier of dossiers) {
-    const demandes = await db
-      .select()
-      .from(schema.demandes)
-      .where(and(eq(schema.demandes.dossierId, dossier.id), sql`${schema.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`))
-      .orderBy(desc(schema.demandes.ouverteLe));
+    const demandes = demandesParDossier.get(dossier.id) ?? [];
     if (!demandes.length) continue;
 
-    const debuts = await debutsDeStatut(demandes);
     const ouvertes = demandes.filter((d) => d.statut !== 'termine' && d.statut !== 'annule');
     const porteuse = ouvertes[0] ?? demandes[0];
     const temps = tempsDemandeAvecHoraires(porteuse, debuts.get(porteuse.id) ?? porteuse.ouverteLe, horaires, maintenant);
 
-    const echeances = await db
-      .select()
-      .from(schema.echeances)
-      .where(and(eq(schema.echeances.dossierId, dossier.id), eq(schema.echeances.annulee, false), sql`${schema.echeances.honoreeLe} IS NULL`))
-      .orderBy(asc(schema.echeances.echeanceLe))
-      .limit(2);
-
-    const prochaine = echeances[0]
-      ? `${echeances[0].libelle ?? echeances[0].type} le ${DateTime.fromJSDate(echeances[0].echeanceLe).toFormat('dd/MM/yyyy')}`
+    const echeance = (echeancesParDossier.get(dossier.id) ?? [])[0];
+    const prochaine = echeance
+      ? `${echeance.libelle ?? LIBELLES_ECHEANCES[echeance.type as TypeEcheance] ?? echeance.type} le ${DateTime.fromJSDate(echeance.echeanceLe).toFormat('dd/MM/yyyy')}`
       : null;
 
     lignes.push(
@@ -402,21 +471,14 @@ export async function preparerSituationClient(compteId: number, client: string, 
         `  Etat : ${statutReporting(porteuse.statut)}${porteuse.statut === 'attente_do' ? ' (validation DO attendue)' : ''}`,
         `  En cours : ${porteuse.objet}`,
         ouvertes.length > 1 ? `  Autres points ouverts : ${ouvertes.length - 1}` : null,
-        `  En attente ${porteuse.acteurAttendu === 'poste' ? 'de notre cote' : `de ${porteuse.acteurAttendu}`} depuis ${formaterDuree(temps.statutCourant)}`,
+        `  En attente ${complementActeur(porteuse.acteurAttendu)} depuis ${formaterDuree(temps.statutCourant)}`,
         prochaine ? `  Prochaine echeance : ${prochaine}` : null,
       ]
         .filter(Boolean)
         .join('\n'),
     );
     donnees.push({ dossierId: dossier.id, libelle: dossier.libelle, statut: statutReporting(porteuse.statut), ouvertes: ouvertes.length });
-
-    const evenements = await db
-      .select({ id: schema.evenements.id })
-      .from(schema.evenements)
-      .where(eq(schema.evenements.dossierId, dossier.id))
-      .orderBy(desc(schema.evenements.survenuLe))
-      .limit(3);
-    sources.push(...evenements.map((e) => e.id));
+    sources.push(...(evenementsParDossier.get(dossier.id) ?? []).slice(0, 3).map((e) => e.id));
   }
 
   if (!lignes.length) throw new ErreurHttp(404, `Aucune demande en perimetre pour le client « ${client} »`);

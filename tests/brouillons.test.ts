@@ -198,6 +198,32 @@ describe('relances N1, N2 et N3', () => {
     expect(demande.niveauRelance).toBe(0);
   });
 
+  it('prepare plusieurs relances en un passage, chacune avec ses propres sources', async () => {
+    const a = await demandeEnAttente({ depuis: t('2026-11-02T09:00'), objet: 'Cotation Alger' });
+    const b = await demandeEnAttente({ depuis: t('2026-10-26T09:00'), objet: 'Cotation Tripoli' });
+    const relances = await relancesAPreparer(compteId, t('2026-11-04T09:00'));
+    expect(relances).toHaveLength(2);
+    // Triees par anciennete d'attente : la plus vieille d'abord.
+    expect(relances[0].demande.id).toBe(b.id);
+    expect(relances[0].niveau).toBe(3);
+    expect(relances[1].niveau).toBe(1);
+    // Les sources de chaque relance restent celles de sa propre demande.
+    const sourcesA = new Set(relances.find((r) => r.demande.id === a.id)!.sources);
+    const sourcesB = new Set(relances.find((r) => r.demande.id === b.id)!.sources);
+    expect([...sourcesA].some((id) => sourcesB.has(id))).toBe(false);
+  });
+
+  it('refuse de trancher deux fois le meme brouillon', async () => {
+    await demandeEnAttente({ depuis: t('2026-11-02T09:00') });
+    await preparerRelances(compteId, AUTEUR, t('2026-11-04T09:00'));
+    const [ligne] = await listerBrouillons(compteId);
+    await deciderBrouillon(ligne.brouillon.id, 'utilise', AUTEUR);
+    // Le second clic ne doit pas effacer l'auteur ni l'horodatage de la premiere decision.
+    await expect(deciderBrouillon(ligne.brouillon.id, 'ecarte', AUTEUR)).rejects.toThrow(/deja ete traite/);
+    const [apres] = await db.select().from(schema.brouillons).where(eq(schema.brouillons.id, ligne.brouillon.id));
+    expect(apres.statut).toBe('utilise');
+  });
+
   it('enregistre la decision du poste sur un brouillon', async () => {
     await demandeEnAttente({ depuis: t('2026-11-02T09:00') });
     await preparerRelances(compteId, AUTEUR, t('2026-11-04T09:00'));
@@ -289,6 +315,15 @@ describe('tableau de situation par client', () => {
     expect(brouillon.contenu).toContain('Alpha Pharma');
     // Aucun code technique ne doit remonter dans un texte destine au client.
     expect(brouillon.contenu).not.toMatch(/attente_tiers|cut_off/);
+  });
+
+  it('nomme une echeance sans libelle par son type, en francais', async () => {
+    const demande = await creerDemande({ dossierId, famille: 'T02', objet: 'Enlevement', ouverteLe: t('2026-11-02T09:00') }, AUTEUR);
+    await changerStatut(demande.id, 'attente_tiers', AUTEUR, { survenuLe: t('2026-11-02T10:00') });
+    await db.insert(schema.echeances).values({ dossierId, demandeId: demande.id, type: 'etd', echeanceLe: t('2026-11-12T12:00') });
+    const { brouillon } = await preparerSituationClient(compteId, 'Alpha Pharma', AUTEUR, t('2026-11-04T09:00'));
+    expect(brouillon.contenu).toMatch(/Prochaine echeance : .+ le 12\/11\/2026/);
+    expect(brouillon.contenu).not.toContain('etd le');
   });
 
   it('marque la validation DO attendue', async () => {
