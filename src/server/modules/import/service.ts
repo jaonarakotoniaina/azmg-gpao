@@ -26,7 +26,7 @@ import { ErreurHttp } from '../../lib/http';
 import { journaliser } from '../../lib/evenements';
 import { sha256 } from '../../lib/securite';
 import { lireClasseur, ongletNomme, valeur, type Onglet } from '../../lib/xlsx/lecture';
-import { trouverOuCreerDossier, type Dossier } from '../dossiers/service';
+import { dossiersParClientProduit, trouverOuCreerDossier, type Dossier } from '../dossiers/service';
 import { normaliser } from '@shared/texte';
 import { STATUTS_REPORTING, type StatutDossier, type StatutReporting } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
@@ -96,6 +96,16 @@ export function statutDossierDepuisReporting(statut: StatutReporting | null): St
     default:
       return 'ouvert';
   }
+}
+
+/**
+ * La colonne C du classeur porte « client ou pays », souvent sous la forme « Nom (Pays) ».
+ * On la separe pour que le dossier importe porte les memes champs qu'un dossier saisi a la main.
+ */
+export function separerClientPays(brut: string): { client: string; pays: string | null } {
+  const m = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(brut.trim());
+  if (!m || !m[1].trim()) return { client: brut.trim(), pays: null };
+  return { client: m[1].trim(), pays: m[2].trim() };
 }
 
 /** Date JJ/MM/AAAA ou AAAA-MM-JJ vers AAAA-MM-JJ. Renvoie null si la cellule n'est pas une date. */
@@ -203,16 +213,30 @@ export async function importerClasseur(
   let crees = 0;
   let misAJour = 0;
   for (const l of parDossier.values()) {
-    const { dossier, cree } = await trouverOuCreerDossier(
-      {
-        compteId: opts.compteId,
-        posteId: opts.posteId ?? null,
-        client: l.client,
-        produit: l.produit || null,
-        operation: null,
-      },
-      auteur,
-    );
+    const { client, pays } = separerClientPays(l.client);
+    // Un dossier deja ouvert par le poste pour ce client et ce produit est repris tel quel,
+    // meme s'il porte une operation que le classeur ne connait pas.
+    const existants = await dossiersParClientProduit(opts.compteId, client, l.produit || null);
+    let dossier: Dossier;
+    let cree: boolean;
+    if (existants.length === 1) {
+      dossier = existants[0];
+      cree = false;
+    } else {
+      const r = await trouverOuCreerDossier(
+        {
+          compteId: opts.compteId,
+          posteId: opts.posteId ?? null,
+          client,
+          pays,
+          produit: l.produit || null,
+          operation: null,
+        },
+        auteur,
+      );
+      dossier = r.dossier;
+      cree = r.cree;
+    }
     const statut = statutDossierDepuisReporting(l.statutReporting);
     // Resume oriente resultat : l'etat du dossier, jamais une appreciation sur le collaborateur.
     const resume = l.statutReporting ? `${l.statutReporting} au ${DateTime.fromISO(l.jour).toFormat('dd/MM/yyyy')}` : null;

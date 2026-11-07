@@ -13,11 +13,12 @@ const sortie = path.join(racine, 'dist', 'server');
 async function principal() {
   fs.rmSync(sortie, { recursive: true, force: true });
   await build({
-    entryPoints: ['src/server/index.ts', 'src/server/cron.ts', 'src/server/cli.ts', 'src/server/extraction-enfant.ts'].map((f) => path.join(racine, f)),
+    entryPoints: ['src/server/index.ts', 'src/server/cron.ts', 'src/server/cli.ts'].map((f) => path.join(racine, f)),
     outdir: sortie,
     bundle: true,
     platform: 'node',
     target: 'node20',
+    // @shared est resolu par le tsconfig : esbuild le lit via le champ paths.
     format: 'cjs',
     packages: 'external',
     sourcemap: 'linked',
@@ -25,8 +26,11 @@ async function principal() {
     define: { 'process.env.APP_VERSION': JSON.stringify(process.env.APP_VERSION ?? new Date().toISOString().slice(0, 16)) },
     logLevel: 'warning',
   });
-  fs.cpSync(path.join(racine, 'src', 'server', 'assets'), path.join(sortie, 'assets'), { recursive: true });
-  fs.cpSync(path.join(racine, 'src', 'server', 'public'), path.join(sortie, 'public'), { recursive: true });
+  // Ressources servies par le serveur (dossier facultatif tant qu'il est vide).
+  for (const nom of ['assets', 'public']) {
+    const source = path.join(racine, 'src', 'server', nom);
+    if (fs.existsSync(source)) fs.cpSync(source, path.join(sortie, nom), { recursive: true });
+  }
   console.log('Serveur compilé dans dist/server');
 }
 

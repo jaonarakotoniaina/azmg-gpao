@@ -7,7 +7,7 @@ import { ErreurHttp, idParam, valider } from '../../lib/http';
 import { auteurDe } from '../../lib/auteur';
 import { journaliser } from '../../lib/evenements';
 import { lireParametres } from '../../lib/parametres';
-import { compteParDefaut, exigerCompte, perimetreDe } from '../../lib/perimetre';
+import { compteParDefaut, exigerCompte, perimetreDe, posteSurCompte } from '../../lib/perimetre';
 import { exigerConnexion, exigerEcriture } from '../auth/middleware';
 import { calculerSla, changerStatut, creerDemande, demandesDuDossier, enregistrerRelance, fileDuJour, tempsDemande } from './service';
 import { evenementsDeLaDemande, ajouterEvenement } from '../evenements/service';
@@ -162,10 +162,12 @@ routesSaisie.post('/rapide', exigerEcriture, async (req, res) => {
     dossierId = demande.dossierId;
   } else if (!dossierId) {
     const n = d.nouveauDossier!;
+    // Sans poste explicite, le dossier est rattache au poste que l'utilisateur tient sur ce compte :
+    // sans cela, la demande n'apparaitrait pas dans sa propre file du jour.
     const { dossier, cree } = await trouverOuCreerDossier(
       {
         compteId: d.compteId,
-        posteId: n.posteId ?? null,
+        posteId: n.posteId ?? posteSurCompte(p, d.compteId),
         client: n.client!,
         pays: n.pays ?? null,
         produit: n.produit ?? null,

@@ -1,7 +1,7 @@
 /** Routes des dossiers : recherche, fiche, chronologie, echeances, pieces. */
 import { Router } from 'express';
 import { z } from 'zod';
-import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db, schema } from '../../db/client';
 import { ErreurHttp, idParam, valider } from '../../lib/http';
 import { auteurDe } from '../../lib/auteur';

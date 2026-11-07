@@ -8,17 +8,17 @@ const jourIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format
 
 export const plageSchema = z.object({ debut: heure, fin: heure });
 
-export const horairesSchema: z.ZodType<HorairesOuvres> = z.object({
+/**
+ * Horaires ouvres. Les cles de `semaine` sont les jours ISO (1 = lundi ... 7 = dimanche) ;
+ * un jour absent est un jour non travaille, d'ou une table partielle et non un enregistrement complet.
+ */
+export const horairesSchema = z.object({
   fuseau: z.string().min(1),
-  semaine: z.record(z.enum(['1', '2', '3', '4', '5', '6', '7']), z.array(plageSchema)).transform((v) => {
-    const sortie: Record<number, { debut: string; fin: string }[]> = {};
-    for (const [cle, plages] of Object.entries(v)) sortie[Number(cle)] = plages ?? [];
-    return sortie;
-  }),
+  semaine: z.record(z.string().regex(/^[1-7]$/, 'Jour ISO attendu entre 1 et 7'), z.array(plageSchema)),
   feriesClient: z.array(jourIso),
   feriesLocaux: z.array(jourIso),
   feriesCollaborateur: z.boolean(),
-}) as unknown as z.ZodType<HorairesOuvres>;
+});
 
 /** Mode d'automatisation d'une action sortante. Aucun mail ne part seul : `auto` reste un brouillon pret. */
 export const MODES_AUTOMATISATION = ['auto', 'brouillon', 'manuel'] as const;
@@ -39,7 +39,7 @@ export const parametresSchema = z.object({
   pauseAutomatisations: z.boolean(),
   automatisations: z.record(z.string(), z.object({ mode: z.enum(MODES_AUTOMATISATION), actif: z.boolean() })),
   /** Horaires ouvres de reference, utilises quand un compte client n'en definit pas. */
-  horaires: horairesSchema,
+  horaires: horairesSchema as unknown as z.ZodType<HorairesOuvres>,
   sla: z.object({
     /** Delai cible de premiere reponse par famille, en heures ouvrees. */
     parFamille: z.record(z.string(), z.number().min(0).max(400)),

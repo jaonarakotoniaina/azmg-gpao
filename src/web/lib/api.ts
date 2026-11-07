@@ -1,4 +1,4 @@
-/** Client HTTP du back-office : cookies de session, jeton CSRF, erreurs en français. */
+/** Client HTTP de l'application de pilotage : cookies de session, jeton CSRF, erreurs en français. */
 
 export class ErreurApi extends Error {
   constructor(
@@ -20,7 +20,7 @@ async function requete<T>(methode: string, url: string, corps?: unknown): Promis
   const estFormulaire = typeof FormData !== 'undefined' && corps instanceof FormData;
   if (corps !== undefined && !estFormulaire) entetes['content-type'] = 'application/json';
   if (methode !== 'GET') {
-    const csrf = lireCookie('azmg_csrf');
+    const csrf = lireCookie('azmg_gpao_csrf');
     if (csrf) entetes['x-csrf-token'] = csrf;
   }
   const r = await fetch(url, {

@@ -10,7 +10,7 @@ import { db, schema } from '../../db/client';
 import { ErreurHttp } from '../../lib/http';
 import { journaliser } from '../../lib/evenements';
 import { cleDossier, normaliser } from '@shared/texte';
-import { FAMILLE_HORS_PERIMETRE, type StatutDossier } from '@shared/constantes';
+import { FAMILLE_HORS_PERIMETRE, LIBELLES_ECHEANCES, libelleStatut, type StatutDossier, type TypeEcheance } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
 export type Dossier = typeof schema.dossiers.$inferSelect;
@@ -93,6 +93,29 @@ export async function trouverOuCreerDossier(entree: EntreeDossier, auteur: Auteu
     details: { client, produit: entree.produit ?? null, operation: entree.operation ?? null },
   });
   return { dossier, cree: true };
+}
+
+/**
+ * Dossiers d'un compte dont le client et le produit correspondent, quelle que soit l'operation.
+ *
+ * Le classeur de suivi ne porte pas de colonne « operation » : un rapprochement strict sur
+ * client|produit|operation creerait un second dossier a cote de celui que le poste a ouvert a la
+ * saisie. On rapproche donc sur le prefixe client|produit, et l'import ne reutilise un dossier
+ * que si la correspondance est unique (sinon il vaut mieux creer que se tromper de dossier).
+ */
+export async function dossiersParClientProduit(compteId: number, client: string, produit: string | null): Promise<Dossier[]> {
+  const prefixe = cleDossier(client, produit ?? '', '');
+  if (!prefixe) return [];
+  return db
+    .select()
+    .from(schema.dossiers)
+    .where(
+      and(
+        eq(schema.dossiers.compteId, compteId),
+        // Le prefixe exact, ou le prefixe suivi du separateur d'operation.
+        or(eq(schema.dossiers.cleRapprochement, prefixe), sql`${schema.dossiers.cleRapprochement} LIKE ${`${prefixe}|%`}`),
+      ),
+    );
 }
 
 export async function lireDossier(id: number): Promise<Dossier> {
@@ -218,7 +241,9 @@ export async function chronologieDossier(dossierId: number): Promise<LigneChrono
     ...transitions.map((l) => ({
       type: 'transition' as const,
       survenuLe: l.t.survenuLe,
-      titre: `${l.objet} : ${l.t.statutAvant ?? 'ouverture'} vers ${l.t.statutApres}`,
+      titre: l.t.statutAvant
+        ? `${l.objet} : ${libelleStatut(l.t.statutAvant)} vers ${libelleStatut(l.t.statutApres)}`
+        : `${l.objet} : ouverture en ${libelleStatut(l.t.statutApres)}`,
       detail: l.t.motif,
       demandeId: l.t.demandeId,
       meta: { statutAvant: l.t.statutAvant, statutApres: l.t.statutApres, minutesOuvrees: l.t.minutesOuvrees, auteurType: l.t.auteurType },
@@ -226,7 +251,7 @@ export async function chronologieDossier(dossierId: number): Promise<LigneChrono
     ...echeances.map((e) => ({
       type: 'echeance' as const,
       survenuLe: e.echeanceLe,
-      titre: `${e.type}${e.libelle ? ` : ${e.libelle}` : ''}`,
+      titre: `${LIBELLES_ECHEANCES[e.type as TypeEcheance] ?? e.type}${e.libelle ? ` : ${e.libelle}` : ''}`,
       detail: e.phraseSource,
       demandeId: e.demandeId,
       meta: { honoreeLe: e.honoreeLe, annulee: e.annulee },
