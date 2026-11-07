@@ -276,7 +276,6 @@ describe('tableau de situation par client', () => {
     const demande = await creerDemande({ dossierId, famille: 'T02', objet: 'Enlevement a programmer', ouverteLe: t('2026-11-02T09:00') }, AUTEUR);
     await changerStatut(demande.id, 'attente_tiers', AUTEUR, { survenuLe: t('2026-11-02T10:00') });
     await db.insert(schema.echeances).values({
-      compteId,
       dossierId,
       demandeId: demande.id,
       type: 'cut_off',

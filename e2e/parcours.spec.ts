@@ -7,7 +7,7 @@
  *  - l'import d'un classeur fictif cree les dossiers sans doublon ;
  *  - un evenement hors perimetre (T00) n'apparait dans aucune vue de pilotage.
  */
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import path from 'node:path';
 import { COMPTES, seConnecter } from './outils';
 
@@ -301,4 +301,92 @@ test('le webhook de collecte refuse une charge non signee', async ({ page }) => 
     failOnStatusCode: false,
   });
   expect([401, 503]).toContain(reponse.status());
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 : brouillons
+// ---------------------------------------------------------------------------
+
+/**
+ * Importe un fil de deux mails (demande du client, puis demande de validation a la DO) date de
+ * mars 2026, pour que la demande attende la DO depuis assez longtemps pour meriter une relance.
+ * Le test se suffit a lui-meme : il ne depend pas des parcours precedents.
+ */
+async function importerFilAncien(page: Page, suffixe: string, client: string) {
+  await page.goto('/import-mails');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  const entete = (id: string, de: string, a: string, objet: string, date: string, references?: string) =>
+    [
+      `Message-ID: ${id}`,
+      `From: ${de}`,
+      `To: ${a}`,
+      `Subject: ${objet}`,
+      `Date: ${date}`,
+      references ? `References: ${references}` : null,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+    ]
+      .filter((l): l is string => l !== null)
+      .join('\r\n');
+
+  const premier = `${entete(`<${suffixe}a@exemple-fictif.test>`, `${client}@alpha-fictif.test`, 'elysa@azmg-solutions.com', `Cotation aerien ${suffixe}`, 'Mon, 02 Mar 2026 09:00:00 +0100')}\r\n\r\nPourriez vous nous coter 180 kg au depart de Barcelone ?`;
+  const second = `${entete(`<${suffixe}b@exemple-fictif.test>`, 'elysa@azmg-solutions.com', 'do@client-fictif.test', `Re : Cotation aerien ${suffixe}`, 'Mon, 02 Mar 2026 11:00:00 +0100', `<${suffixe}a@exemple-fictif.test>`)}\r\n\r\nMerci de valider le transitaire et le prix.`;
+
+  await page.getByLabel('Fichiers .eml ou .mbox').setInputFiles([
+    { name: `${suffixe}-1.eml`, mimeType: 'message/rfc822', buffer: Buffer.from(premier, 'utf8') },
+    { name: `${suffixe}-2.eml`, mimeType: 'message/rfc822', buffer: Buffer.from(second, 'utf8') },
+  ]);
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(page.locator('section#bilan').locator('div', { hasText: /^Enregistres2$/ })).toBeVisible({ timeout: 20_000 });
+}
+
+test('la preparation prepare des brouillons sans rien envoyer, et le poste tranche', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await importerFilAncien(page, 'p5relance', 'achat-relance');
+
+  await page.goto('/brouillons');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  // Rien ne part tout seul : la regle d'or est rappelee a l'ecran.
+  await expect(page.getByText('l’application prepare, l’humain envoie', { exact: false })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Preparer maintenant' }).click();
+  await expect(page.getByRole('tab', { name: 'A relire' })).toBeVisible();
+
+  // La demande attend la DO depuis mars : une relance est proposee.
+  const premier = page.locator('#liste-brouillons > li', { hasText: /Relance N[123]/ }).first();
+  await expect(premier).toBeVisible({ timeout: 20_000 });
+
+  // Le brouillon cite ses evenements sources.
+  await premier.getByRole('button', { name: 'Lire' }).click();
+  await expect(premier.getByText(/evenement\(s\) cite\(s\) a l’appui/)).toBeVisible();
+  const texte = await premier.locator('textarea').inputValue();
+  expect(texte).toContain('02/03/2026');
+
+  // Le poste declare l'avoir envoye lui-meme : le brouillon quitte la file a relire.
+  const titre = (await premier.locator('p.font-medium').first().innerText()).trim();
+  await premier.getByRole('button', { name: 'Je l’ai envoye' }).click();
+  await expect(page.locator('#liste-brouillons').getByText(titre, { exact: true })).toHaveCount(0, { timeout: 20_000 });
+  await page.getByRole('tab', { name: 'Envoyes' }).click();
+  await expect(page.locator('#liste-brouillons').getByText(titre, { exact: true })).toBeVisible();
+});
+
+test('un tableau de situation reprend les statuts exacts du reporting client', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await importerFilAncien(page, 'p5situation', 'achat-situation');
+
+  await page.goto('/brouillons');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await page.getByRole('textbox', { name: 'Situation d’un client' }).fill('achat-situation');
+  await page.getByRole('button', { name: 'Preparer', exact: true }).click();
+
+  const carte = page.locator('#liste-brouillons > li', { hasText: 'Situation' }).first();
+  await expect(carte).toBeVisible({ timeout: 20_000 });
+  await carte.getByRole('button', { name: 'Lire' }).click();
+  const texte = await carte.locator('textarea').inputValue();
+  // Statut du reporting client repris exactement, et aucun code technique.
+  expect(texte).toContain('En cours');
+  expect(texte).toContain('validation DO attendue');
+  expect(texte).not.toMatch(/attente_tiers|attente_do|en_cours/);
 });

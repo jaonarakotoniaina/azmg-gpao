@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, FileSpreadsheet, Inbox, Mails } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, PenLine, FileSpreadsheet, Inbox, Mails } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -39,6 +39,7 @@ export function Layout() {
     { vers: '/a-classer', libelle: 'A classer', icone: <Inbox className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'], compteur: aClasser?.length },
     { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
     { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },
+    { vers: '/brouillons', libelle: 'Brouillons', icone: <PenLine className="h-4 w-4" aria-hidden /> },
     { vers: '/qualite', libelle: 'Qualite', icone: <ClipboardCheck className="h-4 w-4" aria-hidden /> },
     { vers: '/export', libelle: 'Export du reporting', icone: <FileSpreadsheet className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/import-mails', libelle: 'Import des mails', icone: <Mails className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
