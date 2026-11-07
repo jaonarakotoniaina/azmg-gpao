@@ -15,6 +15,8 @@ import { routesDossiers, routesEcheances } from './modules/dossiers/routes';
 import { routesDemandes, routesSaisie } from './modules/demandes/routes';
 import { routesEvenements } from './modules/evenements/routes';
 import { routesImport } from './modules/import/routes';
+import { routesIndicateurs } from './modules/indicateurs/routes';
+import { routesDigest, routesQualite } from './modules/qualite/routes';
 
 export function creerApplication() {
   const app = express();
@@ -71,6 +73,9 @@ export function creerApplication() {
   app.use('/api/echeances', routesEcheances);
   app.use('/api/saisie', routesSaisie);
   app.use('/api/import', routesImport);
+  app.use('/api/indicateurs', routesIndicateurs);
+  app.use('/api/qualite', routesQualite);
+  app.use('/api/digest', routesDigest);
   app.use('/api', (_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
 
   // Application React de pilotage.

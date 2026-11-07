@@ -25,11 +25,19 @@ puis `git log -20`, et reprendre a la premiere tache non terminee.
 
 **Phase 1 terminee.**
 
-### Phase 2 : pilotage (a venir)
+### Phase 2 : pilotage (en cours)
 
-Tableau de bord (flux, stock, age, delais, attente par acteur, SLA), echeancier et alertes,
-check-lists avant envoi, controle qualite avec echantillonnage, digest DO en brouillon,
-export du reporting de la section 9, connecteur MCP.
+Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull/1
+(la phase 2 enchaine sur la meme branche, sans attendre la fusion).
+
+- [ ] 2.1 Indicateurs : flux (entrees, sorties), stock et age du stock, delais, attente par acteur, SLA, charge estimee
+- [ ] 2.2 Tableau de bord manager et CEO, avec comparaison a la semaine precedente
+- [ ] 2.3 Check-lists avant envoi et declaration de conformite
+- [ ] 2.4 Controle qualite : grilles, echantillon hebdomadaire, note, taux de reprise, bon du premier coup
+- [ ] 2.5 Digest de validation DO, deux fois par jour, en brouillon
+- [ ] 2.6 Export du reporting de la section 9 dans un classeur existant, sans en modifier la structure
+- [ ] 2.7 Connecteur Claude (MCP) et ses onze outils
+- [ ] 2.8 Auto-revue, journal, mise a jour de la pull request
 
 ### Phase 3 : typage (a venir)
 

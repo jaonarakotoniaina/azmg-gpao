@@ -5,6 +5,7 @@ import { Layout } from './composants/Layout';
 import { Chargement } from './composants/ui';
 import Connexion from './pages/Connexion';
 
+const TableauDeBord = lazy(() => import('./pages/TableauDeBord'));
 const FileDuJour = lazy(() => import('./pages/FileDuJour'));
 const SaisieRapide = lazy(() => import('./pages/SaisieRapide'));
 const Dossiers = lazy(() => import('./pages/Dossiers'));
@@ -40,6 +41,7 @@ export function App() {
             }
           >
             <Route index element={<FileDuJour />} />
+            <Route path="tableau-de-bord" element={<TableauDeBord />} />
             <Route path="saisie" element={<SaisieRapide />} />
             <Route path="dossiers" element={<Dossiers />} />
             <Route path="dossiers/:id" element={<FicheDossier />} />

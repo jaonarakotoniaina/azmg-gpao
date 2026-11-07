@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -25,6 +25,7 @@ export function Layout() {
 
   const liens: Lien[] = [
     { vers: '/', libelle: 'File du jour', icone: <ListTodo className="h-4 w-4" aria-hidden /> },
+    { vers: '/tableau-de-bord', libelle: 'Tableau de bord', icone: <LayoutDashboard className="h-4 w-4" aria-hidden /> },
     { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
     { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden /> },
     { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
