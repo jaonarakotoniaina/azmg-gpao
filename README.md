@@ -12,7 +12,8 @@ Le modele reste generique : d'autres comptes et d'autres postes rejoignent la GP
 
 - Production : `https://gpao.intranet.azmg-solutions.com`
 - Documentation : [`docs/JOURNAL.md`](docs/JOURNAL.md), [`docs/DECISIONS.md`](docs/DECISIONS.md),
-  [`docs/A_FOURNIR.md`](docs/A_FOURNIR.md), [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md)
+  [`docs/A_FOURNIR.md`](docs/A_FOURNIR.md), [`docs/guide-utilisateur.md`](docs/guide-utilisateur.md),
+  [`docs/connecteur-claude.md`](docs/connecteur-claude.md), [`docs/agent-ia.md`](docs/agent-ia.md)
 
 ## Sommaire
 
@@ -117,6 +118,12 @@ Le classeur de test fictif se regenere avec :
 npx tsx scripts/generer-classeur-fictif.ts
 ```
 
+Pour verifier a l'oeil que l'export preserve la mise en forme, apres un `npm run db:seed` :
+
+```bash
+npx tsx scripts/exporter-demonstration.ts /tmp/export.xlsx
+```
+
 ## Structure du depot
 
 ```
@@ -133,7 +140,8 @@ src/
     cli.ts             commandes d'administration
     db/                schema Drizzle, referentiels initiaux, seed
     lib/               file de traitements, journal, securite, perimetre, xlsx
-    modules/           auth, comptes, dossiers, demandes, evenements, import, pilotage
+    modules/           auth, comptes, dossiers, demandes, evenements, import, pilotage,
+                       indicateurs, qualite, digest, export, mcp
   web/           interface React
 drizzle/         migrations SQL versionnees
 tests/           tests Vitest, classeur fictif dans tests/fixtures
@@ -344,7 +352,7 @@ l'application fonctionne entierement. Les elements manquants sont listes dans
 | IA | `AI_PROVIDER`, `AGENT_API_TOKEN`, `ANTHROPIC_API_KEY` | typage et redactions manuels |
 | Collecte des mails | `APPS_SCRIPT_SECRET` ou `IMAP_*` | saisie rapide et import seulement |
 | Envoi des emails | `SMTP_*` | les liens de reinitialisation sont traces dans le journal |
-| Connecteur Claude | `AZMG_MCP_TOKEN` | la route `/mcp` reste fermee |
+| Connecteur Claude | `AZMG_MCP_TOKEN` | la route `/mcp` reste fermee (voir [`docs/connecteur-claude.md`](docs/connecteur-claude.md)) |
 
 Regle d'or : **l'IA prepare, l'humain envoie**. Aucun mail ne part automatiquement vers un client,
 un transitaire ou la donneuse d'ordre. Tout est brouillon ou export.

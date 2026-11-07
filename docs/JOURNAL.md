@@ -25,19 +25,21 @@ puis `git log -20`, et reprendre a la premiere tache non terminee.
 
 **Phase 1 terminee.**
 
-### Phase 2 : pilotage (en cours)
+### Phase 2 : pilotage (terminee)
 
 Pull request de la phase 1 : https://github.com/jaonarakotoniaina/azmg-gpao/pull/1
 (la phase 2 enchaine sur la meme branche, sans attendre la fusion).
 
-- [ ] 2.1 Indicateurs : flux (entrees, sorties), stock et age du stock, delais, attente par acteur, SLA, charge estimee
-- [ ] 2.2 Tableau de bord manager et CEO, avec comparaison a la semaine precedente
-- [ ] 2.3 Check-lists avant envoi et declaration de conformite
-- [ ] 2.4 Controle qualite : grilles, echantillon hebdomadaire, note, taux de reprise, bon du premier coup
-- [ ] 2.5 Digest de validation DO, deux fois par jour, en brouillon
-- [ ] 2.6 Export du reporting de la section 9 dans un classeur existant, sans en modifier la structure
-- [ ] 2.7 Connecteur Claude (MCP) et ses onze outils
-- [ ] 2.8 Auto-revue, journal, mise a jour de la pull request
+- [x] 2.1 Indicateurs : flux (entrees, sorties), stock et age du stock, delais, attente par acteur, SLA, charge estimee
+- [x] 2.2 Tableau de bord manager et CEO, avec comparaison a la periode precedente
+- [x] 2.3 Check-lists avant envoi et declaration de conformite
+- [x] 2.4 Controle qualite : grilles, echantillon hebdomadaire, note, taux de reprise, bon du premier coup
+- [x] 2.5 Digest de validation DO, en brouillon
+- [x] 2.6 Export du reporting de la section 9 dans un classeur existant, sans en modifier la structure
+- [x] 2.7 Connecteur Claude (MCP) et ses onze outils
+- [x] 2.8 Auto-revue, journal, mise a jour de la pull request
+
+**Phase 2 terminee.**
 
 ### Phase 3 : typage (a venir)
 
@@ -190,3 +192,92 @@ ZIP necessaires a cet export sont deja en place et testes.
   les vrais traitements asynchrones arrivent en phase 2.
 - Aucune route de telechargement de piece : la table `pieces` existe et est affichee, mais le
   stockage de fichiers sera branche avec la collecte des mails en phase 4.
+
+---
+
+## 2026-11-07 : pilotage, qualite, export et connecteur (phase 2)
+
+**Fait**
+
+- **Indicateurs** (`src/server/modules/indicateurs/service.ts`) : flux (entrees, sorties, detail par
+  jour et par famille), stock (par statut, famille et acteur, age moyen et median, tranches d'age,
+  cible depassee, charge estimee), delais (premiere reponse, delai total, attente par acteur,
+  respect de la cible, detail par famille), charge estimee. Tout en minutes ouvrees du client.
+- **Tableau de bord** : les quatre familles de mesures, la comparaison a la periode precedente de
+  meme duree, les attentes DO trop longues et les echeances proches. Le sens de lecture est
+  explicite : un delai qui baisse s'affiche en vert, un volume qui monte reste neutre, parce qu'une
+  hausse d'activite n'est en soi ni bonne ni mauvaise.
+- **Check-lists avant envoi** : conformite calculee sur les seuls points obligatoires, un point
+  facultatif non coche ne rend pas l'envoi non conforme. Les non-conformites alimentent la qualite,
+  ce qui evite une double saisie.
+- **Controle qualite** : grille ponderee, echantillon hebdomadaire idempotent, note sur 100 par
+  moyenne ponderee, taux de reprise, bon du premier coup, et les points de check-list les plus
+  souvent manques, pour cibler la correction.
+- **Digest de validation DO** : une ligne par decision, le temps d'attente en heures ouvrees, les
+  elements de decision repris du dossier (references, montants approuves, echeances) sans rien
+  inventer, et un brouillon filtre des tirets longs. Aucun envoi.
+- **Export du reporting** : ecrit dans le classeur fourni par l'utilisateur, a la suite de ce qu'il
+  contient. Blocs de jour au format de la section 9, onglet hebdomadaire (lignes 8 a 11 laissees
+  intactes, aucune reference dans les syntheses).
+- **Connecteur Claude (MCP)** : les onze outils de la section 8.13, protocole JSON-RPC, cle en
+  en-tete fixe, journal des appels dans `/health` sans jamais la cle.
+- **Documentation** : `docs/connecteur-claude.md` (installation, garde-fous, diagnostic, exemples)
+  et `docs/agent-ia.md` (instruction prete a coller dans la routine).
+
+**L'export preserve vraiment la structure**
+
+C'est le point le plus delicat de la phase. Plutot que de reconstruire le classeur, l'ecriture est
+chirurgicale (`src/server/lib/xlsx/ecriture.ts`) : seules la feuille modifiee et la table des
+chaines partagees sont reecrites, tout le reste est recopie octet pour octet. Dans la feuille, une
+cellule existante garde son attribut de style, une cellule qui porte une formule est refusee a
+l'ecriture, et les nouvelles lignes reprennent les styles d'une ligne modele.
+
+Verifie de deux facons :
+
+- par les tests, qui comparent les entrees de l'archive avant et apres (seules `sheet1.xml` et
+  `sharedStrings.xml` changent), verifient que chaque ligne d'origine se retrouve telle quelle, et
+  que la formule `SUM(B5:F5)` de l'onglet voisin est intacte ;
+- a la main avec **openpyxl**, une bibliotheque independante : onglets, cellules fusionnees,
+  largeurs de colonne, remplissage de l'en-tete, graisse, bordures, format de date et formule sont
+  tous conserves, et les lignes ajoutees heritent bien des styles du modele.
+
+**Verifications de fin de phase**
+
+| Critere de la section 10 | Verification |
+|---|---|
+| Indicateurs recalcules sur jeu fictif conformes aux attendus | 19 tests sur une semaine sans ferie, valeurs calculees a la main |
+| Export sans alteration de la structure (styles et formules) | 26 tests, dont la comparaison octet pour octet, plus un controle openpyxl |
+| Test « aucun tiret long » | etendu au classeur de test, aux brouillons et aux syntheses hebdomadaires |
+| Outils MCP testes | 31 tests : protocole, authentification, les onze outils, garde-fous |
+
+217 tests Vitest et 11 parcours Playwright au vert, build de production OK.
+
+**Auto-revue : ce qui a ete corrige**
+
+1. **Tirage de l'echantillon non idempotent.** Le plancher « au moins un envoi controle »
+   s'appliquait au complement et non a la cible : chaque nouveau passage ajoutait un controle. Le
+   plancher porte desormais sur la cible de la semaine.
+2. **Indicateurs trompeurs.** Une hausse du volume entrant s'affichait en rouge comme une mauvaise
+   nouvelle. Les variations ont maintenant trois sens de lecture, dont un neutre.
+3. **Minutes brutes affichees** dans la repartition « Ou attend le temps » : la barre accepte
+   desormais une mise en forme et affiche des durees lisibles.
+4. **Cellule a formule.** L'ecriture dans une cellule portant une formule est refusee avec un
+   message clair, au lieu de detruire silencieusement le calcul du classeur.
+
+**Reste a faire**
+
+Phase 3 (typage) : moteur de regles puis tache IA `typer_evenement`, file « A classer » branchee sur
+le typage automatique, proposition de regle a chaque correction manuelle. La file « A classer » et
+l'outil `corriger_typage` existent deja et attendent le moteur.
+
+**Dettes techniques**
+
+- L'onglet hebdomadaire n'est ecrit que si son nom correspond a la regle « semaine ISO moins 26 » de
+  2026. Pour une autre annee, la regle devra etre confirmee avec le commanditaire ; en attendant,
+  l'export s'arrete avec un message qui liste les onglets presents plutot que d'ecrire au mauvais
+  endroit.
+- Les indicateurs ne se cumulent pas entre comptes clients : le tableau de bord demande de choisir
+  un compte. C'est volontaire (melanger deux clients n'a pas de sens metier), mais le CEO voudra
+  sans doute une vue consolidee par la suite.
+- `construireColonneSemaine` appelle `construireBlocJour`, qui refait les memes requetes : a
+  mutualiser si l'export devient lent sur un gros mois.

@@ -91,6 +91,57 @@ Vous pilotez un ou plusieurs comptes clients. Vous voyez tout sur vos comptes.
   document. Les echeances a deux jours ou moins sont signalees en orange, celles du jour et les
   depassees en rouge.
 
+### Le tableau de bord
+
+Quatre blocs, tous comptes en heures ouvrees du client.
+
+- **Synthese** : demandes entrees, terminees, stock ouvert, et combien depassent leur delai cible.
+  Chaque chiffre est compare a la periode precedente de meme duree. Un delai qui baisse s'affiche
+  en vert, un volume qui monte reste neutre : plus d'activite n'est en soi ni bon ni mauvais.
+- **Delais des demandes terminees** : premiere reponse et delai total en mediane, part des demandes
+  terminees dans leur cible, age moyen du stock.
+- **Ou attend le temps** : la repartition de l'attente entre le poste, la DO, le client et les
+  tiers. C'est le graphique a montrer quand il faut expliquer pourquoi un dossier a pris du temps.
+- **Charge estimee par famille** : volume multiplie par le temps standard, converti en jours
+  ouvres, avec le delai median et le respect de la cible famille par famille.
+
+### Le digest de validation
+
+La page **Digest de validation** rassemble tout ce qui attend la donneuse d'ordre, avec le temps
+d'attente de chaque decision et les elements utiles pour trancher (references du dossier, montants
+deja approuves, echeances). Le bouton copie un brouillon pret a relire.
+
+**L'application n'envoie rien.** Vous relisez, vous corrigez si besoin, puis vous envoyez
+vous-meme par le canal habituel. C'est la regle d'or : l'IA prepare, l'humain envoie.
+
+### La qualite
+
+Deux choses y vivent.
+
+- **L'echantillon hebdomadaire.** Chaque semaine, une part des envois du poste est tiree au sort
+  (10 % par defaut, reglable dans les Parametres) et attend une note. Le bouton de tirage peut etre
+  relance autant de fois que voulu : il complete l'echantillon, il ne le double jamais.
+- **Les indicateurs** : note moyenne, taux de reprise, part des documents valides par la DO sans
+  correction, part des envois conformes aux check-lists, et la liste des points de check-list les
+  plus souvent manques. C'est cette derniere liste qui dit sur quoi porter l'effort.
+
+### L'export du reporting
+
+La page **Export du reporting** complete votre classeur `SUIVI_MENSUEL` :
+
+1. choisissez le compte et les jours a ecrire ;
+2. l'apercu montre exactement ce qui ira dans chaque colonne (C, F, G, H, I) ;
+3. deposez votre classeur, et telechargez la copie completee.
+
+Un bloc est ajoute par jour : ligne vide, en-tete recopiee, puis les lignes de donnees, une par
+dossier au dernier etat connu. La structure de votre classeur n'est pas touchee : colonnes,
+en-tetes, noms d'onglets, mise en forme et formules ressortent intacts. Votre fichier d'origine
+n'est ni conserve ni ecrase sur le serveur.
+
+Si vous cochez « Remplir aussi l'onglet de la semaine », l'onglet « sem N » doit exister dans le
+classeur. S'il manque, l'export s'arrete et vous dit quels onglets il a trouves, plutot que
+d'ecrire au mauvais endroit.
+
 ### Ce que vous lisez sur une demande
 
 La fiche demande donne le delai total, le delai de premiere reponse compare a la cible de la
@@ -143,6 +194,16 @@ L'ecran **Parametres** a quatre onglets.
 | Manager de compte | les comptes qu'il pilote | tout sur ses comptes, y compris l'import |
 | Collaborateur | les comptes ou il tient un poste | sa file, ses dossiers, la saisie et la correction |
 | Client (lecture seule) | les comptes ou il est declare | lecture seule, desactive par defaut |
+
+### Le connecteur Claude
+
+Une conversation claude.ai peut lire la file du jour, retrouver un dossier, enregistrer un
+evenement et preparer le reporting, sans passer par l'ecran. L'installation se fait une fois, elle
+est decrite dans `docs/connecteur-claude.md`.
+
+Ce que le connecteur ne peut pas faire, par construction : envoyer un message a qui que ce soit,
+toucher aux parametres, ecrire dans un classeur, ou faire entrer du hors perimetre dans le
+pilotage. Chacune de ses ecritures porte la marque « claude » dans la chronologie du dossier.
 
 ### La regle d'or
 

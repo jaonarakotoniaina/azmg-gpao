@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, FileSpreadsheet } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -29,6 +29,9 @@ export function Layout() {
     { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
     { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden /> },
     { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
+    { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },
+    { vers: '/qualite', libelle: 'Qualite', icone: <ClipboardCheck className="h-4 w-4" aria-hidden /> },
+    { vers: '/export', libelle: 'Export du reporting', icone: <FileSpreadsheet className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/import', libelle: 'Import du classeur', icone: <Upload className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/parametres', libelle: 'Parametres', icone: <Settings className="h-4 w-4" aria-hidden /> },
   ];

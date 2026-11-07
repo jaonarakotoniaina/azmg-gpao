@@ -13,6 +13,9 @@ const FicheDossier = lazy(() => import('./pages/FicheDossier'));
 const FicheDemande = lazy(() => import('./pages/FicheDemande'));
 const Echeancier = lazy(() => import('./pages/Echeancier'));
 const ImportClasseur = lazy(() => import('./pages/ImportClasseur'));
+const Export = lazy(() => import('./pages/Export'));
+const Qualite = lazy(() => import('./pages/Qualite'));
+const DigestDo = lazy(() => import('./pages/DigestDo'));
 const Parametres = lazy(() => import('./pages/Parametres'));
 const MotDePasseOublie = lazy(() => import('./pages/MotDePasseOublie'));
 const Reinitialiser = lazy(() => import('./pages/Reinitialiser'));
@@ -48,6 +51,9 @@ export function App() {
             <Route path="demandes/:id" element={<FicheDemande />} />
             <Route path="echeancier" element={<Echeancier />} />
             <Route path="import" element={<ImportClasseur />} />
+            <Route path="export" element={<Export />} />
+            <Route path="qualite" element={<Qualite />} />
+            <Route path="digest" element={<DigestDo />} />
             <Route path="parametres" element={<Parametres />} />
             <Route path="*" element={<p>Page introuvable.</p>} />
           </Route>

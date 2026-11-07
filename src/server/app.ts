@@ -17,6 +17,8 @@ import { routesEvenements } from './modules/evenements/routes';
 import { routesImport } from './modules/import/routes';
 import { routesIndicateurs } from './modules/indicateurs/routes';
 import { routesDigest, routesQualite } from './modules/qualite/routes';
+import { routesExport } from './modules/export/routes';
+import { etatMcp, noterAppel, routesMcp } from './modules/mcp/routes';
 
 export function creerApplication() {
   const app = express();
@@ -50,7 +52,8 @@ export function creerApplication() {
   app.get('/health', async (_req, res) => {
     try {
       await getPool().query('SELECT 1');
-      res.json({ statut: 'ok', service: 'AZMG GPAO', version: process.env.APP_VERSION ?? 'dev', deploiement });
+      // mcp : connecteur Claude configure ou non, et les derniers appels recus (jamais la cle).
+      res.json({ statut: 'ok', service: 'AZMG GPAO', version: process.env.APP_VERSION ?? 'dev', deploiement, mcp: etatMcp() });
     } catch {
       res.status(503).json({ statut: 'erreur', service: 'AZMG GPAO' });
     }
@@ -58,6 +61,16 @@ export function creerApplication() {
 
   const dossierPublic = [path.join(__dirname, 'public'), path.join(config.racine, 'src', 'server', 'public')].find((d) => fs.existsSync(d));
   if (dossierPublic) app.use('/public', express.static(dossierPublic, { maxAge: config.production ? '7d' : 0 }));
+
+  // Connecteur Claude (MCP) : conversation claude.ai, cle AZMG_MCP_TOKEN en en-tete fixe
+  // (docs/connecteur-claude.md). Monte avant la session : il s'authentifie par son propre jeton.
+  app.use('/mcp', routesMcp);
+  // Pas d'OAuth : les adresses de decouverte repondent 404 en JSON, et non la page de
+  // l'application avec un 200, que claude.ai prendrait pour un serveur d'autorisation.
+  app.use('/.well-known', (req, res) => {
+    noterAppel(req, 404, 'decouverte OAuth');
+    res.status(404).json({ erreur: 'Introuvable' });
+  });
 
   app.use(chargerSession);
   app.use('/api', express.json({ limit: '1mb' }));
@@ -76,6 +89,7 @@ export function creerApplication() {
   app.use('/api/indicateurs', routesIndicateurs);
   app.use('/api/qualite', routesQualite);
   app.use('/api/digest', routesDigest);
+  app.use('/api/export', routesExport);
   app.use('/api', (_req, res) => res.status(404).json({ erreur: 'Route inconnue' }));
 
   // Application React de pilotage.

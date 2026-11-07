@@ -125,3 +125,56 @@ test('la connexion est exigee et le role de lecture seule ne peut pas saisir', a
   await expect(page).toHaveURL(/\/connexion/);
   await expect(page.getByRole('heading', { name: 'AZMG GPAO' })).toBeVisible();
 });
+
+// ---------------------------------------------------------------------------
+// Phase 2 : pilotage
+// ---------------------------------------------------------------------------
+
+test('le tableau de bord affiche les indicateurs du compte', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/tableau-de-bord');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await expect(page.getByRole('heading', { name: 'Synthese' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Demandes entrees')).toBeVisible();
+  await expect(page.getByText('Stock ouvert')).toBeVisible();
+  await expect(page.getByText('Ou attend le temps')).toBeVisible();
+  // Les durees sont exprimees en heures ouvrees, jamais en minutes brutes.
+  await expect(page.getByText('en heures ouvrees du client').first()).toBeVisible();
+});
+
+test('le digest de validation est un brouillon, sans aucun envoi', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/digest');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await expect(page.getByText(/l.IA prepare, l.humain envoie/i)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Aucun envoi automatique')).toBeVisible();
+  // Aucun bouton d'envoi : seulement la copie du brouillon.
+  await expect(page.getByRole('button', { name: /Envoyer/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copier le brouillon' })).toBeVisible();
+});
+
+test('l’export montre les colonnes du classeur et prepare le telechargement', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/export');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await expect(page.getByRole('columnheader', { name: 'Description (G)' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('columnheader', { name: 'Client ou pays (C)' })).toBeVisible();
+  await expect(page.getByText(/structure du classeur n.est pas modifiee/i)).toBeVisible();
+});
+
+test('la qualite tire un echantillon et le propose a la notation', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/qualite');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await expect(page.getByRole('heading', { name: 'Qualite' })).toBeVisible();
+  await page.getByRole('button', { name: /Tirer l.echantillon/ }).click();
+  // Le tirage repond, qu'il y ait des envois a controler ou non.
+  await expect(page.getByText(/tire\(s\) sur|deja complet|Aucun/i).first()).toBeVisible({ timeout: 20_000 });
+});
+
+test('le connecteur Claude refuse une requete sans jeton', async ({ page }) => {
+  const reponse = await page.request.post('/mcp', { data: { jsonrpc: '2.0', id: 1, method: 'ping' }, failOnStatusCode: false });
+  expect([401, 503]).toContain(reponse.status());
+  const corps = await reponse.json();
+  expect(corps.erreur).toBeTruthy();
+});
