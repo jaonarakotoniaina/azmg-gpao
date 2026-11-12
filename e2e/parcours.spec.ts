@@ -117,6 +117,26 @@ test('chacun peut changer son mot de passe depuis son compte', async ({ page }) 
   await expect(page.getByText('Mot de passe change')).toBeVisible({ timeout: 15_000 });
 });
 
+/**
+ * Un compte qui vient d'etre cree n'a rien recu. Des zeros partout ne doivent pas ressembler a une
+ * semaine calme : l'ecran doit dire que c'est une mise en route, et par ou commencer.
+ */
+test('un compte neuf explique sa mise en route au lieu d’afficher des zeros', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/tableau-de-bord');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  const carte = page.locator('#mise-en-route');
+  await expect(carte).toBeVisible({ timeout: 15_000 });
+  await expect(carte.getByText(/n’a encore recu aucune demande/)).toBeVisible();
+  // Les trois chemins pour alimenter le compte sont proposes, et mènent quelque part.
+  await expect(carte.getByRole('link', { name: 'Saisie rapide' })).toHaveAttribute('href', '/saisie');
+  await expect(carte.getByRole('link', { name: 'Import des mails' })).toHaveAttribute('href', '/import-mails');
+  await expect(carte.getByRole('link', { name: 'Import du classeur' })).toHaveAttribute('href', '/import');
+  // Aucun indicateur trompeur n'est affiche tant qu'il n'y a rien a mesurer.
+  await expect(page.getByText('Demandes entrees')).toHaveCount(0);
+});
+
 test('la collaboratrice cree un dossier et une demande au clavier en moins de 30 secondes', async ({ page }) => {
   await seConnecter(page, COMPTES.collaboratrice);
   await page.goto('/saisie');

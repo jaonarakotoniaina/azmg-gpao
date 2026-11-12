@@ -915,3 +915,39 @@ Mon premier controle du bundle en ligne cherchait les textes des nouveaux ecrans
 differe, donc dans leur propre fragment. La conclusion du moment restait juste, mais pour une
 autre raison, etablie par `/health`. Un controle qui ne peut pas distinguer « absent » de
 « ailleurs » ne prouve rien.
+
+---
+
+## 2026-11-12 (apres creation du premier compte) : des zeros qui ne disent rien
+
+Le compte Masenz cree, le tableau de bord affichait des zeros partout et « non mesure » sur les
+delais. C'est exact, et c'est inutilisable : rien ne distinguait une semaine calme d'une GPAO qui
+n'a encore jamais rien recu.
+
+La difference compte, parce que les deux appellent des actions opposees. Une semaine calme ne
+demande rien. Une mise en route qui n'a pas abouti demande de brancher la collecte, et plus le
+tableau ressemble a un calme plat, plus le defaut peut durer sans qu'on le voie.
+
+**Ce qui est livre**
+
+`tableauDeBord` renvoie `miseEnRoute`, vrai quand le compte n'a jamais recu la moindre demande,
+toutes periodes confondues (une seule ligne suffit a repondre, la requete s'arrete a la premiere).
+L'ecran affiche alors une carte qui dit ce qui se passe et propose les trois chemins pour alimenter
+le compte, du plus rapide au plus durable : saisie rapide, import de mails, import du classeur. Elle
+rappelle aussi que la collecte automatique demande une cle partagee et le script installe, faute de
+quoi rien n'arrive tout seul.
+
+Aucun indicateur n'est affiche dans ce cas : montrer des zeros a cote d'une explication reviendrait
+a laisser le doute.
+
+**Verifications**
+
+4 tests de plus (329 au total), dont deux qui fixent la frontiere : un compte vierge est signale,
+et une demande ouverte **hors de la periode regardee** suffit a ne plus le signaler. Un parcours
+Playwright verifie la carte, les trois liens et l'absence d'indicateurs trompeurs.
+
+**Le quatrieme cas de la meme famille**
+
+Apres les trois manques d'ecran de la journee, celui-ci est de la meme eau : le produit savait
+calculer, mais ne savait pas dire qu'il n'avait rien a calculer. Les chemins de mise en route sont
+ceux qu'on emprunte une seule fois, et ce sont ceux qui etaient les moins soignes.

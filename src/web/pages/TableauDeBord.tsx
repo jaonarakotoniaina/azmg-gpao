@@ -31,6 +31,8 @@ interface Delais {
 
 interface TableauDeBordReponse {
   aucunCompte?: true;
+  /** Le compte n'a jamais recu la moindre demande : c'est une mise en route, pas un calme plat. */
+  miseEnRoute?: boolean;
   periode: { debut: string; fin: string; jours: number };
   flux: Flux;
   stock: {
@@ -171,6 +173,32 @@ export default function TableauDeBord() {
         <Chargement texte="Calcul des indicateurs" />
       ) : !data || data.aucunCompte ? (
         <Vide>Aucun compte client dans votre perimetre.</Vide>
+      ) : data.miseEnRoute ? (
+        <Carte titre="Mise en route de ce compte" id="mise-en-route">
+          <p>
+            Le compte existe, mais la GPAO n&rsquo;a encore recu aucune demande. Des zeros partout ne veulent donc pas dire que la
+            semaine a ete calme : il n&rsquo;y a simplement rien a mesurer pour le moment.
+          </p>
+          <p className="mt-3 font-medium">Trois facons d&rsquo;alimenter le compte, de la plus rapide a la plus durable :</p>
+          <ol className="mt-2 space-y-3">
+            <li>
+              <Link to="/saisie">Saisie rapide</Link> : une consigne recue par message ou par vocal, une nouvelle demande, une note.
+              Quelques secondes, et le compte commence a vivre.
+            </li>
+            <li>
+              <Link to="/import-mails">Import des mails</Link> : deposer un fichier <code>.eml</code> ou <code>.mbox</code> pour
+              reprendre l&rsquo;historique. Rien a configurer, et l&rsquo;import se dedoublonne avec la collecte automatique.
+            </li>
+            <li>
+              <Link to="/import">Import du classeur</Link> : reprendre les dossiers depuis le suivi mensuel existant.
+            </li>
+          </ol>
+          <p className="aide mt-4">
+            La collecte automatique des mails, elle, demande une cle partagee et le script installe sur la boite de suivi. Tant
+            qu&rsquo;elle n&rsquo;est pas en place, rien n&rsquo;arrive tout seul : la marche a suivre est dans
+            <code> docs/apps-script.md</code>.
+          </p>
+        </Carte>
       ) : (
         <div className="space-y-6">
           <section aria-labelledby="titre-synthese">

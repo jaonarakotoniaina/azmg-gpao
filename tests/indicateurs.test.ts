@@ -261,4 +261,27 @@ describe('tableau de bord', () => {
     const global = await tableauDeBord(7, {}, MAINTENANT);
     expect(global.stock.total).toBe(3);
   });
+
+describe('mise en route d’un compte', () => {
+  it('signale un compte qui n’a jamais recu de demande', async () => {
+    // Des zeros partout veulent dire deux choses tres differentes : une semaine calme, ou une
+    // GPAO qui n'a encore rien recu. L'ecran doit pouvoir les distinguer.
+    const vierge = await creerCompteDeTest('Compte sans activite', 'sans-activite');
+    const tb = await tableauDeBord(7, { compteId: vierge.id });
+    expect(tb.miseEnRoute).toBe(true);
+    expect(tb.flux.entrees).toBe(0);
+  });
+
+  it('ne le signale plus des la premiere demande, meme hors de la periode', async () => {
+    const compte = await creerCompteDeTest('Compte avec historique', 'avec-historique');
+    const poste = await creerPosteDeTest(compte.id);
+    const dossier = (
+      await trouverOuCreerDossier({ compteId: compte.id, posteId: poste.id, client: 'Client', produit: 'Produit' }, AUTEUR)
+    ).dossier;
+    // Demande ouverte il y a bien plus que la periode regardee : le compte a vecu.
+    await creerDemande({ dossierId: dossier.id, famille: 'T01', objet: 'Ancienne demande', ouverteLe: t('2026-01-05T09:00') }, AUTEUR);
+    const tb = await tableauDeBord(7, { compteId: compte.id });
+    expect(tb.miseEnRoute).toBe(false);
+  });
+});
 });
