@@ -4560,7 +4560,9 @@ async function tableauDeBord(jours, filtres = {}, maintenant = /* @__PURE__ */ n
     const temps = tempsDemandeAvecHoraires(l.demande, debutsDo.get(l.demande.id) ?? l.demande.ouverteLe, horairesDo.get(l.demande.compteId), maintenant);
     return { demandeId: l.demande.id, objet: l.demande.objet, dossier: l.dossier, minutesAttente: temps.statutCourant };
   }).filter((l) => l.minutesAttente >= seuilAttenteMinutes).sort((a, b) => b.minutesAttente - a.minutesAttente);
+  const [premiere] = await db.select({ id: schema_exports.demandes.id }).from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...conditionsCommunes(filtres))).limit(1);
   return {
+    miseEnRoute: !premiere,
     periode: { debut: courante.debut.toISOString(), fin: courante.fin.toISOString(), jours },
     flux: fluxCourant,
     stock: stockCourant,
@@ -7550,7 +7552,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "81919f835bf907cf7c6efb4fcb785a787c0fb20e",
+        version: "5480f4687e49d27ac2e40d26ff4320f776c68b73",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
