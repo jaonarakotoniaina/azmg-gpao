@@ -23,6 +23,7 @@ import {
   sensDuMessage,
 } from '../src/server/modules/collecte/service';
 import { creerPoste } from '../src/server/modules/comptes/service';
+import { appliquerRegles } from '../src/server/modules/typage/regles';
 import { initialiserRegles } from '../src/server/modules/typage/service';
 import { cheminAbsolu, extensionAcceptee, rangerFichier } from '../src/server/lib/stockage';
 
@@ -367,6 +368,86 @@ describe('plusieurs postes sur un meme compte', () => {
     expect(dExport.every((d) => d.famille.startsWith('T'))).toBe(true);
     expect(dExport.some((d) => d.famille.startsWith('D'))).toBe(false);
     expect(demandes).toHaveLength(dExport.length + dDesigner.length);
+  });
+});
+
+describe('adresses du compte a ne pas suivre', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    await db
+      .update(schema.comptesClients)
+      .set({ adressesIgnorees: ['sales@client-fictif.test'] })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  async function collecter(de: string, a: string[]) {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: `<i${de}${a.join()}@exemple-fictif.test>`,
+        de,
+        a: a.join(', '),
+        objet: 'Proforma a etablir',
+        corps: 'Pourriez vous nous etablir la proforma en dollars pour cette commande ?',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    return enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+  }
+
+  it('ecarte un message qui ne concerne qu’une adresse a ne pas suivre', async () => {
+    const bilan = await collecter('tiers@inconnu.test', ['sales@client-fictif.test']);
+    expect(bilan.ignores).toBe(1);
+    expect(bilan.crees).toBe(0);
+    // Rien n'est enregistre : ni evenement a lire, ni dossier, ni demande.
+    expect(await db.select().from(schema.evenements)).toHaveLength(0);
+    expect(await db.select().from(schema.demandes)).toHaveLength(0);
+  });
+
+  it('collecte un message adresse a la fois au poste et a l’adresse ignoree', async () => {
+    // L'adresse du poste l'emporte : c'est bien du travail du poste.
+    const bilan = await collecter('tiers@inconnu.test', ['sales@client-fictif.test', 'info@client-fictif.test']);
+    expect(bilan.ignores).toBe(0);
+    expect(bilan.crees).toBe(1);
+  });
+
+  it('ne change rien quand aucune adresse n’est ignoree', async () => {
+    await db.update(schema.comptesClients).set({ adressesIgnorees: [] }).where(eq(schema.comptesClients.id, compteId));
+    const bilan = await collecter('tiers@inconnu.test', ['sales@client-fictif.test']);
+    expect(bilan.ignores).toBe(0);
+    expect(bilan.crees).toBe(1);
+  });
+
+  it('reconnait un encadrant AZMG qui ecrit au poste', async () => {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<j1@exemple-fictif.test>',
+        de: 'dirigeant@azmg-solutions.com',
+        a: 'info@client-fictif.test',
+        objet: 'Tableau de situation du client',
+        corps: 'Peux tu m’envoyer le tableau de situation par client avant vendredi ?',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    await enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const [evenement] = await db.select().from(schema.evenements);
+    // Un interne qui ecrit au poste, c'est un message qui arrive, pas un message qui part : le
+    // domaine AZMG ne doit pas l'emporter sur l'adresse du poste parmi les destinataires.
+    expect(evenement.sens).toBe('entrant');
+    // La nature n'etant que deduite du sens, la confiance reste sous le seuil et le message part
+    // en « A classer » plutot que d'etre applique d'office. Le typage s'y lit dans les
+    // justificatifs, sans etre pose sur l'evenement.
+    expect(evenement.famille).toBeNull();
+    expect(evenement.justificatifs).toContain('expediteur sur un domaine interne AZMG');
+  });
+
+  it('reconnait l’interne AZMG au seul domaine, sans aucun mot-cle', () => {
+    const typage = appliquerRegles({
+      objet: 'Tableau de situation du client',
+      corps: 'Peux tu m’envoyer le tableau de situation par client avant vendredi ?',
+      expediteur: 'dirigeant@azmg-solutions.com',
+      sens: 'entrant',
+    });
+    expect(typage?.typage.interlocuteur).toBe('interne_azmg');
   });
 });
 

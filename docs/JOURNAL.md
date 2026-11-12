@@ -759,3 +759,37 @@ temoin lui ferait perdre tout son interet.
 Dans Parametres, onglet « Comptes clients » : l'adresse de la donneuse d'ordre pour le compte, et
 les adresses de chaque poste. Le poste de la designer doit etre cree s'il ne l'est pas encore, avec
 le metier « designer », qui pre-remplit son perimetre de familles.
+
+---
+
+## 2026-11-12 (fin) : ce qui n'est pas suivi, et qui est interne
+
+Deux precisions sur le compte, et leurs consequences.
+
+**Une boite du client n'est pas suivie**
+
+`comptes_clients.adresses_ignorees` (migration `0005`). Un message qui ne concerne qu'une de ces
+adresses n'est pas collecte du tout : ni evenement, ni dossier, ni demande. Le bilan de collecte les
+compte a part, a cote des doublons et du hors perimetre.
+
+C'est plus net que de les classer T00, qui laisse une trace a lire. Pour une boite qui n'est pas
+suivie, il n'y a rien a lire : une trace serait du bruit, et le volume finirait par peser sur les
+indicateurs de flux. La regle reste prudente : il suffit qu'une adresse d'un poste figure parmi
+l'expediteur ou les destinataires pour que le message soit collecte malgre tout.
+
+**Un encadrant AZMG n'est pas la donneuse d'ordre**
+
+Un dirigeant AZMG qui demandait un « tableau de situation » etait classe comme la donneuse d'ordre,
+parce que cette demande vient habituellement d'elle. La deduction par adresse ecrase maintenant ce
+que les mots-cles devinent : l'adresse exacte de la DO d'abord, le domaine interne AZMG ensuite.
+Une adresse est un fait, un mot-cle une inference.
+
+A noter pour la lecture des ecrans : un message dont la nature n'est que deduite du sens reste sous
+le seuil de confiance et part en « A classer », interlocuteur compris. Le typage se lit alors dans
+les justificatifs sans etre pose sur l'evenement, et c'est voulu : un classement faible se corrige
+a la main plutot que de s'appliquer d'office. Un test le verifie explicitement, pour qu'on ne le
+prenne pas plus tard pour un defaut.
+
+**Verifications**
+
+5 tests de plus (325 au total). Le jeu temoin du typage reste a 86,4 %.

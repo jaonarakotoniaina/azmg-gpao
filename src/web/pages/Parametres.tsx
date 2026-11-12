@@ -18,6 +18,7 @@ interface CompteClient {
   nom: string;
   donneurOrdreNom: string | null;
   donneurOrdreEmail: string | null;
+  adressesIgnorees: string[];
 }
 
 interface PosteClient {
@@ -48,6 +49,7 @@ export default function Parametres() {
   const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'comptes' | 'equipe'>('referentiels');
   /** Saisie en cours : adresse de la DO par compte, adresses par poste. */
   const [adresseDo, setAdresseDo] = useState<Record<number, string>>({});
+  const [adressesIgnorees, setAdressesIgnorees] = useState<Record<number, string>>({});
   const [adressesPoste, setAdressesPoste] = useState<Record<number, string>>({});
   const [brouillon, setBrouillon] = useState<ParametresType | null>(null);
 
@@ -72,12 +74,17 @@ export default function Parametres() {
     if (data?.parametres && !brouillon) setBrouillon(structuredClone(data.parametres));
   }, [data, brouillon]);
 
-  const enregistrerDo = useMutation({
-    mutationFn: (v: { id: number; donneurOrdreEmail: string | null }) =>
-      api.patch(`/api/comptes/${v.id}`, { donneurOrdreEmail: v.donneurOrdreEmail }),
+  const enregistrerCompte = useMutation({
+    mutationFn: (v: { id: number; donneurOrdreEmail: string | null; adressesIgnorees: string[] }) =>
+      api.patch(`/api/comptes/${v.id}`, { donneurOrdreEmail: v.donneurOrdreEmail, adressesIgnorees: v.adressesIgnorees }),
     onSuccess: (_r, v) => {
-      notifier('Adresse de la donneuse d’ordre enregistree');
+      notifier('Compte enregistre');
       setAdresseDo((a) => {
+        const suite = { ...a };
+        delete suite[v.id];
+        return suite;
+      });
+      setAdressesIgnorees((a) => {
         const suite = { ...a };
         delete suite[v.id];
         return suite;
@@ -426,15 +433,24 @@ export default function Parametres() {
               <ul className="mt-4 space-y-6">
                 {comptes.map((c) => {
                   const saisieDo = adresseDo[c.id] ?? c.donneurOrdreEmail ?? '';
+                  const saisieIgnorees = adressesIgnorees[c.id] ?? c.adressesIgnorees.join(', ');
+                  const modifieCompte = saisieDo !== (c.donneurOrdreEmail ?? '') || saisieIgnorees !== c.adressesIgnorees.join(', ');
                   const postesDuCompte = postes.filter((p) => p.compteId === c.id && p.actif);
                   return (
                     <li key={c.id} className="border-b border-ligne pb-6 last:border-0">
                       <p className="font-medium">{c.nom}</p>
                       <form
-                        className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+                        className="mt-2 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
                         onSubmit={(e) => {
                           e.preventDefault();
-                          enregistrerDo.mutate({ id: c.id, donneurOrdreEmail: saisieDo.trim() || null });
+                          enregistrerCompte.mutate({
+                            id: c.id,
+                            donneurOrdreEmail: saisieDo.trim() || null,
+                            adressesIgnorees: saisieIgnorees
+                              .split(',')
+                              .map((a) => a.trim())
+                              .filter(Boolean),
+                          });
                         }}
                       >
                         <ChampTexte
@@ -443,11 +459,13 @@ export default function Parametres() {
                           value={saisieDo}
                           onChange={(e) => setAdresseDo((a) => ({ ...a, [c.id]: e.target.value }))}
                         />
-                        <Bouton
-                          type="submit"
-                          disabled={saisieDo === (c.donneurOrdreEmail ?? '')}
-                          chargement={enregistrerDo.isPending}
-                        >
+                        <ChampTexte
+                          libelle="Adresses a ne pas suivre"
+                          aide="Leurs messages ne sont pas collectes. Separees par des virgules"
+                          value={saisieIgnorees}
+                          onChange={(e) => setAdressesIgnorees((a) => ({ ...a, [c.id]: e.target.value }))}
+                        />
+                        <Bouton type="submit" disabled={!modifieCompte} chargement={enregistrerCompte.isPending}>
                           Enregistrer
                         </Bouton>
                       </form>

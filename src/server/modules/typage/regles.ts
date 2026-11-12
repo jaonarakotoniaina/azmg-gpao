@@ -13,7 +13,16 @@
  * plus de signaux l'emporte : un domaine connu plus deux mots-cles bat un seul mot-cle isole.
  */
 import type { Interlocuteur, Nature, Sens } from '@shared/constantes';
-import { contientExpression, domaineDe, estUneDe, normaliserTypage, texteDuMessage, type MessageAClasser, type Typage } from '@shared/typage';
+import {
+  contientExpression,
+  domaineDe,
+  DOMAINES_INTERNES_PAR_DEFAUT,
+  estUneDe,
+  normaliserTypage,
+  texteDuMessage,
+  type MessageAClasser,
+  type Typage,
+} from '@shared/typage';
 
 export interface RegleTypage {
   id?: number;
@@ -450,22 +459,31 @@ export function appliquerRegles(message: MessageAClasser, regles: RegleTypage[] 
  *    confiance pour que le cas passe sous le seuil s'il est isole.
  */
 /**
- * Reconnait la donneuse d'ordre a son adresse.
+ * Reconnait l'interlocuteur a son adresse, et **ecrase** ce que les mots-cles avaient devine.
  *
- * Les regles ne savent la reconnaitre qu'au domaine de l'expediteur. Or la DO partage souvent son
- * domaine avec le poste (une boite « export » et une boite « info » chez le meme client) : seule
- * l'adresse exacte les distingue. Ce signal est deterministe, il passe donc avant les mots-cles.
+ * Une adresse est un fait, un mot-cle une inference. Un mail parti d'un encadrant AZMG et parlant
+ * de « tableau de situation » n'est pas un mail de la donneuse d'ordre, meme si le vocabulaire y
+ * fait penser. De meme, les regles ne savent reconnaitre la DO qu'au domaine de l'expediteur, or
+ * elle partage souvent son domaine avec le poste (une boite « export » et une boite « info » chez
+ * le meme client) : seule l'adresse exacte les distingue.
  */
 function deduireInterlocuteur(typage: Typage, message: MessageAClasser) {
-  if (typage.interlocuteur || !message.adresseDo) return;
-  if (estUneDe(message.expediteur, [message.adresseDo])) {
-    typage.interlocuteur = 'do';
-    typage.justificatifs.push('message recu de l’adresse de la donneuse d’ordre');
-    return;
+  if (message.adresseDo) {
+    const deLaDo = estUneDe(message.expediteur, [message.adresseDo]);
+    const versLaDo = message.destinataires?.some((d) => estUneDe(d, [message.adresseDo!])) ?? false;
+    if (deLaDo || versLaDo) {
+      typage.interlocuteur = 'do';
+      typage.justificatifs.push(deLaDo ? 'message recu de l’adresse de la donneuse d’ordre' : 'message adresse a la donneuse d’ordre');
+      return;
+    }
   }
-  if (message.destinataires?.some((d) => estUneDe(d, [message.adresseDo!]))) {
-    typage.interlocuteur = 'do';
-    typage.justificatifs.push('message adresse a la donneuse d’ordre');
+
+  // Un encadrant AZMG qui ecrit au poste : son domaine suffit, aucun mot-cle n'est necessaire.
+  const domaine = domaineDe(message.expediteur);
+  const internes = message.domainesInternes ?? DOMAINES_INTERNES_PAR_DEFAUT;
+  if (domaine && internes.some((d) => domaine.endsWith(d))) {
+    typage.interlocuteur = 'interne_azmg';
+    typage.justificatifs.push('expediteur sur un domaine interne AZMG');
   }
 }
 

@@ -39,7 +39,12 @@ export interface MessageAClasser {
   adressesPoste?: string[];
   /** Adresse de la donneuse d'ordre, seul signal fiable pour la reconnaitre sur ce domaine. */
   adresseDo?: string | null;
+  /** Domaines internes a AZMG, pour reconnaitre un encadrant qui ecrit au poste. */
+  domainesInternes?: string[];
 }
+
+/** Domaines internes retenus a defaut d'indication, l'application etant celle d'AZMG. */
+export const DOMAINES_INTERNES_PAR_DEFAUT = ['azmg-solutions.com'];
 
 /** Adresse email seule, en minuscules, sans le nom d'affichage ni les chevrons. */
 export function adresseNue(brut: string | null | undefined): string | null {

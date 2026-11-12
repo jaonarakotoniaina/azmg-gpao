@@ -31,6 +31,8 @@ export interface BilanCollecte {
   crees: number;
   /** Messages deja connus : le dedoublonnage a joue. */
   doublons: number;
+  /** Messages ecartes avant tout traitement : adresses du compte a ne pas suivre. */
+  ignores: number;
   horsPerimetre: number;
   aClasser: number;
   piecesRangees: number;
@@ -38,7 +40,7 @@ export interface BilanCollecte {
 }
 
 export function bilanVide(): BilanCollecte {
-  return { lus: 0, crees: 0, doublons: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
+  return { lus: 0, crees: 0, doublons: 0, ignores: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
 }
 
 /**
@@ -76,12 +78,31 @@ export interface ConfigCollecte {
   /** Toutes les adresses de tous les postes du compte, pour deduire le sens. */
   adressesPoste: string[];
   adresseDo: string | null;
+  /** Adresses du client a ne pas suivre, par exemple une boite commerciale. */
+  adressesIgnorees: string[];
+}
+
+/**
+ * Vrai si le message ne concerne que des adresses a ne pas suivre.
+ *
+ * Le test est volontairement prudent : il suffit qu'une adresse d'un poste figure parmi
+ * l'expediteur ou les destinataires pour que le message soit collecte. Un mail adresse a la fois
+ * a la boite commerciale et au poste reste donc du travail du poste.
+ */
+export function estIgnore(message: MessageCollecte, config: { adressesPoste: string[]; adressesIgnorees: string[] }): boolean {
+  if (!config.adressesIgnorees.length) return false;
+  const correspondants = [message.expediteur, ...(message.destinataires ?? [])];
+  if (correspondants.some((a) => estUneDe(a, config.adressesPoste))) return false;
+  return correspondants.some((a) => estUneDe(a, config.adressesIgnorees));
 }
 
 /** Configuration d'un compte utile a la collecte : ses postes, et qui est la donneuse d'ordre. */
 export async function configDuCompte(compteId: number): Promise<ConfigCollecte> {
   const [compte] = await db
-    .select({ donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail })
+    .select({
+      donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail,
+      adressesIgnorees: schema.comptesClients.adressesIgnorees,
+    })
     .from(schema.comptesClients)
     .where(eq(schema.comptesClients.id, compteId));
 
@@ -107,6 +128,7 @@ export async function configDuCompte(compteId: number): Promise<ConfigCollecte> 
     postes,
     adressesPoste: postes.flatMap((p) => p.adresses),
     adresseDo: compte?.donneurOrdreEmail ?? null,
+    adressesIgnorees: chaines(compte?.adressesIgnorees),
   };
 }
 
@@ -178,12 +200,18 @@ export async function enregistrerMessage(
   message: MessageCollecte,
   opts: OptionsCollecte,
   auteur: Auteur,
-): Promise<{ evenementId: number; demandeId: number | null; horsPerimetre: boolean; aClasser: boolean; pieces: number } | null> {
+): Promise<
+  | { ignore: true }
+  | { ignore?: false; evenementId: number; demandeId: number | null; horsPerimetre: boolean; aClasser: boolean; pieces: number }
+  | null
+> {
   // 1. Dedoublonnage : un identifiant deja connu ne cree rien.
   const [deja] = await db.select({ id: schema.evenements.id }).from(schema.evenements).where(eq(schema.evenements.messageId, message.messageId));
   if (deja) return null;
 
   const config = opts.config ?? (await configDuCompte(opts.compteId));
+  // Ecarte avant tout traitement : pas de typage, pas de dossier, pas de trace a lire.
+  if (estIgnore(message, config)) return { ignore: true as const };
   const domainesInternes = opts.domainesInternes ?? ['azmg-solutions.com'];
   const sens = sensDuMessage(message, { adressesPoste: config.adressesPoste, domainesInternes });
 
@@ -295,6 +323,10 @@ export async function enregistrerLot(messages: MessageCollecte[], opts: OptionsC
       const resultat = await enregistrerMessage(message, { ...opts, config }, auteur);
       if (!resultat) {
         bilan.doublons++;
+        continue;
+      }
+      if (resultat.ignore) {
+        bilan.ignores++;
         continue;
       }
       bilan.crees++;

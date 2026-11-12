@@ -340,3 +340,34 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   adresse est un fait et une famille un typage qui peut se tromper.
 - Retour arriere : la migration `0004` est rejouable sur base vide, et un poste sans adresse
   retrouve le comportement par domaine.
+
+## 2026-11-12 : une adresse du client peut etre ecartee avant tout traitement
+
+- Sujet : une boite du client qui ne correspond a aucun poste suivi (une boite commerciale) recoit
+  du courrier qui arrive dans la boite de suivi.
+- Options : la laisser passer et compter sur le typage pour la ranger en T00, ou l'ecarter avant
+  tout traitement.
+- Choix : `comptes_clients.adresses_ignorees`. Un message qui ne concerne qu'elles n'est pas
+  collecte du tout : ni evenement, ni dossier, ni demande. Le bilan de collecte les compte a part.
+- Raison : T00 laisse une trace a lire, et c'est voulu pour un mail qui concerne le poste sans
+  relever de son travail. Pour une boite qui n'est pas suivie, il n'y a rien a lire du tout : une
+  trace serait du bruit, et le volume finirait par peser sur les indicateurs de flux.
+- Garde-fou : la regle est prudente. Il suffit qu'une adresse d'un poste figure parmi l'expediteur
+  ou les destinataires pour que le message soit collecte malgre tout. Un mail adresse a la fois a
+  la boite commerciale et au poste reste du travail du poste.
+- Retour arriere : une liste vide retablit exactement le comportement precedent.
+
+## 2026-11-12 : une adresse l'emporte sur un mot-cle pour l'interlocuteur
+
+- Sujet : un encadrant AZMG qui ecrit au poste etait classe d'apres le vocabulaire du message. Un
+  dirigeant demandant un « tableau de situation » devenait ainsi la donneuse d'ordre, parce que
+  cette demande vient habituellement d'elle.
+- Choix : la deduction par adresse **ecrase** ce que les mots-cles avaient devine, dans cet ordre :
+  l'adresse exacte de la DO d'abord, le domaine interne AZMG ensuite.
+- Raison : une adresse est un fait, un mot-cle une inference. C'est le meme raisonnement que pour
+  le sens d'un message, et il doit valoir pour l'interlocuteur.
+- Effet secondaire a connaitre : un message dont la nature n'est que deduite du sens reste sous le
+  seuil de confiance et part en « A classer », interlocuteur compris. Le typage se lit alors dans
+  les justificatifs, sans etre pose sur l'evenement. C'est voulu : un classement faible se corrige
+  a la main plutot que de s'appliquer d'office.
+- Retour arriere : `deduireInterlocuteur` dans `src/server/modules/typage/regles.ts`.

@@ -93,6 +93,12 @@ export const comptesClients = pgTable('comptes_clients', {
   /** Donneur d'ordre : seule autorite de validation cote client. */
   donneurOrdreNom: text('donneur_ordre_nom'),
   donneurOrdreEmail: text('donneur_ordre_email'),
+  /**
+   * Adresses du client a ne pas suivre. Un message qui ne concerne qu'elles n'est pas collecte
+   * du tout : il ne cree ni evenement, ni dossier, ni demande. C'est plus net que de le classer
+   * hors perimetre, qui laisse une trace a lire.
+   */
+  adressesIgnorees: jsonb('adresses_ignorees').notNull().default([]),
   /** Manager AZMG qui pilote le compte. */
   managerId: ref('manager_id').references(() => utilisateurs.id, { onDelete: 'set null' }),
   /** Horaires ouvres du compte (null : horaires generaux des parametres). */
