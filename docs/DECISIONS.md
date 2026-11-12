@@ -371,3 +371,21 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   les justificatifs, sans etre pose sur l'evenement. C'est voulu : un classement faible se corrige
   a la main plutot que de s'appliquer d'office.
 - Retour arriere : `deduireInterlocuteur` dans `src/server/modules/typage/regles.ts`.
+
+## 2026-11-12 : le jeu de parcours part d'une application vide
+
+- Sujet : `e2e/global-setup.ts` creait le compte client et le poste directement en SQL, « pour un
+  demarrage rapide ».
+- Ce que cela a coute : le premier ecran qu'un utilisateur voit, une application sans aucun compte,
+  n'etait exerce par aucun test. Le manque, aucun moyen de creer un compte par l'interface, n'est
+  apparu qu'a la premiere mise en ligne.
+- Choix : la preparation ne cree plus que les comptes utilisateurs. Le premier parcours cree le
+  compte client et ses postes **par l'interface**, et les suivants travaillent dessus.
+- Cout assume : les parcours deviennent dependants de leur ordre, ce que `test.describe.configure({
+  mode: 'serial' })` garantissait deja. Le premier parcours ajoute environ deux secondes.
+- Benefice immediat : le second parcours est tombe des le premier essai, parce qu'un poste cree par
+  l'interface n'etait rattache a aucun collaborateur. Le champ manquait dans le formulaire, et un
+  poste sans rattachement n'apparait dans la file de personne.
+- Regle a en tirer : tout raccourci de preparation qui court-circuite l'interface cache le chemin
+  qu'il court-circuite. Quand un ecran est le seul moyen de faire une chose, un parcours doit passer
+  par cet ecran.

@@ -247,6 +247,11 @@ L'ecran **Parametres** a quatre onglets.
   est signalee, les delais de relance N1, N2 et N3, l'heure de preparation du reporting quotidien,
   le seuil de confiance du typage automatique et la part des envois tiree au sort pour le controle
   qualite.
+- **Comptes clients** : creer un compte client, creer ses postes (un par collaborateur suivi, avec
+  son metier, ses adresses et le collaborateur a qui il est rattache), et renseigner l'adresse de
+  la donneuse d'ordre ainsi que les adresses du client a ne pas suivre. C'est le premier ecran a
+  remplir sur une installation neuve : tant qu'aucun compte n'existe, le reste de l'application
+  est vide.
 - **Automatisations** : un interrupteur par automatisation et un interrupteur general. Le mode
   « brouillon » prepare un texte pret a relire, il **n'envoie rien**. Couper l'interrupteur
   « Preparation des relances » arrete leur preparation du matin sans toucher au reste ;

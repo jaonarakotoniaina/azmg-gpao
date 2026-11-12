@@ -292,6 +292,21 @@ cd ~/azmg-gpao/current
 ADMIN_PASSWORD='un-mot-de-passe-solide' node dist/server/cli.js creer-admin jaona.rakotoniaina@azmg-solutions.com "Jaona Rakotoniaina"
 ```
 
+### 9 bis. Premier compte client et premiers postes
+
+Une fois connecte avec le compte administrateur, aller dans **Parametres**, onglet **Comptes
+clients** :
+
+1. Creer le compte client (nom, pays, ville, nom et adresse de la donneuse d'ordre). Le code du
+   compte est derive du nom.
+2. Creer un poste par collaborateur suivi : son intitule, son metier (qui pre-remplit le perimetre
+   de familles), ses adresses, et **le collaborateur a qui il est rattache**. Sans rattachement, le
+   poste n'apparait dans la file d'aucun collaborateur.
+3. Renseigner, si besoin, les adresses du client a ne pas suivre.
+
+Tant qu'aucun compte n'existe, les ecrans de pilotage sont vides : c'est normal, l'application
+n'arrive avec aucune donnee et le seed de demonstration est desactive en production.
+
 ### 10. Lignes de cron
 
 Dans cPanel, « Cron Jobs », ajouter exactement ces trois lignes :

@@ -15,6 +15,49 @@ const CLASSEUR = path.resolve(__dirname, '..', 'tests', 'fixtures', 'SUIVI_MENSU
 
 test.describe.configure({ mode: 'serial' });
 
+/**
+ * Premier demarrage : l'application arrive vide, sans aucun compte client. Ce parcours cree le
+ * compte et les postes par l'interface, et tous les parcours suivants travaillent dessus.
+ */
+test('le premier demarrage permet de creer un compte client et ses postes', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/parametres');
+  await page.getByRole('tab', { name: 'Comptes clients' }).click();
+
+  // Aucun compte : l'ecran doit le dire, et non tourner indefiniment sur un chargement.
+  await expect(page.getByText('Aucun compte client pour le moment.')).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole('textbox', { name: 'Nom du client', exact: true }).fill('Compte de parcours');
+  await page.getByRole('textbox', { name: 'Pays', exact: true }).fill('Espagne');
+  await page.getByRole('textbox', { name: 'Ville', exact: true }).fill('Barcelone');
+  await page.getByRole('textbox', { name: 'Nom de la donneuse d’ordre', exact: true }).fill('Responsable export (fictive)');
+  await page.getByRole('textbox', { name: 'Adresse de la donneuse d’ordre', exact: true }).first().fill('do@client-fictif.test');
+  await page.getByRole('button', { name: 'Creer le compte' }).click();
+  await expect(page.getByText('Compte client cree')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Aucun compte client pour le moment.')).toHaveCount(0);
+
+  // Le poste de l'assistante export, puis celui de la designer : deux metiers sur un compte.
+  await page.getByRole('textbox', { name: 'Nouveau poste', exact: true }).fill('Assistante export');
+  await page.getByRole('combobox', { name: 'Metier', exact: true }).selectOption('export');
+  await page.getByRole('textbox', { name: 'Adresses du poste', exact: true }).fill('info@client-fictif.test');
+  // Sans rattachement, le poste n'apparait dans la file d'aucun collaborateur.
+  await page.getByRole('combobox', { name: 'Collaborateur', exact: true }).selectOption({ label: 'Elysa' });
+  await page.getByRole('button', { name: 'Creer le poste' }).click();
+  await expect(page.getByText('Poste cree')).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole('textbox', { name: 'Nouveau poste', exact: true }).fill('Designer');
+  await page.getByRole('combobox', { name: 'Metier', exact: true }).selectOption('designer');
+  await page.getByRole('textbox', { name: 'Adresses du poste', exact: true }).fill('marketing@client-fictif.test');
+  await page.getByRole('button', { name: 'Creer le poste' }).click();
+  await expect(page.getByText('Poste cree')).toBeVisible({ timeout: 15_000 });
+
+  // Les deux postes sont la, chacun avec son perimetre de familles pre-rempli par son metier.
+  await expect(page.getByText('Assistante export', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText('Designer', { exact: false }).first()).toBeVisible();
+  await expect(page.getByText(/14 famille\(s\)/)).toBeVisible();
+  await expect(page.getByText(/6 famille\(s\)/)).toBeVisible();
+});
+
 test('la collaboratrice cree un dossier et une demande au clavier en moins de 30 secondes', async ({ page }) => {
   await seConnecter(page, COMPTES.collaboratrice);
   await page.goto('/saisie');

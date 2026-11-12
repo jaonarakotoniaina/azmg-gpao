@@ -793,3 +793,47 @@ prenne pas plus tard pour un defaut.
 **Verifications**
 
 5 tests de plus (325 au total). Le jeu temoin du typage reste a 86,4 %.
+
+---
+
+## 2026-11-12 (apres mise en ligne) : l'application arrivait sans porte d'entree
+
+Premiere mise en ligne, et aucun compte client visible. Ce n'etait pas un defaut de deploiement :
+rien dans l'interface ne permettait de creer un compte.
+
+**Ce qui manquait**
+
+Les routes `POST /api/comptes` et `POST /api/postes` existaient depuis la phase 1, mais aucun ecran
+ne les appelait. Le seed de demonstration est desactive en production, a juste titre. Une
+installation neuve se retrouvait donc avec un compte administrateur et rien d'autre, sans moyen
+d'aller plus loin.
+
+S'y ajoutait un ecran trompeur : l'onglet « Comptes clients » testait `!comptes?.length` avant
+d'afficher la liste, et montrait donc un chargement perpetuel quand la liste etait vide, au lieu de
+dire qu'il n'y avait aucun compte.
+
+**Pourquoi aucun test ne l'a vu**
+
+Le jeu de parcours creait le compte et le poste **directement en SQL**, dans `e2e/global-setup.ts`,
+« pour un demarrage rapide ». Tous les parcours partaient donc d'une application deja peuplee, et
+le premier ecran qu'un utilisateur voit en vrai n'etait exerce par rien.
+
+C'est la correction la plus utile de la journee : la preparation ne cree plus ni compte ni poste, et
+le **premier parcours les cree par l'interface**. Le chemin du premier demarrage fait desormais
+partie de la suite, et les dix-neuf autres parcours travaillent sur ce que celui-la a cree.
+
+**Ce qui a ete ajoute**
+
+- Formulaire de creation d'un compte client (administrateur) : nom, pays, ville, nom et adresse de
+  la donneuse d'ordre. Le code du compte est derive du nom.
+- Formulaire de creation d'un poste sous chaque compte : intitule, metier (qui pre-remplit le
+  perimetre de familles), adresses, et **collaborateur rattache**. Ce dernier champ manquait aussi :
+  un poste sans rattachement n'apparait dans la file d'aucun collaborateur, ce que le second
+  parcours a revele des que le premier a cesse de passer par SQL.
+- Etats vides explicites, a la place du chargement perpetuel.
+- `README.md` : une etape « Premier compte client et premiers postes » dans la mise en place, et le
+  guide utilisateur decrit l'onglet.
+
+**Verifications**
+
+20 parcours Playwright (un de plus), 325 tests Vitest.
