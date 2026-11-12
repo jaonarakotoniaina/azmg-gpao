@@ -404,3 +404,26 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   mouvement. Sans lui, un mot de passe pose par l'administrateur serait definitif.
 - Retour arriere : la route `POST /api/auth/mot-de-passe-oublie` est inchangee et prendra le relais
   des que le SMTP sera fourni.
+
+## 2026-11-12 : /health dit l'etat des migrations, sans le faire echouer
+
+- Sujet : apres une mise en ligne, rien ne permettait de verifier de l'exterieur que les migrations
+  s'etaient appliquees. La question s'est posee des la premiere mise a jour, et la reponse ne
+  pouvait etre qu'un raisonnement, pas une mesure.
+- Pourquoi c'est le cas le plus trompeur : une application qui sert le bon code sur une base restee
+  en arriere repond normalement. Le defaut n'apparait qu'au premier ecran qui touche une colonne
+  absente, souvent longtemps apres, et loin de sa cause.
+- Choix : `/health` publie `migrations` (attendues, appliquees, derniere, aJour). Le nom de la
+  derniere migration est retrouve en rapprochant l'horodatage enregistre par Drizzle du journal du
+  depot, la table ne stockant que l'empreinte du fichier SQL.
+- Ce que le controle **ne fait pas** : il ne change pas le code de reponse. Une base en retard
+  laisse `/health` a 200.
+- Raison : `scripts/auto-deploy.sh` revient en arriere quand `/health` echoue. Faire echouer le
+  controle sur un retard de migration rendrait le retour arriere automatique, ce qui est
+  seduisant, mais un faux negatif ferait alors reculer une mise en ligne saine. Le signal est
+  nouveau et n'a jamais tourne en production : on le regarde avant de lui confier une decision.
+- Une erreur de lecture ne fait pas echouer le controle non plus : elle est rapportee dans
+  `migrations.erreur`. L'information manque, elle n'est pas fausse.
+- Un test verifie qu'aucun mot sensible n'apparait dans la reponse, `/health` etant public.
+- Retour arriere : `src/server/lib/migrations.ts`, et le champ se retire du JSON sans toucher au
+  reste.

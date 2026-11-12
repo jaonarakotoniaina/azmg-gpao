@@ -297,6 +297,24 @@ describe('sante du service', () => {
     expect(r.body.service).toBe('AZMG GPAO');
   });
 
+  it('annonce l’etat des migrations dans /health', async () => {
+    // Une mise en ligne peut servir le bon code sur une base restee en arriere : le controle de
+    // sante doit permettre de le voir de l'exterieur, sans ouvrir de session.
+    const r = await request(app).get('/health').expect(200);
+    expect(r.body.migrations.attendues).toBeGreaterThan(0);
+    expect(r.body.migrations.appliquees).toBe(r.body.migrations.attendues);
+    expect(r.body.migrations.derniere).toMatch(/^\d{4}_/);
+    expect(r.body.migrations.aJour).toBe(true);
+  });
+
+  it('ne divulgue aucun secret dans /health', async () => {
+    const r = await request(app).get('/health').expect(200);
+    const texte = JSON.stringify(r.body).toLowerCase();
+    for (const mot of ['password', 'secret', 'token', 'motdepasse', 'postgresql://']) {
+      expect(texte, `« ${mot} » ne doit pas apparaitre dans /health`).not.toContain(mot);
+    }
+  });
+
   it('renvoie une erreur JSON sur une route d’API inconnue', async () => {
     const r = await request(app).get('/api/inexistant').expect(404);
     expect(r.body.erreur).toBe('Route inconnue');
