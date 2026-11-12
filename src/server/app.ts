@@ -18,6 +18,7 @@ import { routesImport } from './modules/import/routes';
 import { routesIndicateurs } from './modules/indicateurs/routes';
 import { routesDigest, routesQualite } from './modules/qualite/routes';
 import { routesExport } from './modules/export/routes';
+import { etatMigrations } from './lib/migrations';
 import { etatMcp, noterAppel, routesMcp } from './modules/mcp/routes';
 import { routesAgent, routesTypage } from './modules/typage/routes';
 import { routesCollecte, routesWebhookCollecte } from './modules/collecte/routes';
@@ -56,7 +57,15 @@ export function creerApplication() {
     try {
       await getPool().query('SELECT 1');
       // mcp : connecteur Claude configure ou non, et les derniers appels recus (jamais la cle).
-      res.json({ statut: 'ok', service: 'AZMG GPAO', version: process.env.APP_VERSION ?? 'dev', deploiement, mcp: etatMcp() });
+      // migrations : une mise en ligne peut servir le bon code sur une base restee en arriere.
+      res.json({
+        statut: 'ok',
+        service: 'AZMG GPAO',
+        version: process.env.APP_VERSION ?? 'dev',
+        deploiement,
+        migrations: await etatMigrations(),
+        mcp: etatMcp(),
+      });
     } catch {
       res.status(503).json({ statut: 'erreur', service: 'AZMG GPAO' });
     }

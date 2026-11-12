@@ -881,3 +881,37 @@ test ne les voyait parce que les parcours contournaient l'interface : par SQL po
 clients, par la ligne de commande pour les utilisateurs. Le reste du produit est couvert ; ce sont
 les chemins de mise en route qui ne l'etaient pas, et ce sont precisement ceux qu'on emprunte une
 seule fois, le jour de la mise en ligne.
+
+---
+
+## 2026-11-12 (fin de journee) : verifier une mise en ligne depuis l'exterieur
+
+Apres la mise a jour, j'ai pu confirmer la version servie en comparant l'empreinte du fichier
+telecharge du serveur a celle de ma build. En revanche, rien ne permettait de verifier que les
+migrations s'etaient appliquees : la reponse ne pouvait etre qu'un raisonnement.
+
+C'est le cas le plus trompeur d'une mise en ligne. Une application qui sert le bon code sur une
+base restee en arriere repond normalement, et le defaut n'apparait qu'au premier ecran qui touche
+une colonne absente, longtemps apres et loin de sa cause.
+
+`/health` publie desormais `migrations` : attendues, appliquees, nom de la derniere, et un
+booleen. Le nom est retrouve en rapprochant l'horodatage enregistre par Drizzle du journal du
+depot, la table ne stockant que l'empreinte du fichier SQL.
+
+**Ce que le controle ne fait pas** : il ne change pas le code de reponse. `scripts/auto-deploy.sh`
+revient en arriere quand `/health` echoue ; faire echouer le controle sur un retard de migration
+rendrait le retour arriere automatique, ce qui est seduisant, mais un faux negatif ferait reculer
+une mise en ligne saine. Le signal est neuf, on le regarde avant de lui confier une decision.
+
+**Verifications**
+
+2 tests de plus (327 au total) : l'etat des migrations est annonce et coherent, et aucun mot
+sensible n'apparait dans la reponse, `/health` etant public.
+
+**Une correction de methode, pour memoire**
+
+Mon premier controle du bundle en ligne cherchait les textes des nouveaux ecrans dans
+`index-*.js` et n'en trouvait aucun. La methode etait fausse : les ecrans sont en chargement
+differe, donc dans leur propre fragment. La conclusion du moment restait juste, mais pour une
+autre raison, etablie par `/health`. Un controle qui ne peut pas distinguer « absent » de
+« ailleurs » ne prouve rien.

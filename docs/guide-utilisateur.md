@@ -263,6 +263,9 @@ L'ecran **Parametres** a quatre onglets.
   ses propres droits.
 - **Mon compte** : changer son propre mot de passe. Cet onglet est visible par tous les roles.
 
+Pour verifier qu'une mise a jour est bien arrivee en ligne, ouvrir `/health` : la page indique la
+version servie et si la base est a jour. La marche a suivre est dans le `README.md`.
+
 ### Les roles
 
 | Role | Ce qu'il voit | Ce qu'il peut faire |
