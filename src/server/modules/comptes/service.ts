@@ -4,7 +4,7 @@ import { db, schema } from '../../db/client';
 import { ErreurHttp } from '../../lib/http';
 import { journaliser } from '../../lib/evenements';
 import { normaliser } from '@shared/texte';
-import { FAMILLE_HORS_PERIMETRE } from '@shared/constantes';
+import { FAMILLE_HORS_PERIMETRE, FAMILLES_PAR_METIER, type Metier } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 import type { HorairesOuvres } from '@shared/heures-ouvrees';
 
@@ -19,7 +19,6 @@ export interface EntreeCompte {
   fuseau?: string;
   donneurOrdreNom?: string | null;
   donneurOrdreEmail?: string | null;
-  adressesPoste?: string[];
   managerId?: number | null;
   horaires?: HorairesOuvres | null;
 }
@@ -39,7 +38,6 @@ export async function creerCompte(entree: EntreeCompte, auteur: Auteur): Promise
       fuseau: entree.fuseau ?? 'Europe/Madrid',
       donneurOrdreNom: entree.donneurOrdreNom ?? null,
       donneurOrdreEmail: entree.donneurOrdreEmail ?? null,
-      adressesPoste: entree.adressesPoste ?? [],
       managerId: entree.managerId ?? null,
       horaires: entree.horaires ?? null,
     })
@@ -50,7 +48,7 @@ export async function creerCompte(entree: EntreeCompte, auteur: Auteur): Promise
 
 export async function modifierCompte(id: number, modifs: Partial<EntreeCompte> & { actif?: boolean }, auteur: Auteur): Promise<CompteClient> {
   const valeurs: Record<string, unknown> = { majLe: new Date() };
-  for (const champ of ['nom', 'pays', 'ville', 'fuseau', 'donneurOrdreNom', 'donneurOrdreEmail', 'adressesPoste', 'managerId', 'horaires', 'actif'] as const) {
+  for (const champ of ['nom', 'pays', 'ville', 'fuseau', 'donneurOrdreNom', 'donneurOrdreEmail', 'managerId', 'horaires', 'actif'] as const) {
     if (modifs[champ as keyof typeof modifs] !== undefined) valeurs[champ] = modifs[champ as keyof typeof modifs];
   }
   const [maj] = await db.update(schema.comptesClients).set(valeurs).where(eq(schema.comptesClients.id, id)).returning();
@@ -70,7 +68,6 @@ export async function listerComptes(comptes: number[] | null) {
       fuseau: schema.comptesClients.fuseau,
       donneurOrdreNom: schema.comptesClients.donneurOrdreNom,
       donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail,
-      adressesPoste: schema.comptesClients.adressesPoste,
       managerId: schema.comptesClients.managerId,
       actif: schema.comptesClients.actif,
       dossiersOuverts: sql<number>`(
@@ -86,18 +83,34 @@ export async function listerComptes(comptes: number[] | null) {
   return comptes === null ? lignes : lignes.filter((l) => comptes.includes(l.id));
 }
 
-export async function creerPoste(entree: { compteId: number; intitule: string; collaborateurId?: number | null }, auteur: Auteur): Promise<Poste> {
+export async function creerPoste(
+  entree: { compteId: number; intitule: string; collaborateurId?: number | null; metier?: Metier; adresses?: string[]; familles?: string[] },
+  auteur: Auteur,
+): Promise<Poste> {
+  const metier: Metier = entree.metier ?? 'export';
   const [poste] = await db
     .insert(schema.postes)
-    .values({ compteId: entree.compteId, intitule: entree.intitule.trim(), collaborateurId: entree.collaborateurId ?? null })
+    .values({
+      compteId: entree.compteId,
+      intitule: entree.intitule.trim(),
+      collaborateurId: entree.collaborateurId ?? null,
+      metier,
+      adresses: entree.adresses ?? [],
+      // Le perimetre est pre-rempli d'apres le metier, puis ajustable dans Parametres.
+      familles: entree.familles ?? [...FAMILLES_PAR_METIER[metier]],
+    })
     .returning();
   await journaliser('poste_cree', { utilisateurId: auteur.utilisateurId, auteurType: auteur.type, entite: 'poste', entiteId: poste.id, details: { compteId: entree.compteId } });
   return poste;
 }
 
-export async function modifierPoste(id: number, modifs: { intitule?: string; collaborateurId?: number | null; actif?: boolean }, auteur: Auteur): Promise<Poste> {
+export async function modifierPoste(
+  id: number,
+  modifs: { intitule?: string; collaborateurId?: number | null; metier?: Metier; adresses?: string[]; familles?: string[]; actif?: boolean },
+  auteur: Auteur,
+): Promise<Poste> {
   const valeurs: Record<string, unknown> = { majLe: new Date() };
-  for (const champ of ['intitule', 'collaborateurId', 'actif'] as const) {
+  for (const champ of ['intitule', 'collaborateurId', 'metier', 'adresses', 'familles', 'actif'] as const) {
     if (modifs[champ] !== undefined) valeurs[champ] = modifs[champ];
   }
   const [maj] = await db.update(schema.postes).set(valeurs).where(eq(schema.postes.id, id)).returning();
@@ -115,6 +128,9 @@ export async function listerPostes(comptes: number[] | null) {
       intitule: schema.postes.intitule,
       collaborateurId: schema.postes.collaborateurId,
       collaborateur: schema.utilisateurs.nom,
+      metier: schema.postes.metier,
+      adresses: schema.postes.adresses,
+      familles: schema.postes.familles,
       actif: schema.postes.actif,
     })
     .from(schema.postes)

@@ -712,3 +712,50 @@ de validation, fait bien passer la demande en attente DO.
    vide.
 4. Pour l'historique : Google Takeout sur la boite ou sur le libelle, puis depot du `.mbox` dans
    « Import des mails ». L'import et la collecte se dedoublonnent entre eux.
+
+---
+
+## 2026-11-12 (suite) : un second poste sur le compte, la designer
+
+Deux collaborateurs sont places chez Masenz : l'assistante export et la designer. La boite de suivi
+recoit les deux boites. Le pilotage de la designer demandait deux corrections.
+
+**1. Le travail de la designer etait avale par T00**
+
+Le referentiel rangeait « marketing, design, travail de la designer » dans T00, hors perimetre, aux
+cotes du spam. C'etait juste tant qu'un seul poste etait pilote : la regle protegeait la file de
+l'assistante export. Elle rendait en revanche la designer impossible a suivre.
+
+T00 ne garde desormais que ce qui est hors perimetre pour tout le monde : notifications systeme,
+infolettres, spam. Le travail de la designer prend trois familles, `D01` publications et reseaux
+sociaux, `D02` visuels et supports, `D03` catalogue et contenus marketing. La regle du perimetre
+strict tient toujours, mais **par poste** : un mail `D02` n'apparait pas dans la file de
+l'assistante, un `T01` n'apparait pas dans celle de la designer, et `T00` n'apparait nulle part.
+
+**2. Les adresses etaient posees sur le compte, elles appartiennent au poste**
+
+Correction de ce qui avait ete fait le matin meme, quand un seul poste etait suivi par compte.
+`postes.adresses` et `postes.familles` remplacent `comptes_clients.adresses_poste` (migration
+`0004`, qui recopie la valeur existante sur le premier poste pour ne rien perdre).
+
+L'adresse sert maintenant a deux choses : dire si un message part ou arrive, et dire **a quel
+poste** il appartient. Sur ce second point, l'adresse passe avant la famille, parce qu'une adresse
+est un fait et une famille un typage qui peut se tromper. A defaut d'adresse, la famille tranche,
+et sur une famille partagee par les deux metiers (`T07`, `T09`, `T13`) le routage ne choisit pas :
+il laisse le rattachement a la main plutot que de tirer au hasard.
+
+**Verifications**
+
+8 tests de plus (320 au total), dont six sur le routage entre les deux postes. Le jeu temoin du
+typage passe de 20 a 22 mails, familles de la designer comprises, et reste a **86,4 %**.
+
+Deux des annotations que j'avais posees pour ces nouveaux cas etaient incoherentes : la designer
+figurait comme expeditrice alors que le sens disait « entrant ». Le jeu temoin est tombe a 77 % et
+c'est ce qui l'a revele. J'ai corrige les annotations, pas les regles : regler le moteur sur le jeu
+temoin lui ferait perdre tout son interet.
+
+**Ce qui reste a saisir**
+
+Dans Parametres, onglet « Comptes clients » : l'adresse de la donneuse d'ordre pour le compte, et
+les adresses de chaque poste. Le poste de la designer doit etre cree s'il ne l'est pas encore, avec
+le metier « designer », qui pre-remplit son perimetre de familles.

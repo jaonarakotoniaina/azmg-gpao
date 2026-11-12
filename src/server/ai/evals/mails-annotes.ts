@@ -17,6 +17,8 @@ import type { Interlocuteur, Nature, Sens } from '@shared/constantes';
 export interface MailAnnote {
   reference: string;
   expediteur: string;
+  /** Destinataires, quand ils font partie du signal (un envoi a la DO, par exemple). */
+  destinataires?: string[];
   objet: string;
   corps: string;
   sens: Sens;
@@ -511,12 +513,12 @@ export const MAILS_ANNOTES: MailAnnote[] = [
     attendu: { famille: 'T00', nature: 'information' },
   },
   {
-    reference: 'T00-3',
+    reference: 'D02-1',
     expediteur: 'design@azmg-solutions.test',
     objet: 'Maquette du nouveau visuel',
-    corps: 'Voici la maquette du visuel reseaux sociaux pour la campagne marketing du mois.',
+    corps: 'Voici la maquette du visuel reseaux sociaux pour la campagne du mois.',
     sens: 'entrant',
-    attendu: { famille: 'T00', nature: 'information' },
+    attendu: { famille: 'D02', nature: 'information' },
   },
   {
     reference: 'T00-4',
@@ -533,6 +535,32 @@ export const MAILS_ANNOTES: MailAnnote[] = [
     corps: 'Notification automatique : trois personnes ont consulte votre profil cette semaine.',
     sens: 'entrant',
     attendu: { famille: 'T00', nature: 'information' },
+  },
+
+  // --- Familles du poste de designer (D01 a D03) ----------------------------
+  {
+    reference: 'D01-1',
+    expediteur: 'marketing@client-fictif.test',
+    objet: 'Brouillon Linkedin S46 a valider',
+    corps: 'Je te prie de trouver le brouillon linkedin des publications de la semaine, pour validation.',
+    sens: 'entrant',
+    attendu: { famille: 'D01', nature: 'demande_entrante' },
+  },
+  {
+    reference: 'D02-2',
+    expediteur: 'marketing@client-fictif.test',
+    objet: 'Banniere du salon',
+    corps: 'La banniere et le kakemono du stand sont prets, ils respectent la charte graphique.',
+    sens: 'entrant',
+    attendu: { famille: 'D02', nature: 'envoi_livrable' },
+  },
+  {
+    reference: 'D03-1',
+    expediteur: 'marketing@client-fictif.test',
+    objet: 'Fiche produit a relire',
+    corps: 'La fiche produit du nouveau complement est redigee, le contenu marketing attend ta relecture.',
+    sens: 'entrant',
+    attendu: { famille: 'D03', nature: 'demande_entrante' },
   },
 
   // --- Cas volontairement ambigus, pour que la mesure reste honnete ---------

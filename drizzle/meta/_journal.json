@@ -29,6 +29,13 @@
       "when": 1794501218635,
       "tag": "0003_adresses_poste",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794503159647,
+      "tag": "0004_postes_metier_adresses",
+      "breakpoints": true
     }
   ]
 }

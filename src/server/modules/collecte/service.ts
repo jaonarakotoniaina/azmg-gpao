@@ -63,16 +63,77 @@ export function sensDuMessage(message: MessageCollecte, config: { adressesPoste?
   return 'entrant';
 }
 
-/** Configuration d'un compte utile a la collecte : qui est le poste, qui est la donneuse d'ordre. */
-export async function configDuCompte(compteId: number): Promise<{ adressesPoste: string[]; adresseDo: string | null }> {
+export interface PosteConnu {
+  id: number;
+  intitule: string;
+  adresses: string[];
+  familles: string[];
+}
+
+export interface ConfigCollecte {
+  /** Postes du compte, avec leurs adresses et leur perimetre de familles. */
+  postes: PosteConnu[];
+  /** Toutes les adresses de tous les postes du compte, pour deduire le sens. */
+  adressesPoste: string[];
+  adresseDo: string | null;
+}
+
+/** Configuration d'un compte utile a la collecte : ses postes, et qui est la donneuse d'ordre. */
+export async function configDuCompte(compteId: number): Promise<ConfigCollecte> {
   const [compte] = await db
-    .select({ adressesPoste: schema.comptesClients.adressesPoste, donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail })
+    .select({ donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail })
     .from(schema.comptesClients)
     .where(eq(schema.comptesClients.id, compteId));
+
+  const lignes = await db
+    .select({
+      id: schema.postes.id,
+      intitule: schema.postes.intitule,
+      adresses: schema.postes.adresses,
+      familles: schema.postes.familles,
+    })
+    .from(schema.postes)
+    .where(and(eq(schema.postes.compteId, compteId), eq(schema.postes.actif, true)));
+
+  const chaines = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  const postes: PosteConnu[] = lignes.map((l) => ({
+    id: l.id,
+    intitule: l.intitule,
+    adresses: chaines(l.adresses),
+    familles: chaines(l.familles),
+  }));
+
   return {
-    adressesPoste: ((compte?.adressesPoste as string[]) ?? []).filter((a) => typeof a === 'string'),
+    postes,
+    adressesPoste: postes.flatMap((p) => p.adresses),
     adresseDo: compte?.donneurOrdreEmail ?? null,
   };
+}
+
+/**
+ * Poste auquel un message appartient, quand le compte en porte plusieurs.
+ *
+ * L'adresse passe avant la famille : une adresse est un fait, une famille est un typage qui peut
+ * se tromper. A defaut d'adresse, la famille tranche, ce qui rattrape un message venu d'un tiers
+ * et adresse a une boite generique du client.
+ */
+export function posteDuMessage(message: MessageCollecte, postes: PosteConnu[], famille: string | null): number | null {
+  if (!postes.length) return null;
+  if (postes.length === 1) return postes[0].id;
+
+  const parExpediteur = postes.find((p) => estUneDe(message.expediteur, p.adresses));
+  if (parExpediteur) return parExpediteur.id;
+
+  const parDestinataire = postes.find((p) => message.destinataires?.some((d) => estUneDe(d, p.adresses)));
+  if (parDestinataire) return parDestinataire.id;
+
+  if (famille) {
+    const parFamille = postes.filter((p) => p.familles.includes(famille));
+    // Une famille partagee par plusieurs postes (le reporting quotidien, par exemple) ne designe
+    // personne : mieux vaut laisser le rattachement a la main que de choisir au hasard.
+    if (parFamille.length === 1) return parFamille[0].id;
+  }
+  return null;
 }
 
 /** Objet debarrasse des prefixes de reponse et de transfert, pour comparer deux messages d'un fil. */
@@ -103,7 +164,7 @@ export interface OptionsCollecte {
   /** Domaines consideres comme internes, pour deduire le sens quand aucune adresse ne tranche. */
   domainesInternes?: string[];
   /** Config du compte, chargee une fois par lot plutot qu'a chaque message. */
-  config?: { adressesPoste: string[]; adresseDo: string | null };
+  config?: ConfigCollecte;
   source?: 'mail' | 'import';
 }
 
@@ -143,7 +204,10 @@ export async function enregistrerMessage(
   );
   const horsPerimetre = estHorsPerimetre(typage.typage.famille);
 
-  // 3. Rattachement : le fil d'abord, le dossier par defaut ensuite.
+  // 3. Poste concerne : un compte peut porter plusieurs postes (assistante export, designer).
+  const posteId = opts.posteId ?? posteDuMessage(message, config.postes, typage.applicable ? typage.typage.famille : null);
+
+  // 4. Rattachement : le fil d'abord, le dossier par defaut ensuite.
   const parFil = horsPerimetre ? null : await demandeDuFil(message.filId, opts.compteId);
   let dossierId = parFil?.dossierId ?? opts.dossierParDefautId ?? null;
 
@@ -152,13 +216,13 @@ export async function enregistrerMessage(
     // Il sera reclasse a la main : mieux vaut un dossier a corriger qu'un message perdu.
     const client = message.expediteur ? message.expediteur.split('@')[0] : 'Expediteur inconnu';
     const { dossier } = await trouverOuCreerDossier(
-      { compteId: opts.compteId, posteId: opts.posteId ?? null, client, produit: null, operation: null, notes: 'Dossier ouvert automatiquement par la collecte des mails, a reclasser.' },
+      { compteId: opts.compteId, posteId, client, produit: null, operation: null, notes: 'Dossier ouvert automatiquement par la collecte des mails, a reclasser.' },
       auteur,
     );
     dossierId = dossier.id;
   }
 
-  // 4. Pieces jointes : rangees hors du dossier public, referencees dans le dossier.
+  // 5. Pieces jointes : rangees hors du dossier public, referencees dans le dossier.
   const piecesRangees: { chemin: string; nomFichier: string; taille: number; empreinte: string }[] = [];
   for (const piece of message.pieces) {
     if (!extensionAcceptee(piece.nomFichier) || piece.contenu.length > TAILLE_MAX_PIECE) continue;
@@ -170,7 +234,7 @@ export async function enregistrerMessage(
     }
   }
 
-  // 5. Enregistrement. La nature vient du typage ; sans elle, le message est une information.
+  // 6. Enregistrement. La nature vient du typage ; sans elle, le message est une information.
   const resultat = await ajouterEvenement(
     {
       demandeId: parFil?.demandeId ?? null,

@@ -44,8 +44,6 @@ export const compteSchema = z.object({
   fuseau: z.string().trim().min(3).max(64).optional(),
   donneurOrdreNom: z.string().trim().max(120).nullish(),
   donneurOrdreEmail: z.union([emailSchema, z.literal('')]).nullish(),
-  /** Adresses depuis lesquelles le poste ecrit, souvent des adresses du client. */
-  adressesPoste: z.array(emailSchema).max(10).optional(),
   managerId: z.number().int().positive().nullish(),
 });
 
@@ -55,11 +53,19 @@ export const posteSchema = z.object({
   compteId: z.number().int().positive(),
   intitule: z.string().trim().min(2).max(160),
   collaborateurId: z.number().int().positive().nullish(),
+  metier: z.enum(['export', 'designer']).optional(),
+  /** Adresses depuis lesquelles ce poste ecrit, souvent des adresses du client. */
+  adresses: z.array(emailSchema).max(10).optional(),
+  /** Familles du perimetre. Vide : toutes les familles hors T00. */
+  familles: z.array(z.string().trim().regex(/^[A-Z]\d{2}$/)).max(40).optional(),
 });
 
 export const modificationPosteSchema = z.object({
   intitule: z.string().trim().min(2).max(160).optional(),
   collaborateurId: z.number().int().positive().nullish(),
+  metier: z.enum(['export', 'designer']).optional(),
+  adresses: z.array(emailSchema).max(10).optional(),
+  familles: z.array(z.string().trim().regex(/^[A-Z]\d{2}$/)).max(40).optional(),
   actif: z.boolean().optional(),
 });
 

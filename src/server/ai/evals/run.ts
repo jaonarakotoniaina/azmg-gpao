@@ -45,7 +45,7 @@ export function evaluer(jeu: MailAnnote[] = MAILS_ANNOTES): BilanEval {
   };
 
   for (const mail of jeu) {
-    const resultat = appliquerRegles({ objet: mail.objet, corps: mail.corps, expediteur: mail.expediteur, sens: mail.sens });
+    const resultat = appliquerRegles({ objet: mail.objet, corps: mail.corps, expediteur: mail.expediteur, destinataires: mail.destinataires, sens: mail.sens });
     const obtenu = resultat?.typage ?? { famille: null, nature: null, interlocuteur: null, confiance: 0 };
     if (!resultat) bilan.sansReponse++;
 

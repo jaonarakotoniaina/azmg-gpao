@@ -73,13 +73,28 @@ export const REGLES_INITIALES: RegleTypage[] = [
     nature: 'information',
     priorite: 11,
   },
+  // --- Familles du poste de designer (D01 a D03) -----------------------------
+  // Ce travail etait classe T00 tant qu'un seul poste etait pilote : il etait hors du perimetre
+  // de l'assistante export, donc hors de tout. Il a desormais ses familles et son poste.
   {
-    libelle: 'Travail de la designer ou du marketing',
-    motsCles: ['maquette', 'visuel reseaux sociaux', 'charte graphique', 'logo', 'community manager', 'post instagram', 'campagne marketing'],
-    motsExclus: ['etiquette', 'bat', 'packaging'],
-    famille: 'T00',
-    nature: 'information',
+    libelle: 'Publication sur les reseaux sociaux',
+    motsCles: ['publication linkedin', 'post linkedin', 'brouillon linkedin', 'post instagram', 'community manager', 'page linkedin', 'calendrier editorial'],
+    famille: 'D01',
     priorite: 12,
+  },
+  {
+    libelle: 'Visuel ou support de communication',
+    motsCles: ['maquette', 'visuel', 'charte graphique', 'logo', 'banniere', 'brochure', 'kakemono', 'plv', 'affiche'],
+    motsExclus: ['etiquette', 'bat', 'packaging'],
+    famille: 'D02',
+    priorite: 13,
+  },
+  {
+    libelle: 'Catalogue, fiche produit ou contenu marketing',
+    motsCles: ['catalogue produit', 'fiche produit', 'contenu marketing', 'campagne marketing', 'newsletter client', 'plaquette'],
+    motsExclus: ['se desinscrire', 'unsubscribe'],
+    famille: 'D03',
+    priorite: 14,
   },
 
   // --- Signaux tres specifiques --------------------------------------------

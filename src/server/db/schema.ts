@@ -93,11 +93,6 @@ export const comptesClients = pgTable('comptes_clients', {
   /** Donneur d'ordre : seule autorite de validation cote client. */
   donneurOrdreNom: text('donneur_ordre_nom'),
   donneurOrdreEmail: text('donneur_ordre_email'),
-  /**
-   * Adresses depuis lesquelles le poste ecrit, souvent des adresses du client sur le meme domaine
-   * que la donneuse d'ordre. Sans elles, un mail parti du poste est lu comme un mail recu.
-   */
-  adressesPoste: jsonb('adresses_poste').notNull().default([]),
   /** Manager AZMG qui pilote le compte. */
   managerId: ref('manager_id').references(() => utilisateurs.id, { onDelete: 'set null' }),
   /** Horaires ouvres du compte (null : horaires generaux des parametres). */
@@ -116,6 +111,16 @@ export const postes = pgTable(
       .references(() => comptesClients.id, { onDelete: 'cascade' }),
     intitule: text('intitule').notNull(),
     collaborateurId: ref('collaborateur_id').references(() => utilisateurs.id, { onDelete: 'set null' }),
+    /** Metier du poste : il pre-remplit les familles. `export`, `designer`, ... */
+    metier: text('metier').notNull().default('export'),
+    /**
+     * Adresses depuis lesquelles ce poste ecrit, souvent des adresses du client sur le meme
+     * domaine que la donneuse d'ordre. Elles servent a deux choses : dire si un message part ou
+     * arrive, et dire **a quel poste** il appartient quand le compte en porte plusieurs.
+     */
+    adresses: jsonb('adresses').notNull().default([]),
+    /** Familles du perimetre de ce poste. Vide : toutes les familles hors T00. */
+    familles: jsonb('familles').notNull().default([]),
     actif: boolean('actif').notNull().default(true),
     creeLe: creeLe(),
     majLe: majLe(),

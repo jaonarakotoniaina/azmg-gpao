@@ -36,7 +36,7 @@ export interface Famille {
 }
 
 export const FAMILLES: readonly Famille[] = [
-  { code: 'T00', libelle: 'Hors perimetre (marketing, design, systeme, spam)', validation: 'exclu du pilotage', horsPerimetre: true, tempsStandardMinutes: 0, slaHeures: 0 },
+  { code: 'T00', libelle: 'Hors perimetre (notifications systeme, infolettres, spam)', validation: 'exclu du pilotage', horsPerimetre: true, tempsStandardMinutes: 0, slaHeures: 0 },
   { code: 'T01', libelle: 'Cotations fret et relances transitaires (FCL, LCL, aerien)', validation: 'la DO valide transitaire, prix et booking', tempsStandardMinutes: 25, slaHeures: 8 },
   { code: 'T02', libelle: "Enlevements, transport local, documents d'expedition (BL, PL, AWB, shipping marks)", validation: 'le client valide, la DO pour les exceptions', tempsStandardMinutes: 30, slaHeures: 8 },
   { code: 'T03', libelle: 'Proformas, factures, modifications, pre-domiciliation', validation: 'la DO valide chaque modification', tempsStandardMinutes: 20, slaHeures: 8 },
@@ -51,7 +51,25 @@ export const FAMILLES: readonly Famille[] = [
   { code: 'T12', libelle: "Lettres d'invitation et courriers types", validation: 'signature de la DO', tempsStandardMinutes: 15, slaHeures: 16 },
   { code: 'T13', libelle: 'Transferts a la DO pour decision', validation: 'la DO', tempsStandardMinutes: 10, slaHeures: 4 },
   { code: 'T14', libelle: 'Tracking, transporteurs express, surestaries', validation: 'aucune', tempsStandardMinutes: 10, slaHeures: 8 },
+  // Familles du poste de designer. Elles etaient confondues avec T00 tant qu'un seul poste etait
+  // pilote : le travail de la designer etait hors du perimetre de l'assistante export, et donc
+  // hors de tout. Il a desormais ses propres familles, et son propre poste.
+  { code: 'D01', libelle: 'Publications et reseaux sociaux (LinkedIn, pages)', validation: 'la DO valide avant publication', tempsStandardMinutes: 30, slaHeures: 16 },
+  { code: 'D02', libelle: 'Visuels et supports (brochures, bannieres, PLV, packaging)', validation: 'la DO valide le visuel', tempsStandardMinutes: 45, slaHeures: 24 },
+  { code: 'D03', libelle: 'Catalogue, fiches produits et contenus marketing', validation: 'la DO pour les textes et les prix', tempsStandardMinutes: 40, slaHeures: 24 },
 ] as const;
+
+/** Familles de chaque metier, pour pre-remplir le perimetre d'un poste a sa creation. */
+export const FAMILLES_PAR_METIER = {
+  export: ['T01', 'T02', 'T03', 'T04', 'T05', 'T06', 'T07', 'T08', 'T09', 'T10', 'T11', 'T12', 'T13', 'T14'],
+  designer: ['D01', 'D02', 'D03', 'T07', 'T09', 'T13'],
+} as const;
+
+export type Metier = keyof typeof FAMILLES_PAR_METIER;
+export const LIBELLES_METIERS: Record<Metier, string> = {
+  export: 'Assistante export et customer support',
+  designer: 'Designer',
+};
 
 export const CODES_FAMILLES = FAMILLES.map((f) => f.code);
 export const FAMILLE_HORS_PERIMETRE = 'T00';

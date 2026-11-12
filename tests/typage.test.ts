@@ -18,6 +18,7 @@ import { appliquerRegles, REGLES_INITIALES } from '../src/server/modules/typage/
 import { accepterRegle, initialiserRegles, reglesActives, reglesProposees, typerMessage } from '../src/server/modules/typage/service';
 import { evaluer } from '../src/server/ai/evals/run';
 import { MAILS_ANNOTES } from '../src/server/ai/evals/mails-annotes';
+import { CODES_FAMILLES } from '../src/shared/constantes';
 import { MAILS_TEMOINS } from '../src/server/ai/evals/mails-temoins';
 import { contientExpression, normaliserTypage } from '../src/shared/typage';
 import { lireParametres, modifierParametres } from '../src/server/lib/parametres';
@@ -78,9 +79,11 @@ describe('normalisation', () => {
 // ---------------------------------------------------------------------------
 
 describe('jeu d’evaluation', () => {
-  it('contient 60 mails fictifs au moins, couvrant les 15 familles et les 10 natures', () => {
+  it('contient 60 mails fictifs au moins, couvrant toutes les familles et les 10 natures', () => {
     expect(MAILS_ANNOTES.length).toBeGreaterThanOrEqual(60);
-    expect(new Set(MAILS_ANNOTES.map((m) => m.attendu.famille)).size).toBe(15);
+    // Chaque famille du referentiel est representee, celles de la designer comprises.
+    const couvertes = new Set(MAILS_ANNOTES.map((m) => m.attendu.famille));
+    for (const code of CODES_FAMILLES) expect([...couvertes], `famille ${code}`).toContain(code);
     expect(new Set(MAILS_ANNOTES.map((m) => m.attendu.nature)).size).toBe(10);
   });
 

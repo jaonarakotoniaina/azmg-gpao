@@ -296,3 +296,47 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Ce que ni la boite ni le libelle ne filtrent, le typage le fait : infolettres, notifications
   d'outils et travail de la designer tombent en T00, hors perimetre.
 - Retour arriere : la constante `LIBELLE_SOURCE` en tete du script.
+
+## 2026-11-12 : le travail de la designer sort de T00 et prend ses familles
+
+- Sujet : la designer est elle aussi placee chez le client, et son travail doit etre pilote. Le
+  referentiel initial rangeait « marketing, design, travail de la designer » dans T00, hors
+  perimetre, aux cotes du spam et des notifications systeme.
+- Pourquoi c'etait ecrit ainsi : tant qu'un seul poste etait pilote, le travail de la designer etait
+  hors du perimetre de l'assistante export. La regle protegeait la file de l'assistante, elle ne
+  disait pas que ce travail n'avait pas de valeur.
+- Options : garder T00 et montrer quand meme ces mails (ce qui polluait la file de l'assistante), ou
+  distinguer ce qui est hors perimetre pour tout le monde de ce qui l'est pour un poste donne.
+- Choix : T00 ne garde que ce qui est hors perimetre absolu (notifications systeme, infolettres,
+  spam). Le travail de la designer prend trois familles a lui, `D01` publications et reseaux
+  sociaux, `D02` visuels et supports, `D03` catalogue et contenus marketing, et son propre poste.
+- Raison : c'est exactement ce que prevoit la section 0 de CLAUDE.md, « d'autres postes (designer,
+  sales, SDR, comptable dedie) rejoindront la GPAO ensuite, sans refonte ». Le modele portait deja
+  `postes` et `demandes.poste_id` : il n'y avait pas de refonte a faire, seulement un referentiel a
+  corriger.
+- Ce que la regle du perimetre strict devient : elle tient toujours, mais par poste. Un mail `D02`
+  n'apparait pas dans la file de l'assistante export, un mail `T01` n'apparait pas dans celle de la
+  designer, et `T00` n'apparait nulle part.
+- Familles partagees et assumees : `T07` (BAT, etiquettes), `T09` (reporting quotidien) et `T13`
+  (transferts a la DO) appartiennent aux deux metiers. Sur une famille partagee, le routage
+  automatique ne choisit pas : il laisse le rattachement a la main plutot que de tirer au hasard.
+- Mesure : le jeu temoin passe de 20 a 22 mails, familles de la designer comprises, et reste a
+  86,4 %, au-dessus du critere de 85 %. Deux annotations que j'avais posees etaient incoherentes
+  (la designer etait l'expediteur, et le sens disait « entrant ») : elles ont ete corrigees, et non
+  les regles, pour ne pas regler le moteur sur le jeu temoin.
+- Retour arriere : `FAMILLES_PAR_METIER` dans `src/shared/constantes.ts`, et les familles d'un poste
+  restent modifiables dans Parametres.
+
+## 2026-11-12 : les adresses appartiennent au poste, pas au compte
+
+- Sujet : les adresses du poste avaient ete posees sur `comptes_clients` le matin meme, quand un
+  seul poste etait suivi par compte.
+- Ce que la realite a montre : deux collaborateurs sont suivis sur le meme compte, chacun avec sa
+  propre adresse chez le client.
+- Choix : `postes.adresses` et `postes.familles`, et `comptes_clients.adresses_poste` supprimee. La
+  migration recopie la valeur du compte sur son premier poste, pour ne rien perdre.
+- Consequence utile : l'adresse ne sert plus seulement a dire si un message part ou arrive, elle dit
+  aussi **a quel poste** il appartient. L'adresse passe avant la famille dans ce choix, parce qu'une
+  adresse est un fait et une famille un typage qui peut se tromper.
+- Retour arriere : la migration `0004` est rejouable sur base vide, et un poste sans adresse
+  retrouve le comportement par domaine.

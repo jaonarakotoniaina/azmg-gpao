@@ -18,7 +18,18 @@ interface CompteClient {
   nom: string;
   donneurOrdreNom: string | null;
   donneurOrdreEmail: string | null;
-  adressesPoste: string[];
+}
+
+interface PosteClient {
+  id: number;
+  compteId: number;
+  compte: string;
+  intitule: string;
+  collaborateur: string | null;
+  metier: string;
+  adresses: string[];
+  familles: string[];
+  actif: boolean;
 }
 
 interface Utilisateur {
@@ -35,14 +46,20 @@ export default function Parametres() {
   const notifier = useNotifier();
   const client = useQueryClient();
   const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'comptes' | 'equipe'>('referentiels');
-  /** Saisie en cours par compte : adresses du poste et adresse de la DO. */
-  const [adresses, setAdresses] = useState<Record<number, { poste: string; do: string }>>({});
+  /** Saisie en cours : adresse de la DO par compte, adresses par poste. */
+  const [adresseDo, setAdresseDo] = useState<Record<number, string>>({});
+  const [adressesPoste, setAdressesPoste] = useState<Record<number, string>>({});
   const [brouillon, setBrouillon] = useState<ParametresType | null>(null);
 
   const { data, isLoading, error } = useQuery({ queryKey: ['parametres'], queryFn: () => api.get<Reponse>('/api/parametres') });
   const { data: comptes } = useQuery({
     queryKey: ['comptes-clients'],
     queryFn: () => api.get<CompteClient[]>('/api/comptes'),
+    enabled: peut('admin', 'manager'),
+  });
+  const { data: postes } = useQuery({
+    queryKey: ['postes'],
+    queryFn: () => api.get<PosteClient[]>('/api/postes'),
     enabled: peut('admin', 'manager'),
   });
   const { data: equipe } = useQuery({
@@ -55,17 +72,31 @@ export default function Parametres() {
     if (data?.parametres && !brouillon) setBrouillon(structuredClone(data.parametres));
   }, [data, brouillon]);
 
-  const enregistrerAdresses = useMutation({
-    mutationFn: (v: { id: number; adressesPoste: string[]; donneurOrdreEmail: string | null }) =>
-      api.patch(`/api/comptes/${v.id}`, { adressesPoste: v.adressesPoste, donneurOrdreEmail: v.donneurOrdreEmail }),
+  const enregistrerDo = useMutation({
+    mutationFn: (v: { id: number; donneurOrdreEmail: string | null }) =>
+      api.patch(`/api/comptes/${v.id}`, { donneurOrdreEmail: v.donneurOrdreEmail }),
     onSuccess: (_r, v) => {
-      notifier('Adresses du compte enregistrees');
-      setAdresses((a) => {
+      notifier('Adresse de la donneuse d’ordre enregistree');
+      setAdresseDo((a) => {
         const suite = { ...a };
         delete suite[v.id];
         return suite;
       });
       void client.invalidateQueries({ queryKey: ['comptes-clients'] });
+    },
+    onError: (e) => notifier(messageErreur(e), 'rouge'),
+  });
+
+  const enregistrerPoste = useMutation({
+    mutationFn: (v: { id: number; adresses: string[] }) => api.patch(`/api/postes/${v.id}`, { adresses: v.adresses }),
+    onSuccess: (_r, v) => {
+      notifier('Adresses du poste enregistrees');
+      setAdressesPoste((a) => {
+        const suite = { ...a };
+        delete suite[v.id];
+        return suite;
+      });
+      void client.invalidateQueries({ queryKey: ['postes'] });
     },
     onError: (e) => notifier(messageErreur(e), 'rouge'),
   });
@@ -379,55 +410,93 @@ export default function Parametres() {
 
       {onglet === 'comptes' && (
         <Panneau prefixe="parametres" id="comptes">
-        <Carte titre="Adresses des comptes clients" id="comptes">
+        <Carte titre="Adresses des comptes et des postes" id="comptes">
           {!peut('admin', 'manager') ? (
             <Vide>Seuls un administrateur et un manager voient les comptes clients.</Vide>
-          ) : !comptes?.length ? (
+          ) : !comptes?.length || !postes ? (
             <Chargement />
           ) : (
             <>
               <Alerte ton="bleu">
-                Le poste ecrit souvent depuis une adresse du client, sur le meme domaine que la donneuse d&rsquo;ordre. Sans ces deux
-                renseignements, un mail parti du poste est lu comme un mail recu, et une demande de validation ne passe jamais en
-                attente DO.
+                Un collaborateur ecrit souvent depuis une adresse du client, sur le meme domaine que la donneuse d&rsquo;ordre. Ces
+                adresses servent a deux choses : dire si un message part ou arrive, et dire a quel poste il appartient quand le compte
+                en porte plusieurs. Sans elles, un mail parti du poste est lu comme un mail recu, et une demande de validation ne passe
+                jamais en attente DO.
               </Alerte>
-              <ul className="mt-4 space-y-5">
+              <ul className="mt-4 space-y-6">
                 {comptes.map((c) => {
-                  const saisie = adresses[c.id] ?? { poste: c.adressesPoste.join(', '), do: c.donneurOrdreEmail ?? '' };
-                  const modifieCompte = saisie.poste !== c.adressesPoste.join(', ') || saisie.do !== (c.donneurOrdreEmail ?? '');
+                  const saisieDo = adresseDo[c.id] ?? c.donneurOrdreEmail ?? '';
+                  const postesDuCompte = postes.filter((p) => p.compteId === c.id && p.actif);
                   return (
-                    <li key={c.id} className="border-b border-ligne pb-5 last:border-0">
+                    <li key={c.id} className="border-b border-ligne pb-6 last:border-0">
                       <p className="font-medium">{c.nom}</p>
                       <form
-                        className="mt-2 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+                        className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
                         onSubmit={(e) => {
                           e.preventDefault();
-                          enregistrerAdresses.mutate({
-                            id: c.id,
-                            adressesPoste: saisie.poste
-                              .split(',')
-                              .map((a) => a.trim())
-                              .filter(Boolean),
-                            donneurOrdreEmail: saisie.do.trim() || null,
-                          });
+                          enregistrerDo.mutate({ id: c.id, donneurOrdreEmail: saisieDo.trim() || null });
                         }}
                       >
                         <ChampTexte
-                          libelle="Adresses du poste"
-                          aide="Separees par des virgules"
-                          value={saisie.poste}
-                          onChange={(e) => setAdresses((a) => ({ ...a, [c.id]: { ...saisie, poste: e.target.value } }))}
-                        />
-                        <ChampTexte
                           libelle="Adresse de la donneuse d’ordre"
-                          aide={c.donneurOrdreNom ? `Actuellement : ${c.donneurOrdreNom}` : 'Seule autorite de validation'}
-                          value={saisie.do}
-                          onChange={(e) => setAdresses((a) => ({ ...a, [c.id]: { ...saisie, do: e.target.value } }))}
+                          aide={c.donneurOrdreNom ? `Actuellement : ${c.donneurOrdreNom}` : 'Seule autorite de validation du compte'}
+                          value={saisieDo}
+                          onChange={(e) => setAdresseDo((a) => ({ ...a, [c.id]: e.target.value }))}
                         />
-                        <Bouton type="submit" disabled={!modifieCompte} chargement={enregistrerAdresses.isPending}>
+                        <Bouton
+                          type="submit"
+                          disabled={saisieDo === (c.donneurOrdreEmail ?? '')}
+                          chargement={enregistrerDo.isPending}
+                        >
                           Enregistrer
                         </Bouton>
                       </form>
+
+                      {!postesDuCompte.length ? (
+                        <p className="aide mt-3">Aucun poste actif sur ce compte.</p>
+                      ) : (
+                        <ul className="mt-4 space-y-3 pl-4 border-l border-ligne">
+                          {postesDuCompte.map((p) => {
+                            const saisie = adressesPoste[p.id] ?? p.adresses.join(', ');
+                            return (
+                              <li key={p.id}>
+                                <p className="text-sm">
+                                  {p.intitule}
+                                  {p.collaborateur && <span className="text-texte-doux"> ({p.collaborateur})</span>}{' '}
+                                  <Badge>{p.familles.length} famille(s)</Badge>
+                                </p>
+                                <form
+                                  className="mt-1 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+                                  onSubmit={(e) => {
+                                    e.preventDefault();
+                                    enregistrerPoste.mutate({
+                                      id: p.id,
+                                      adresses: saisie
+                                        .split(',')
+                                        .map((a) => a.trim())
+                                        .filter(Boolean),
+                                    });
+                                  }}
+                                >
+                                  <ChampTexte
+                                    libelle={`Adresses du poste « ${p.intitule} »`}
+                                    aide="Separees par des virgules"
+                                    value={saisie}
+                                    onChange={(e) => setAdressesPoste((a) => ({ ...a, [p.id]: e.target.value }))}
+                                  />
+                                  <Bouton
+                                    type="submit"
+                                    disabled={saisie === p.adresses.join(', ')}
+                                    chargement={enregistrerPoste.isPending}
+                                  >
+                                    Enregistrer
+                                  </Bouton>
+                                </form>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </li>
                   );
                 })}

@@ -23,7 +23,7 @@ La procedure pas a pas est dans `README.md`.
 |---|---|---|
 | Boite Gmail dediee recevant la copie des mails du poste | compte Google | **fournie** : `suivimasenz@gmail.com` |
 | Copie des mails du poste dans les **deux sens**, recus et envoyes | regle de copie cote Masenz | **a verifier une fois** |
-| Adresses depuis lesquelles le poste ecrit | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
+| Adresses de chaque poste suivi | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Adresse de la donneuse d'ordre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer a la mise en ligne |
 | Ou, a defaut : acces IMAP de la boite | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | a fournir |
@@ -31,10 +31,15 @@ La procedure pas a pas est dans `README.md`.
 Sans ces elements, `COLLECTE_MAIL` reste en `mock` : la GPAO vit de la saisie rapide et de
 l'import de fichiers `.eml` ou `.mbox`, qui fonctionne sans aucun acces a la boite.
 
-**Les deux adresses sont indispensables.** Le poste ecrit depuis une adresse du client, sur le meme
-domaine que la donneuse d'ordre. Sans elles, la GPAO lit tout ce que le poste envoie comme du
-courrier recu : aucune demande ne passe en attente DO et le digest de validation reste vide. Elles
-se saisissent dans l'ecran Parametres, pas dans le depot : ce sont des donnees du client.
+**Les adresses sont indispensables.** Un collaborateur ecrit depuis une adresse du client, sur le
+meme domaine que la donneuse d'ordre. Sans elles, la GPAO lit tout ce qu'il envoie comme du courrier
+recu : aucune demande ne passe en attente DO et le digest de validation reste vide. Elles servent
+aussi a ranger chaque message sur le bon poste quand le compte en porte plusieurs. Elles se
+saisissent dans l'ecran Parametres, pas dans le depot : ce sont des donnees du client.
+
+**Un poste par collaborateur suivi.** Le compte Masenz porte deux postes : l'assistante export et la
+designer. Chacun a son intitule, son metier, ses adresses et son perimetre de familles. Le travail
+de la designer n'apparait donc pas dans la file de l'assistante export, et inversement.
 
 **La boite dediee delimite le perimetre.** Le script tourne sur `suivimasenz@gmail.com`, qui ne sert
 qu'au suivi de ce compte : la constante `LIBELLE_SOURCE` reste vide et le script lit la boite de

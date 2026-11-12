@@ -13,7 +13,16 @@ import { baseVierge, creerCompteDeTest, creerPosteDeTest, db, schema } from './a
 import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
 import { AUTEUR_SYSTEME } from '../src/server/modules/demandes/service';
 import { analyserMessage, decouperMbox, identifiantFil, signerCharge, verifierSignature } from '../src/server/adapters/collecte-mail';
-import { demandeDuFil, enregistrerLot, enregistrerMessage, objetNormalise, sensDuMessage } from '../src/server/modules/collecte/service';
+import {
+  configDuCompte,
+  demandeDuFil,
+  enregistrerLot,
+  enregistrerMessage,
+  objetNormalise,
+  posteDuMessage,
+  sensDuMessage,
+} from '../src/server/modules/collecte/service';
+import { creerPoste } from '../src/server/modules/comptes/service';
 import { initialiserRegles } from '../src/server/modules/typage/service';
 import { cheminAbsolu, extensionAcceptee, rangerFichier } from '../src/server/lib/stockage';
 
@@ -161,9 +170,10 @@ describe('analyse d’un message', () => {
  */
 describe('poste et donneuse d’ordre sur le domaine du client', () => {
   beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
     await db
       .update(schema.comptesClients)
-      .set({ adressesPoste: ['info@client-fictif.test'], donneurOrdreEmail: 'export@client-fictif.test' })
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
       .where(eq(schema.comptesClients.id, compteId));
   });
 
@@ -256,6 +266,107 @@ describe('poste et donneuse d’ordre sur le domaine du client', () => {
     // Lu comme sortant grace a l'adresse du poste, et non comme une demande du client.
     expect(evenement.sens).toBe('sortant');
     expect(await db.select().from(schema.demandes)).toHaveLength(0);
+  });
+});
+
+/**
+ * Un compte peut porter plusieurs postes : l'assistante export et la designer. Leurs mails
+ * arrivent dans la meme boite de suivi, et chacun doit rejoindre son poste.
+ */
+describe('plusieurs postes sur un meme compte', () => {
+  let posteDesignerId: number;
+
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    posteDesignerId = (
+      await creerPoste({ compteId, intitule: 'Designer', metier: 'designer', adresses: ['marketing@client-fictif.test'] }, AUTEUR)
+    ).id;
+    await db
+      .update(schema.comptesClients)
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  const base = { messageId: '<x>', filId: '<x>', objet: '', corps: '', survenuLe: new Date(), pieces: [] };
+
+  it('rattache un message au poste dont l’adresse est l’expediteur', async () => {
+    const config = await configDuCompte(compteId);
+    expect(posteDuMessage({ ...base, expediteur: 'marketing@client-fictif.test', destinataires: [] }, config.postes, null)).toBe(
+      posteDesignerId,
+    );
+    expect(posteDuMessage({ ...base, expediteur: 'info@client-fictif.test', destinataires: [] }, config.postes, null)).toBe(posteId);
+  });
+
+  it('rattache au poste destinataire quand l’expediteur est un tiers', async () => {
+    const config = await configDuCompte(compteId);
+    expect(
+      posteDuMessage({ ...base, expediteur: 'do@client-fictif.test', destinataires: ['marketing@client-fictif.test'] }, config.postes, null),
+    ).toBe(posteDesignerId);
+  });
+
+  it('se rabat sur la famille quand aucune adresse ne tranche', async () => {
+    const config = await configDuCompte(compteId);
+    // D02 n'appartient qu'au poste de designer, T01 qu'au poste d'export.
+    expect(posteDuMessage({ ...base, expediteur: 'tiers@inconnu.test', destinataires: [] }, config.postes, 'D02')).toBe(posteDesignerId);
+    expect(posteDuMessage({ ...base, expediteur: 'tiers@inconnu.test', destinataires: [] }, config.postes, 'T01')).toBe(posteId);
+  });
+
+  it('ne choisit pas au hasard sur une famille partagee par les deux postes', async () => {
+    const config = await configDuCompte(compteId);
+    // T09, le reporting quotidien, appartient aux deux : mieux vaut un rattachement a la main.
+    expect(posteDuMessage({ ...base, expediteur: 'tiers@inconnu.test', destinataires: [] }, config.postes, 'T09')).toBeNull();
+  });
+
+  it('lit comme sortant un mail parti de la designer, et le range sur son poste', async () => {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<g1@exemple-fictif.test>',
+        de: 'marketing@client-fictif.test',
+        a: 'export@client-fictif.test',
+        objet: 'Brouillon linkedin a valider',
+        corps: 'Voici le brouillon linkedin des publications de la semaine, merci de valider.',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    await enregistrerLot([message], { compteId }, AUTEUR);
+    const [evenement] = await db.select().from(schema.evenements);
+    expect(evenement.sens).toBe('sortant');
+    // Le travail de la designer a sa famille : il n'est plus avale par T00.
+    expect(evenement.famille).toBe('D01');
+    const [dossier] = await db.select().from(schema.dossiers).where(eq(schema.dossiers.posteId, posteDesignerId));
+    expect(dossier).toBeDefined();
+  });
+
+  it('laisse le travail de la designer hors de la file de l’assistante export', async () => {
+    const messages = await Promise.all(
+      [
+        mailBrut({
+          messageId: '<h1@exemple-fictif.test>',
+          de: 'marketing@client-fictif.test',
+          a: 'export@client-fictif.test',
+          objet: 'Banniere du salon',
+          corps: 'La banniere et le kakemono du stand sont prets, merci de valider.',
+          date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+        }),
+        mailBrut({
+          messageId: '<h2@exemple-fictif.test>',
+          de: 'achat@alpha-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Proforma a etablir',
+          corps: 'Pourriez vous nous etablir la proforma en dollars pour cette commande ?',
+          date: 'Mon, 02 Mar 2026 10:00:00 +0100',
+        }),
+      ].map((m) => analyserMessage(m)),
+    );
+    await enregistrerLot(messages, { compteId }, AUTEUR);
+
+    const demandes = await db.select({ posteId: schema.demandes.posteId, famille: schema.demandes.famille }).from(schema.demandes);
+    const dExport = demandes.filter((d) => d.posteId === posteId);
+    const dDesigner = demandes.filter((d) => d.posteId === posteDesignerId);
+    // Chaque poste ne voit que son travail, et aucun des deux n'est vide.
+    expect(dExport.every((d) => d.famille.startsWith('T'))).toBe(true);
+    expect(dExport.some((d) => d.famille.startsWith('D'))).toBe(false);
+    expect(demandes).toHaveLength(dExport.length + dDesigner.length);
   });
 });
 

@@ -14,6 +14,7 @@ import {
   DEFINITIONS_NATURES,
   DEFINITIONS_STATUTS,
   FAMILLES,
+  FAMILLES_PAR_METIER,
   FAMILLES_PILOTAGE,
   INTERLOCUTEURS,
   LIBELLES_ECHEANCES,
@@ -140,11 +141,33 @@ describe('coherence du referentiel', () => {
   });
 
   it('definit les quinze familles de l’audit, de T00 a T14', () => {
-    expect(CODES_FAMILLES).toHaveLength(15);
-    expect(CODES_FAMILLES[0]).toBe('T00');
-    expect(CODES_FAMILLES[14]).toBe('T14');
-    expect(FAMILLES_PILOTAGE).toHaveLength(14);
+    const t = CODES_FAMILLES.filter((c) => c.startsWith('T'));
+    expect(t).toHaveLength(15);
+    expect(t[0]).toBe('T00');
+    expect(t[14]).toBe('T14');
     expect(FAMILLES_PILOTAGE.some((f) => estHorsPerimetre(f.code))).toBe(false);
+    // T00 est le seul hors perimetre : le travail de la designer a ses propres familles.
+    expect(FAMILLES.filter((f) => f.horsPerimetre).map((f) => f.code)).toEqual(['T00']);
+  });
+
+  it('definit les familles du poste de designer', () => {
+    const d = CODES_FAMILLES.filter((c) => c.startsWith('D'));
+    expect(d).toEqual(['D01', 'D02', 'D03']);
+    // Elles sont dans le pilotage : c'est tout l'objet du changement.
+    expect(d.every((c) => FAMILLES_PILOTAGE.some((f) => f.code === c))).toBe(true);
+  });
+
+  it('donne a chaque metier un perimetre de familles connues, sans T00', () => {
+    for (const [metier, familles] of Object.entries(FAMILLES_PAR_METIER)) {
+      expect(familles.length, metier).toBeGreaterThan(0);
+      for (const code of familles) {
+        expect(CODES_FAMILLES, `${metier} : ${code}`).toContain(code);
+        expect(estHorsPerimetre(code), `${metier} : ${code}`).toBe(false);
+      }
+    }
+    // Les deux metiers ne se recouvrent que sur des familles partagees et assumees.
+    const communes = FAMILLES_PAR_METIER.export.filter((c) => (FAMILLES_PAR_METIER.designer as readonly string[]).includes(c));
+    expect(communes).toEqual(['T07', 'T09', 'T13']);
   });
 
   it('donne un delai cible et un temps standard a chaque famille de pilotage', () => {

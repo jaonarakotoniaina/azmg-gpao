@@ -172,4 +172,22 @@ export const MAILS_TEMOINS: MailAnnote[] = [
     sens: 'entrant',
     attendu: { famille: 'T07', nature: 'reponse_tiers', interlocuteur: 'qualite' },
   },
+  {
+    reference: 'TEM-21',
+    expediteur: 'marketing@client-fictif.test',
+    destinataires: ['do@client-fictif.test'],
+    objet: 'Calendrier editorial de decembre',
+    corps: 'Voici le calendrier editorial des publications linkedin du mois prochain, merci de valider avant programmation.',
+    sens: 'sortant',
+    attendu: { famille: 'D01', nature: 'demande_validation_do', interlocuteur: 'do' },
+  },
+  {
+    reference: 'TEM-22',
+    expediteur: 'marketing@client-fictif.test',
+    destinataires: ['contact@client-fictif.test'],
+    objet: 'Plaquette commerciale',
+    corps: 'Veuillez trouver ci-joint la plaquette mise a jour avec le nouveau catalogue produit.',
+    sens: 'sortant',
+    attendu: { famille: 'D03', nature: 'envoi_livrable' },
+  },
 ];
