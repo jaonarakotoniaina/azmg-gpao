@@ -1,31 +1,39 @@
 # Collecte des mails par Google Apps Script
 
-Une boite Gmail recoit une copie des mails du poste, envoyes et recus, rangee sous un **libelle**.
-Ce script, installe sur cette boite, pousse vers la GPAO les nouveaux messages **de ce libelle, et
-d'eux seuls**.
+Une boite Gmail recoit une copie des mails du poste, envoyes et recus. Ce script, installe sur cette
+boite, pousse chaque nouveau message vers la GPAO.
 
 C'est le mode recommande : il ne demande aucun mot de passe d'application, aucune ouverture de port
 IMAP, et il tourne sur l'infrastructure de Google. Le mode `imap` reste disponible pour une boite
 qui n'est pas chez Google.
 
-## Le libelle est la seule limite du perimetre
+## Choisir la boite, et ce que le script y lit
 
-La boite qui recoit la copie n'est pas toujours une boite dediee : ce peut etre celle d'un dirigeant,
-ou celle d'un manager, qui contient aussi d'autres clients et du courrier personnel. Le libelle est
-alors **la seule chose** qui dit au script ce qu'il a le droit d'envoyer.
+Le script tourne dans l'un de deux cas, selon la constante `LIBELLE_SOURCE`.
 
-Trois consequences, a ne pas contourner :
+**Boite dediee (recommande), `LIBELLE_SOURCE` laisse vide.** La boite ne sert qu'au suivi d'un
+compte client : tout ce qu'elle contient concerne le poste. Le script lit la boite de reception et
+les messages envoyes. C'est le cas le plus simple et le plus sur, parce que le perimetre est celui
+de la boite elle-meme.
 
-1. **La recherche du script porte sur le libelle, jamais sur la boite de reception.** Une requete
-   comme `in:inbox OR in:sent` enverrait toute la boite a la GPAO d'un seul compte client.
-2. **Un libelle par compte client.** Deux clients dans la meme boite demandent deux libelles et deux
-   projets Apps Script, chacun avec son `COMPTE_ID`.
+Un seul prerequis, a verifier une fois : la boite doit recevoir une copie des mails du poste **dans
+les deux sens**, recus comme envoyes. Une regle qui ne copierait que les mails recus priverait la
+GPAO de tout ce que le poste envoie, et donc de toute demande de validation.
+
+**Boite partagee, `LIBELLE_SOURCE` renseigne.** La boite est celle d'un dirigeant ou d'un manager,
+qui contient aussi d'autres clients et du courrier personnel. Le libelle est alors **la seule chose**
+qui dit au script ce qu'il a le droit d'envoyer. Trois consequences, a ne pas contourner :
+
+1. **La recherche porte sur le libelle, jamais sur la boite de reception.** Une requete comme
+   `in:inbox OR in:sent` enverrait toute la boite a la GPAO d'un seul compte client.
+2. **Un libelle par compte client**, donc deux projets Apps Script pour deux clients, chacun avec
+   son `COMPTE_ID` et son libelle.
 3. **Le script s'arrete si le libelle n'existe pas.** Un libelle mal orthographie ne doit pas se
    traduire par un envoi plus large, ni par un silence que personne ne remarque.
 
-Ce qui tombe dans le libelle sans concerner le poste (infolettres, notifications d'outils, travail de
-la designer) n'a pas besoin d'etre trie a la main : la GPAO le classe en famille T00, hors perimetre,
-et l'ecarte de toutes les vues de pilotage et de tous les exports.
+Dans les deux cas, ce qui arrive sans concerner le poste (infolettres, notifications d'outils,
+travail de la designer) n'a pas besoin d'etre trie a la main : la GPAO le classe en famille T00,
+hors perimetre, et l'ecarte de toutes les vues de pilotage et de tous les exports.
 
 ## Ce que fait le script
 
@@ -68,9 +76,10 @@ La generer avec `openssl rand -hex 32`. Redemarrer l'application :
    recoit la copie des mails.
 2. Nouveau projet, le nommer `Collecte GPAO`.
 3. Coller le script ci-dessous dans `Code.gs`.
-4. Renseigner les quatre constantes en tete : l'adresse de la GPAO, le secret, l'identifiant du
-   compte client (visible dans l'URL de l'ecran Dossiers, ou demande au manager), et **le libelle
-   exact** sous lequel les mails du poste sont ranges, majuscules et accents compris.
+4. Renseigner les constantes en tete : l'adresse de la GPAO, le secret, et l'identifiant du compte
+   client (visible dans l'URL de l'ecran Dossiers, ou demande au manager). Sur une boite dediee,
+   laisser `LIBELLE_SOURCE` vide. Sur une boite partagee, y mettre **le libelle exact**, majuscules
+   et accents compris.
 
 ### 3. Declencheur
 
@@ -100,12 +109,16 @@ const SECRET = 'COLLER_ICI_LA_MEME_CLE_QUE_APPS_SCRIPT_SECRET';
 const COMPTE_ID = 1;
 
 /**
- * Libelle qui delimite le perimetre, et rien d'autre.
+ * Libelle qui delimite le perimetre.
  *
- * La boite peut contenir d'autres clients et du courrier personnel : ne jamais elargir la
- * recherche a `in:inbox` ni a `in:sent`, ce qui enverrait toute la boite a ce compte client.
+ * Vide sur une boite dediee au suivi d'un seul compte : le script lit alors la boite de reception
+ * et les messages envoyes, ce qui est sans risque puisque tout y concerne le poste.
+ *
+ * Renseigne sur une boite partagee (celle d'un dirigeant, d'un manager) : le script ne lit que ce
+ * libelle. Ne jamais elargir la recherche a `in:inbox` ni a `in:sent` dans ce cas, cela enverrait
+ * toute la boite, autres clients et courrier prive compris, a ce seul compte client.
  */
-const LIBELLE_SOURCE = 'Masenz';
+const LIBELLE_SOURCE = '';
 
 /** Etiquette posee sur les fils deja envoyes, pour ne jamais les renvoyer. */
 const ETIQUETTE = 'GPAO traite';
@@ -113,14 +126,18 @@ const ETIQUETTE = 'GPAO traite';
 const LOT = 50;
 
 function collecter() {
-  // Un libelle absent (renomme, mal orthographie) doit arreter le script : sans ce controle, la
-  // recherche ne renverrait rien et l'arret passerait pour un « rien a collecter » normal.
-  if (!GmailApp.getUserLabelByName(LIBELLE_SOURCE)) {
-    throw new Error('Libelle source introuvable : ' + LIBELLE_SOURCE);
-  }
   const etiquette = obtenirEtiquette_();
-  // Les fils du libelle source, non encore traites. Le libelle porte les mails recus comme envoyes.
-  const requete = 'label:"' + LIBELLE_SOURCE + '" -label:"' + ETIQUETTE + '" newer_than:14d';
+  // Boite dediee : la boite de reception et les messages envoyes. Boite partagee : le libelle seul.
+  var perimetre = '(in:inbox OR in:sent)';
+  if (LIBELLE_SOURCE) {
+    // Un libelle absent (renomme, mal orthographie) doit arreter le script : sans ce controle, la
+    // recherche ne renverrait rien et l'arret passerait pour un « rien a collecter » normal.
+    if (!GmailApp.getUserLabelByName(LIBELLE_SOURCE)) {
+      throw new Error('Libelle source introuvable : ' + LIBELLE_SOURCE);
+    }
+    perimetre = 'label:"' + LIBELLE_SOURCE + '"';
+  }
+  const requete = perimetre + ' -label:"' + ETIQUETTE + '" newer_than:14d';
   const fils = GmailApp.search(requete, 0, 25);
   if (fils.length === 0) {
     Logger.log('Rien a collecter.');
@@ -189,7 +206,8 @@ et rejette l'appel sinon. Le secret ne circule jamais : seule la signature voyag
 | `401 Signature invalide` | la cle du script n'est pas celle du `.env`, ou le corps a ete modifie en route |
 | `400 Charge invalide` | `COMPTE_ID` absent ou faux dans le script |
 | Rien n'arrive, aucune erreur | la recherche Gmail ne trouve rien : verifier l'etiquette « GPAO traite » et la fenetre `newer_than` |
-| `Libelle source introuvable` | `LIBELLE_SOURCE` ne correspond a aucun libelle : recopier le nom exact, accents et majuscules compris. Un libelle imbrique s'ecrit en entier, par exemple `A - Clients/Masenz` |
+| `Libelle source introuvable` | `LIBELLE_SOURCE` ne correspond a aucun libelle : recopier le nom exact, accents et majuscules compris. Un libelle imbrique s'ecrit en entier, par exemple `A - Clients/Masenz`. Sur une boite dediee, laisser la constante vide |
+| Les mails recus arrivent, ceux du poste non | la boite ne recoit qu'une copie des mails entrants. Completer la regle de copie dans les deux sens, sans quoi aucune demande ne passera en attente DO |
 | Des mails etrangers au poste arrivent dans la GPAO | ils sont hors perimetre et classes T00, donc absents du pilotage. S'ils sont nombreux, c'est le libelle qui est trop large cote Gmail |
 | Les memes messages reviennent | l'etiquette n'est pas posee : le dernier appel a echoue, regarder le journal |
 

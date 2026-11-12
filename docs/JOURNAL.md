@@ -683,11 +683,16 @@ Parametres pour la saisie.
 
 **2. Le script Apps Script pouvait pousser toute une boite personnelle**
 
-Il cherchait `(in:inbox OR in:sent)`, ce qui convenait a une boite dediee. Installe sur une boite
-qui contient d'autres clients et du courrier prive, il aurait envoye le tout a la GPAO d'un seul
-compte. La recherche porte maintenant sur le libelle et sur rien d'autre, un libelle par compte
-client, et le script s'arrete si le libelle est introuvable plutot que de renvoyer une liste vide
-qui ressemble a un « rien a collecter ».
+Il cherchait `(in:inbox OR in:sent)` sans condition, ce qui convenait a une boite dediee. Installe
+sur une boite qui contient d'autres clients et du courrier prive, il aurait envoye le tout a la GPAO
+d'un seul compte.
+
+Le script a maintenant deux modes, par la constante `LIBELLE_SOURCE`. Vide, il lit la boite de
+reception et les messages envoyes : c'est le cas de la boite de suivi dediee, qui est celle retenue
+(elle est nommee dans `docs/A_FOURNIR.md`). Renseignee, il ne lit que ce libelle, un libelle par compte client, et s'arrete si le
+libelle est introuvable plutot que de renvoyer une liste vide qui ressemble a un « rien a
+collecter ». Les deux modes sont gardes parce qu'un deuxieme compte client peut arriver dans une
+boite partagee, et que supprimer le mode libelle rendrait ce cas dangereux par defaut.
 
 **Verifications**
 
@@ -699,6 +704,11 @@ de validation, fait bien passer la demande en attente DO.
 
 1. Saisir les deux adresses dans Parametres, onglet « Comptes clients » (indispensable, voir
    `docs/A_FOURNIR.md`).
-2. Generer `APPS_SCRIPT_SECRET` et installer le script sur la boite qui porte le libelle.
-3. Pour l'historique : Google Takeout sur le libelle, puis depot du `.mbox` dans « Import des
-   mails ». L'import et la collecte se dedoublonnent entre eux.
+2. Verifier que la boite de suivi recoit bien la copie des mails du poste **dans les deux sens**,
+   recus et envoyes. Une copie des seuls mails recus priverait la GPAO de tout ce que le
+   poste envoie, et donc de toute demande de validation. C'est le seul prerequis que l'application
+   ne peut pas constater elle-meme.
+3. Generer `APPS_SCRIPT_SECRET` et installer le script sur cette boite, `LIBELLE_SOURCE` laisse
+   vide.
+4. Pour l'historique : Google Takeout sur la boite ou sur le libelle, puis depot du `.mbox` dans
+   « Import des mails ». L'import et la collecte se dedoublonnent entre eux.

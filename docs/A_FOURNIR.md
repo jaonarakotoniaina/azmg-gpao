@@ -21,7 +21,8 @@ La procedure pas a pas est dans `README.md`.
 
 | Element | Variable ou emplacement | Etat |
 |---|---|---|
-| Libelle Gmail sous lequel les mails du poste sont ranges | constante `LIBELLE_SOURCE` du script | **fourni** : libelle `Masenz` dans la boite du CEO |
+| Boite Gmail dediee recevant la copie des mails du poste | compte Google | **fournie** : `suivimasenz@gmail.com` |
+| Copie des mails du poste dans les **deux sens**, recus et envoyes | regle de copie cote Masenz | **a verifier une fois** |
 | Adresses depuis lesquelles le poste ecrit | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Adresse de la donneuse d'ordre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer a la mise en ligne |
@@ -35,10 +36,18 @@ domaine que la donneuse d'ordre. Sans elles, la GPAO lit tout ce que le poste en
 courrier recu : aucune demande ne passe en attente DO et le digest de validation reste vide. Elles
 se saisissent dans l'ecran Parametres, pas dans le depot : ce sont des donnees du client.
 
-**Le libelle delimite le perimetre.** La boite qui porte le libelle contient aussi d'autres clients
-et du courrier personnel. Le script ne lit que le libelle, et un libelle introuvable l'arrete au
-lieu d'elargir la recherche. Ce qui tombe dans le libelle sans concerner le poste est classe T00 et
-reste hors de toutes les vues de pilotage et de tous les exports.
+**La boite dediee delimite le perimetre.** Le script tourne sur `suivimasenz@gmail.com`, qui ne sert
+qu'au suivi de ce compte : la constante `LIBELLE_SOURCE` reste vide et le script lit la boite de
+reception et les messages envoyes. Le mode « libelle » reste disponible pour une boite partagee, il
+est decrit dans [`docs/apps-script.md`](apps-script.md).
+
+**Un point a verifier avant la mise en service** : la boite doit recevoir une copie des mails du
+poste dans les deux sens. Une regle qui ne copierait que les mails recus priverait la GPAO de tout
+ce que le poste envoie, et donc de toute demande de validation. C'est le seul prerequis que
+l'application ne peut pas constater elle-meme.
+
+Ce qui arrive dans la boite sans concerner le poste est classe T00 et reste hors de toutes les vues
+de pilotage et de tous les exports.
 
 La mise en place du script Google est decrite pas a pas dans
 [`docs/apps-script.md`](apps-script.md). Elle ne demande ni mot de passe d'application, ni

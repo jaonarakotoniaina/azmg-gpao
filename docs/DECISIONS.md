@@ -273,18 +273,26 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Retour arriere : `sensDuMessage` et `deduireInterlocuteur` concentrent la logique ; un compte sans
   adresses saisies retrouve exactement l'ancien comportement.
 
-## 2026-11-12 : le libelle Gmail est la seule limite du perimetre
+## 2026-11-12 : le perimetre de la collecte est la boite, ou un libelle
 
 - Sujet : la collecte etait pensee pour une boite Gmail dediee, dont tout le contenu concernait le
-  poste. Les mails arrivent en fait dans la boite du CEO, sous un libelle.
-- Risque : le script cherchait `(in:inbox OR in:sent)`. Installe sur une boite personnelle, il
-  aurait pousse la totalite de cette boite, autres clients et courrier prive compris, vers la GPAO
-  d'un seul compte client.
-- Choix : la recherche porte sur `label:"<libelle>"` et sur rien d'autre, un libelle par compte
-  client, et le script **s'arrete** si le libelle est introuvable.
-- Raison du dernier point : un libelle mal orthographie rendait la recherche vide, ce qui ressemble
-  a un « rien a collecter » normal. Mieux vaut une erreur visible dans le journal d'execution.
-- Ce qui n'est pas traite par le libelle l'est par le typage : infolettres, notifications d'outils
-  et travail de la designer tombent en T00, hors perimetre, donc hors de toutes les vues et de tous
-  les exports.
+  poste. Les mails ont d'abord ete ranges sous un libelle dans la boite du CEO, avant que le choix
+  se porte sur une boite de suivi dediee (nommee dans `docs/A_FOURNIR.md`).
+- Risque releve au passage : le script cherchait `(in:inbox OR in:sent)` sans condition. Installe
+  sur une boite personnelle, il aurait pousse la totalite de cette boite, autres clients et
+  courrier prive compris, vers la GPAO d'un seul compte client.
+- Choix : un seul script, deux modes, par la constante `LIBELLE_SOURCE`. Vide, le script lit la
+  boite de reception et les messages envoyes, ce qui convient a une boite dediee. Renseignee, il ne
+  lit que ce libelle, un libelle par compte client, et **s'arrete** si le libelle est introuvable.
+- Raison de garder les deux : la boite dediee est le cas le plus sur et c'est celui retenu, mais un
+  deuxieme compte client peut tres bien arriver dans une boite partagee. Supprimer le mode libelle
+  aurait rendu ce cas dangereux par defaut.
+- Raison de l'arret sur libelle introuvable : un libelle mal orthographie rendait la recherche vide,
+  ce qui ressemble a un « rien a collecter » normal. Mieux vaut une erreur visible dans le journal
+  d'execution.
+- Prerequis que l'application ne peut pas verifier : la boite doit recevoir la copie dans les deux
+  sens. Une copie des seuls mails recus priverait la GPAO de tout ce que le poste envoie. Le point
+  est inscrit dans `docs/A_FOURNIR.md` et dans le tableau de diagnostic du script.
+- Ce que ni la boite ni le libelle ne filtrent, le typage le fait : infolettres, notifications
+  d'outils et travail de la designer tombent en T00, hors perimetre.
 - Retour arriere : la constante `LIBELLE_SOURCE` en tete du script.
