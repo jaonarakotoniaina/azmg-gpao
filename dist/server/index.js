@@ -6657,6 +6657,7 @@ function verifierSignature(corps, signature, secret) {
 var import_drizzle_orm26 = require("drizzle-orm");
 init_client();
 init_journal();
+init_http();
 init_evenements();
 init_service2();
 init_typage();
@@ -6677,6 +6678,12 @@ function estIgnore(message, config2) {
   const correspondants = [message.expediteur, ...message.destinataires ?? []];
   if (correspondants.some((a) => estUneDe(a, config2.adressesPoste))) return false;
   return correspondants.some((a) => estUneDe(a, config2.adressesIgnorees));
+}
+async function exigerCompteCollecte(compteId) {
+  const [compte] = await db.select({ actif: schema_exports.comptesClients.actif }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.id, compteId));
+  if (!compte || !compte.actif) {
+    throw new ErreurHttp(404, `Compte client ${compteId} inconnu ou inactif. Verifier COMPTE_ID dans le script Apps Script.`);
+  }
 }
 async function configDuCompte(compteId) {
   const [compte] = await db.select({
@@ -6950,6 +6957,13 @@ routesWebhookCollecte.post("/", async (req, res) => {
     charge2 = chargeSchema.parse(JSON.parse(corpsBrut));
   } catch (e) {
     res.status(400).json({ erreur: `Charge invalide : ${messageErreur(e).slice(0, 200)}` });
+    return;
+  }
+  try {
+    await exigerCompteCollecte(charge2.compteId);
+  } catch (e) {
+    journal.warn("Webhook de collecte refuse : compte inconnu ou inactif", { compteId: charge2.compteId });
+    res.status(404).json({ erreur: messageErreur(e) });
     return;
   }
   const messages = [];
@@ -7552,7 +7566,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "05342ee94f31d1281debc2fdf86b518cfc7b3134",
+        version: "b09886097786fc7bb3a332f2ea24adee1c9702b7",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()

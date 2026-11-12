@@ -1,1 +1,0 @@
-import{c as e}from"./index-BQGIBvGu.js";const c={name:"check",size:24,node:[["path",{d:"M20 6 9 17l-5-5",key:"1gmf2c"}]]};c.node;const a=e(c);const o={name:"x",size:24,node:[["path",{d:"M18 6 6 18",key:"1bl5f8"}],["path",{d:"m6 6 12 12",key:"d8bk6v"}]]};o.node;const t=e(o);export{a as C,t as X};
