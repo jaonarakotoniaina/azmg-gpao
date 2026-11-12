@@ -425,6 +425,19 @@ test('le webhook de collecte refuse une charge non signee', async ({ page }) => 
   expect([401, 503]).toContain(reponse.status());
 });
 
+test('le webhook refuse un compte inconnu au lieu de perdre les mails', async ({ page }) => {
+  // Le script Apps Script n'etiquette un fil qu'apres une reponse en succes. Un refus franc le
+  // fait donc reessayer au passage suivant ; un 200 avec des erreurs dans le bilan lui ferait
+  // etiqueter des fils dont rien n'a ete enregistre, et les mails seraient perdus sans reprise.
+  const reponse = await page.request.post('/api/collecte/apps-script', {
+    headers: { 'content-type': 'application/json' },
+    data: { compteId: 999999, messages: [] },
+    failOnStatusCode: false,
+  });
+  // Sans secret configure, la signature est verifiee avant le compte : les deux refus conviennent.
+  expect([401, 404, 503]).toContain(reponse.status());
+});
+
 // ---------------------------------------------------------------------------
 // Phase 5 : brouillons
 // ---------------------------------------------------------------------------

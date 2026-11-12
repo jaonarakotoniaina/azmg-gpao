@@ -17,6 +17,7 @@ import {
   configDuCompte,
   demandeDuFil,
   enregistrerLot,
+  exigerCompteCollecte,
   enregistrerMessage,
   objetNormalise,
   posteDuMessage,
@@ -368,6 +369,30 @@ describe('plusieurs postes sur un meme compte', () => {
     expect(dExport.every((d) => d.famille.startsWith('T'))).toBe(true);
     expect(dExport.some((d) => d.famille.startsWith('D'))).toBe(false);
     expect(demandes).toHaveLength(dExport.length + dDesigner.length);
+  });
+});
+
+describe('garde-fou du webhook : le compte doit exister', () => {
+  it('accepte un compte actif', async () => {
+    await expect(exigerCompteCollecte(compteId)).resolves.toBeUndefined();
+  });
+
+  it('refuse un compte inconnu, pour que le script reessaie', async () => {
+    // Le script n'etiquette un fil qu'apres un succes. Un refus le fait reessayer ; un succes avec
+    // des erreurs dans le bilan lui ferait etiqueter des fils dont rien n'a ete enregistre, et les
+    // mails seraient consommes et perdus sans reprise possible.
+    await expect(exigerCompteCollecte(999_999)).rejects.toThrow(/inconnu ou inactif/);
+  });
+
+  it('refuse un compte desactive', async () => {
+    await db.update(schema.comptesClients).set({ actif: false }).where(eq(schema.comptesClients.id, compteId));
+    await expect(exigerCompteCollecte(compteId)).rejects.toThrow(/inconnu ou inactif/);
+  });
+
+  it('nomme la constante a corriger dans le script', async () => {
+    // Le message est lu dans le journal d'execution d'Apps Script, loin du code : il doit dire
+    // quoi corriger, et pas seulement que quelque chose ne va pas.
+    await expect(exigerCompteCollecte(999_999)).rejects.toThrow(/COMPTE_ID/);
   });
 });
 

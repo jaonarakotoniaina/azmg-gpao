@@ -13,6 +13,7 @@
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, schema } from '../../db/client';
 import { journal, messageErreur } from '../../lib/journal';
+import { ErreurHttp } from '../../lib/http';
 import { journaliser } from '../../lib/evenements';
 import { extensionAcceptee, rangerFichier } from '../../lib/stockage';
 import { ajouterEvenement } from '../evenements/service';
@@ -94,6 +95,25 @@ export function estIgnore(message: MessageCollecte, config: { adressesPoste: str
   const correspondants = [message.expediteur, ...(message.destinataires ?? [])];
   if (correspondants.some((a) => estUneDe(a, config.adressesPoste))) return false;
   return correspondants.some((a) => estUneDe(a, config.adressesIgnorees));
+}
+
+/**
+ * Verifie qu'un compte peut recevoir une collecte, avant de toucher au moindre message.
+ *
+ * Sans ce controle, un identifiant de compte errone dans le script faisait echouer chaque message
+ * un par un : les erreurs partaient dans le bilan, le webhook repondait tout de meme en succes, et
+ * le script posait son etiquette « traite » sur des fils dont rien n'avait ete enregistre. Les
+ * mails etaient consommes et perdus, sans reprise possible. Un refus franc laisse le script
+ * reessayer au passage suivant, puisqu'il n'etiquette qu'en cas de succes.
+ */
+export async function exigerCompteCollecte(compteId: number): Promise<void> {
+  const [compte] = await db
+    .select({ actif: schema.comptesClients.actif })
+    .from(schema.comptesClients)
+    .where(eq(schema.comptesClients.id, compteId));
+  if (!compte || !compte.actif) {
+    throw new ErreurHttp(404, `Compte client ${compteId} inconnu ou inactif. Verifier COMPTE_ID dans le script Apps Script.`);
+  }
 }
 
 /** Configuration d'un compte utile a la collecte : ses postes, et qui est la donneuse d'ordre. */
