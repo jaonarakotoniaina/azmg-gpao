@@ -73,12 +73,20 @@ export default function Parametres() {
   const [brouillon, setBrouillon] = useState<ParametresType | null>(null);
 
   const { data, isLoading, error } = useQuery({ queryKey: ['parametres'], queryFn: () => api.get<Reponse>('/api/parametres') });
-  const { data: comptes } = useQuery({
+  const {
+    data: comptes,
+    error: erreurComptes,
+    isLoading: chargeComptes,
+  } = useQuery({
     queryKey: ['comptes-clients'],
     queryFn: () => api.get<CompteClient[]>('/api/comptes'),
     enabled: peut('admin', 'manager'),
   });
-  const { data: postes } = useQuery({
+  const {
+    data: postes,
+    error: erreurPostes,
+    isLoading: chargePostes,
+  } = useQuery({
     queryKey: ['postes'],
     queryFn: () => api.get<PosteClient[]>('/api/postes'),
     enabled: peut('admin', 'manager'),
@@ -472,7 +480,11 @@ export default function Parametres() {
         <Carte titre="Adresses des comptes et des postes" id="comptes">
           {!peut('admin', 'manager') ? (
             <Vide>Seuls un administrateur et un manager voient les comptes clients.</Vide>
-          ) : !comptes || !postes ? (
+          ) : erreurComptes || erreurPostes ? (
+            // Sans ce cas, une erreur de chargement laisse un chargement qui tourne sans fin, et
+            // ressemble a une liste vide. L'ecran doit dire ce qui ne va pas.
+            <Alerte>{messageErreur(erreurComptes ?? erreurPostes)}</Alerte>
+          ) : chargeComptes || chargePostes || !comptes || !postes ? (
             <Chargement />
           ) : (
             <>
