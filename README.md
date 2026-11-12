@@ -304,6 +304,11 @@ clients** :
    poste n'apparait dans la file d'aucun collaborateur.
 3. Renseigner, si besoin, les adresses du client a ne pas suivre.
 
+Puis, onglet **Equipe**, creer un compte utilisateur par personne (nom, adresse email, role, mot de
+passe initial). Le mot de passe initial se transmet par un autre canal que le courriel ; chacun le
+change ensuite dans l'onglet **Mon compte**. Un collaborateur doit avoir son compte **avant** d'etre
+rattache a un poste.
+
 Tant qu'aucun compte n'existe, les ecrans de pilotage sont vides : c'est normal, l'application
 n'arrive avec aucune donnee et le seed de demonstration est desactive en production.
 

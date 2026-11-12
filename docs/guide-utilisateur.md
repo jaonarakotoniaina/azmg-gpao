@@ -258,7 +258,10 @@ L'ecran **Parametres** a quatre onglets.
   l'interrupteur general met en pause toute la preparation, ce qui est la bonne manoeuvre pendant
   une fermeture du client ou une semaine de conges du poste. Dans les deux cas, les brouillons
   deja prepares restent lisibles dans leur ecran.
-- **Equipe** : la liste des comptes utilisateurs et leur role.
+- **Equipe** : creer un compte utilisateur, changer un role, desactiver ou reactiver un compte. La
+  desactivation ferme les sessions ouvertes de la personne. Un administrateur ne peut pas retirer
+  ses propres droits.
+- **Mon compte** : changer son propre mot de passe. Cet onglet est visible par tous les roles.
 
 ### Les roles
 

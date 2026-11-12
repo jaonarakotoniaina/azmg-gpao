@@ -58,6 +58,65 @@ test('le premier demarrage permet de creer un compte client et ses postes', asyn
   await expect(page.getByText(/6 famille\(s\)/)).toBeVisible();
 });
 
+/**
+ * Comptes utilisateurs : creation, changement de role, desactivation, et changement de son propre
+ * mot de passe. Ces routes existaient depuis la phase 1 sans qu'aucun ecran ne les appelle.
+ */
+test('l’administrateur cree un compte utilisateur, le modifie et le desactive', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/parametres');
+  await page.getByRole('tab', { name: 'Equipe' }).click();
+
+  await page.getByRole('textbox', { name: 'Nom', exact: true }).fill('Collaboratrice de parcours');
+  await page.getByRole('textbox', { name: 'Adresse email', exact: true }).fill('parcours@azmg-solutions.com');
+  await page.getByRole('combobox', { name: 'Role', exact: true }).selectOption('collaborateur');
+  await page.getByLabel('Mot de passe initial', { exact: true }).fill('MotDePasseInitial2026');
+  await page.getByRole('button', { name: 'Creer le compte' }).click();
+  await expect(page.getByText('Compte utilisateur cree')).toBeVisible({ timeout: 15_000 });
+
+  const ligne = page.locator('tr', { hasText: 'parcours@azmg-solutions.com' });
+  await expect(ligne).toBeVisible();
+  await expect(ligne.getByText('actif')).toBeVisible();
+
+  // Le role se change depuis la liste.
+  await ligne.getByRole('combobox', { name: /Role de/ }).selectOption('manager');
+  await expect(page.getByText('Compte utilisateur mis a jour')).toBeVisible({ timeout: 15_000 });
+
+  // La desactivation ferme les sessions ouvertes du compte.
+  await ligne.getByRole('button', { name: 'Desactiver' }).click();
+  await expect(ligne.getByText('desactive')).toBeVisible({ timeout: 15_000 });
+
+  // Un administrateur ne peut pas se retirer ses propres droits : aucun bouton sur sa ligne.
+  const sienne = page.locator('tr', { hasText: COMPTES.ceo.email });
+  await expect(sienne.getByText('votre compte')).toBeVisible();
+});
+
+test('chacun peut changer son mot de passe depuis son compte', async ({ page }) => {
+  await seConnecter(page, COMPTES.collaboratrice);
+  await page.goto('/parametres');
+  await page.getByRole('tab', { name: 'Mon compte' }).click();
+
+  // Un mot de passe actuel errone est refuse par le serveur.
+  await page.getByLabel('Mot de passe actuel', { exact: true }).fill('MauvaisMotDePasse2026');
+  await page.getByLabel('Nouveau mot de passe', { exact: true }).fill('NouveauMotDePasse2026');
+  await page.getByLabel('Confirmer le nouveau mot de passe', { exact: true }).fill('NouveauMotDePasse2026');
+  await page.getByRole('button', { name: 'Changer le mot de passe' }).click();
+  await expect(page.getByText(/Mot de passe actuel incorrect/)).toBeVisible({ timeout: 15_000 });
+
+  // Avec le bon mot de passe actuel, le changement passe, puis on le remet pour la suite.
+  await page.getByLabel('Mot de passe actuel', { exact: true }).fill(COMPTES.collaboratrice.motDePasse);
+  await page.getByLabel('Nouveau mot de passe', { exact: true }).fill('NouveauMotDePasse2026');
+  await page.getByLabel('Confirmer le nouveau mot de passe', { exact: true }).fill('NouveauMotDePasse2026');
+  await page.getByRole('button', { name: 'Changer le mot de passe' }).click();
+  await expect(page.getByText('Mot de passe change')).toBeVisible({ timeout: 15_000 });
+
+  await page.getByLabel('Mot de passe actuel', { exact: true }).fill('NouveauMotDePasse2026');
+  await page.getByLabel('Nouveau mot de passe', { exact: true }).fill(COMPTES.collaboratrice.motDePasse);
+  await page.getByLabel('Confirmer le nouveau mot de passe', { exact: true }).fill(COMPTES.collaboratrice.motDePasse);
+  await page.getByRole('button', { name: 'Changer le mot de passe' }).click();
+  await expect(page.getByText('Mot de passe change')).toBeVisible({ timeout: 15_000 });
+});
+
 test('la collaboratrice cree un dossier et une demande au clavier en moins de 30 secondes', async ({ page }) => {
   await seConnecter(page, COMPTES.collaboratrice);
   await page.goto('/saisie');

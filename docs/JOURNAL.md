@@ -837,3 +837,47 @@ partie de la suite, et les dix-neuf autres parcours travaillent sur ce que celui
 **Verifications**
 
 20 parcours Playwright (un de plus), 325 tests Vitest.
+
+---
+
+## 2026-11-12 (suite) : les comptes utilisateurs, et le meme manque trois fois
+
+L'ecran Equipe affichait la liste des comptes utilisateurs sans permettre d'en creer un. Exactement
+le manque corrige une heure plus tot sur les comptes clients, et pour la meme raison : les routes
+existaient depuis la phase 1, `POST /api/utilisateurs` et `PATCH /api/utilisateurs/:id`, mais aucun
+ecran ne les appelait. Seule la ligne de commande savait creer un utilisateur.
+
+En ecrivant le formulaire, un troisieme cas du meme defaut est apparu. Le texte d'aide annoncait
+que « chacun peut changer son mot de passe ensuite depuis son compte », et c'etait faux :
+`POST /api/auth/changer-mot-de-passe` existait, sans aucun ecran pour l'appeler. Ecrire la phrase a
+suffi a reveler qu'elle mentait.
+
+**Ce qui est livre**
+
+- Onglet **Equipe** : creation d'un compte (nom, adresse email, role, mot de passe initial),
+  changement de role depuis la liste, desactivation et reactivation. La desactivation ferme les
+  sessions ouvertes, ce que faisait deja la route. Un administrateur ne peut pas se retirer ses
+  propres droits, et sa ligne ne porte donc aucune action.
+- Onglet **Mon compte**, visible par tous les roles : changement de son propre mot de passe, avec
+  confirmation et verification du mot de passe actuel.
+- Etats vides et erreurs de chargement distingues, comme sur l'onglet des comptes clients.
+
+**Le mot de passe initial**
+
+L'administrateur le saisit et le transmet par un autre canal que le courriel. La reinitialisation
+par courriel existe, mais elle depend du SMTP, qui reste en mode simule tant que les identifiants
+ne sont pas fournis. Un mot de passe initial saisi a la main ne depend de rien et fonctionne des la
+mise en ligne.
+
+**Verifications**
+
+22 parcours Playwright, deux de plus : creation puis modification puis desactivation d'un compte,
+et changement de mot de passe, y compris le refus d'un mot de passe actuel errone.
+
+**La lecon, trois fois la meme**
+
+Une route sans ecran n'existe pas pour l'utilisateur. Les trois manques se ressemblaient, et aucun
+test ne les voyait parce que les parcours contournaient l'interface : par SQL pour les comptes
+clients, par la ligne de commande pour les utilisateurs. Le reste du produit est couvert ; ce sont
+les chemins de mise en route qui ne l'etaient pas, et ce sont precisement ceux qu'on emprunte une
+seule fois, le jour de la mise en ligne.

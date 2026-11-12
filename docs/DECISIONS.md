@@ -389,3 +389,18 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Regle a en tirer : tout raccourci de preparation qui court-circuite l'interface cache le chemin
   qu'il court-circuite. Quand un ecran est le seul moyen de faire une chose, un parcours doit passer
   par cet ecran.
+
+## 2026-11-12 : le mot de passe initial est saisi, pas envoye
+
+- Sujet : comment donner son premier mot de passe a un nouvel utilisateur depuis l'ecran Equipe.
+- Options : envoyer un lien de reinitialisation par courriel, engendrer un mot de passe et
+  l'afficher une fois, ou laisser l'administrateur le saisir.
+- Choix : l'administrateur le saisit, et le transmet par un autre canal que le courriel.
+- Raison : la reinitialisation par courriel existe, mais elle depend du SMTP, qui reste en mode
+  simule tant que les identifiants ne sont pas fournis. Un mot de passe initial saisi a la main ne
+  depend de rien et fonctionne des la mise en ligne. C'est la meme regle que partout ailleurs dans
+  ce projet : ce qui est bloquant ne doit dependre d'aucune integration externe.
+- Consequence : l'onglet « Mon compte » devient necessaire, et il a ete ajoute dans le meme
+  mouvement. Sans lui, un mot de passe pose par l'administrateur serait definitif.
+- Retour arriere : la route `POST /api/auth/mot-de-passe-oublie` est inchangee et prendra le relais
+  des que le SMTP sera fourni.

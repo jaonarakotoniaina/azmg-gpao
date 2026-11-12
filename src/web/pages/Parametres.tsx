@@ -57,15 +57,19 @@ interface Utilisateur {
 }
 
 export default function Parametres() {
-  const { peut } = useAuth();
+  const { peut, utilisateur } = useAuth();
   const notifier = useNotifier();
   const client = useQueryClient();
-  const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'comptes' | 'equipe'>('referentiels');
+  const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'comptes' | 'equipe' | 'mon-compte'>(
+    'referentiels',
+  );
+  const [motDePasse, setMotDePasse] = useState({ actuel: '', nouveau: '', confirmation: '' });
   /** Saisie en cours : adresse de la DO par compte, adresses par poste. */
   const [adresseDo, setAdresseDo] = useState<Record<number, string>>({});
   const [adressesIgnorees, setAdressesIgnorees] = useState<Record<number, string>>({});
   /** Creation d'un compte client et d'un poste, depuis l'onglet « Comptes clients ». */
   const [nouveauCompte, setNouveauCompte] = useState({ nom: '', pays: '', ville: '', donneurOrdreNom: '', donneurOrdreEmail: '' });
+  const [nouvelUtilisateur, setNouvelUtilisateur] = useState({ nom: '', email: '', role: 'collaborateur' as Role, motDePasse: '' });
   const [nouveauPoste, setNouveauPoste] = useState<
     Record<number, { intitule: string; metier: Metier; adresses: string; collaborateurId: string }>
   >({});
@@ -91,7 +95,11 @@ export default function Parametres() {
     queryFn: () => api.get<PosteClient[]>('/api/postes'),
     enabled: peut('admin', 'manager'),
   });
-  const { data: equipe } = useQuery({
+  const {
+    data: equipe,
+    error: erreurEquipe,
+    isLoading: chargeEquipe,
+  } = useQuery({
     queryKey: ['utilisateurs'],
     queryFn: () => api.get<Utilisateur[]>('/api/utilisateurs'),
     enabled: peut('admin', 'manager'),
@@ -100,6 +108,43 @@ export default function Parametres() {
   useEffect(() => {
     if (data?.parametres && !brouillon) setBrouillon(structuredClone(data.parametres));
   }, [data, brouillon]);
+
+  const changerMotDePasse = useMutation({
+    mutationFn: () => api.post('/api/auth/changer-mot-de-passe', { actuel: motDePasse.actuel, nouveau: motDePasse.nouveau }),
+    onSuccess: () => {
+      notifier('Mot de passe change');
+      setMotDePasse({ actuel: '', nouveau: '', confirmation: '' });
+    },
+    onError: (e) => notifier(messageErreur(e), 'rouge'),
+  });
+
+  const creerUtilisateur = useMutation({
+    mutationFn: () =>
+      api.post('/api/utilisateurs', {
+        nom: nouvelUtilisateur.nom.trim(),
+        email: nouvelUtilisateur.email.trim(),
+        role: nouvelUtilisateur.role,
+        motDePasse: nouvelUtilisateur.motDePasse,
+      }),
+    onSuccess: () => {
+      notifier('Compte utilisateur cree');
+      setNouvelUtilisateur({ nom: '', email: '', role: 'collaborateur', motDePasse: '' });
+      void client.invalidateQueries({ queryKey: ['utilisateurs'] });
+    },
+    onError: (e) => notifier(messageErreur(e), 'rouge'),
+  });
+
+  const modifierUtilisateur = useMutation({
+    mutationFn: (v: { id: number; role?: Role; actif?: boolean }) => {
+      const { id, ...modifs } = v;
+      return api.patch(`/api/utilisateurs/${id}`, modifs);
+    },
+    onSuccess: () => {
+      notifier('Compte utilisateur mis a jour');
+      void client.invalidateQueries({ queryKey: ['utilisateurs'] });
+    },
+    onError: (e) => notifier(messageErreur(e), 'rouge'),
+  });
 
   const creerCompte = useMutation({
     mutationFn: () =>
@@ -222,6 +267,7 @@ export default function Parametres() {
             { id: 'automatisations', libelle: 'Automatisations' },
             { id: 'comptes', libelle: 'Comptes clients' },
             { id: 'equipe', libelle: 'Equipe' },
+            { id: 'mon-compte', libelle: 'Mon compte' },
           ]}
         />
       </div>
@@ -742,33 +788,208 @@ export default function Parametres() {
         <Carte titre="Comptes utilisateurs" id="equipe">
           {!peut('admin', 'manager') ? (
             <Vide>Seuls un administrateur et un manager voient la liste des comptes.</Vide>
-          ) : !equipe?.length ? (
+          ) : erreurEquipe ? (
+            <Alerte>{messageErreur(erreurEquipe)}</Alerte>
+          ) : chargeEquipe || !equipe ? (
             <Chargement />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="tableau">
-                <caption className="sr-only">Comptes utilisateurs</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Nom</th>
-                    <th scope="col">Email</th>
-                    <th scope="col">Role</th>
-                    <th scope="col">Etat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {equipe.map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.nom}</td>
-                      <td>{u.email}</td>
-                      <td>{LIBELLES_ROLES[u.role]}</td>
-                      <td>{u.actif ? <Badge ton="vert">actif</Badge> : <Badge ton="neutre">desactive</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {admin && (
+                <form
+                  className="mb-6 rounded-carte border border-ligne p-4"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (nouvelUtilisateur.nom.trim() && nouvelUtilisateur.email.trim() && nouvelUtilisateur.motDePasse.length >= 10) {
+                      creerUtilisateur.mutate();
+                    }
+                  }}
+                >
+                  <p className="font-medium">Nouveau compte utilisateur</p>
+                  <p className="aide">
+                    Le mot de passe initial est a transmettre par un autre canal que le courriel. Chacun peut le changer ensuite
+                    depuis son compte.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-5 sm:items-end">
+                    <ChampTexte
+                      libelle="Nom"
+                      required
+                      value={nouvelUtilisateur.nom}
+                      onChange={(e) => setNouvelUtilisateur((u) => ({ ...u, nom: e.target.value }))}
+                    />
+                    <ChampTexte
+                      libelle="Adresse email"
+                      type="email"
+                      required
+                      value={nouvelUtilisateur.email}
+                      onChange={(e) => setNouvelUtilisateur((u) => ({ ...u, email: e.target.value }))}
+                    />
+                    <ChampSelect
+                      libelle="Role"
+                      value={nouvelUtilisateur.role}
+                      onChange={(e) => setNouvelUtilisateur((u) => ({ ...u, role: e.target.value as Role }))}
+                    >
+                      {Object.entries(LIBELLES_ROLES).map(([cle, libelle]) => (
+                        <option key={cle} value={cle}>
+                          {libelle}
+                        </option>
+                      ))}
+                    </ChampSelect>
+                    <ChampTexte
+                      libelle="Mot de passe initial"
+                      type="password"
+                      required
+                      minLength={10}
+                      aide="10 caracteres au moins"
+                      value={nouvelUtilisateur.motDePasse}
+                      onChange={(e) => setNouvelUtilisateur((u) => ({ ...u, motDePasse: e.target.value }))}
+                    />
+                    <Bouton
+                      type="submit"
+                      variante="plein"
+                      disabled={
+                        !nouvelUtilisateur.nom.trim() || !nouvelUtilisateur.email.trim() || nouvelUtilisateur.motDePasse.length < 10
+                      }
+                      chargement={creerUtilisateur.isPending}
+                    >
+                      Creer le compte
+                    </Bouton>
+                  </div>
+                </form>
+              )}
+
+              {!equipe.length ? (
+                <Vide>Aucun compte utilisateur.</Vide>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="tableau">
+                    <caption className="sr-only">Comptes utilisateurs</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Nom</th>
+                        <th scope="col">Email</th>
+                        <th scope="col">Role</th>
+                        <th scope="col">Etat</th>
+                        {admin && <th scope="col">Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {equipe.map((u) => (
+                        <tr key={u.id}>
+                          <td>{u.nom}</td>
+                          <td>{u.email}</td>
+                          <td>
+                            {admin && u.id !== utilisateur?.id ? (
+                              <>
+                                <label className="sr-only" htmlFor={`role-${u.id}`}>
+                                  Role de {u.nom}
+                                </label>
+                                <select
+                                  id={`role-${u.id}`}
+                                  className="champ"
+                                  value={u.role}
+                                  onChange={(e) => modifierUtilisateur.mutate({ id: u.id, role: e.target.value as Role })}
+                                >
+                                  {Object.entries(LIBELLES_ROLES).map(([cle, libelle]) => (
+                                    <option key={cle} value={cle}>
+                                      {libelle}
+                                    </option>
+                                  ))}
+                                </select>
+                              </>
+                            ) : (
+                              LIBELLES_ROLES[u.role]
+                            )}
+                          </td>
+                          <td>{u.actif ? <Badge ton="vert">actif</Badge> : <Badge ton="neutre">desactive</Badge>}</td>
+                          {admin && (
+                            <td>
+                              {u.id === utilisateur?.id ? (
+                                <span className="text-sm text-texte-discret">votre compte</span>
+                              ) : (
+                                <Bouton
+                                  onClick={() => modifierUtilisateur.mutate({ id: u.id, actif: !u.actif })}
+                                  chargement={modifierUtilisateur.isPending}
+                                >
+                                  {u.actif ? 'Desactiver' : 'Reactiver'}
+                                </Bouton>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="aide mt-3">
+                    Desactiver un compte ferme ses sessions ouvertes. Un administrateur ne peut pas retirer ses propres droits.
+                  </p>
+                </div>
+              )}
+            </>
           )}
+        </Carte>
+        </Panneau>
+      )}
+
+      {onglet === 'mon-compte' && (
+        <Panneau prefixe="parametres" id="mon-compte">
+        <Carte titre="Mon compte" id="mon-compte">
+          <p>
+            {utilisateur?.nom} ({utilisateur?.email}), {utilisateur ? LIBELLES_ROLES[utilisateur.role] : ''}.
+          </p>
+          <form
+            className="mt-4 grid gap-3 sm:max-w-md"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (motDePasse.nouveau.length < 10) return;
+              if (motDePasse.nouveau !== motDePasse.confirmation) {
+                notifier('Les deux mots de passe ne sont pas identiques', 'rouge');
+                return;
+              }
+              changerMotDePasse.mutate();
+            }}
+          >
+            <ChampTexte
+              libelle="Mot de passe actuel"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={motDePasse.actuel}
+              onChange={(e) => setMotDePasse((m) => ({ ...m, actuel: e.target.value }))}
+            />
+            <ChampTexte
+              libelle="Nouveau mot de passe"
+              type="password"
+              required
+              minLength={10}
+              autoComplete="new-password"
+              aide="10 caracteres au moins"
+              value={motDePasse.nouveau}
+              onChange={(e) => setMotDePasse((m) => ({ ...m, nouveau: e.target.value }))}
+            />
+            <ChampTexte
+              libelle="Confirmer le nouveau mot de passe"
+              type="password"
+              required
+              autoComplete="new-password"
+              erreur={
+                motDePasse.confirmation && motDePasse.nouveau !== motDePasse.confirmation
+                  ? 'Les deux mots de passe ne sont pas identiques'
+                  : undefined
+              }
+              value={motDePasse.confirmation}
+              onChange={(e) => setMotDePasse((m) => ({ ...m, confirmation: e.target.value }))}
+            />
+            <div>
+              <Bouton
+                type="submit"
+                variante="plein"
+                disabled={!motDePasse.actuel || motDePasse.nouveau.length < 10}
+                chargement={changerMotDePasse.isPending}
+              >
+                Changer le mot de passe
+              </Bouton>
+            </div>
+          </form>
         </Carte>
         </Panneau>
       )}
