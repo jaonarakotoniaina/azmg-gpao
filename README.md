@@ -340,6 +340,30 @@ partir de 6 h, heure d'Antananarivo, avant la journee du poste. Pour la declench
 cd ~/azmg-gpao/current && node dist/server/cron.js preparation_matin
 ```
 
+## Verifier une mise en ligne
+
+`https://gpao.intranet.azmg-solutions.com/health` repond sans session et dit ce qui tourne
+reellement :
+
+```json
+{
+  "statut": "ok",
+  "version": "<commit main de la build>",
+  "deploiement": "<commit de la branche release>",
+  "migrations": { "attendues": 6, "appliquees": 6, "derniere": "0005_adresses_ignorees", "aJour": true },
+  "mcp": { "configure": false, "derniers_appels": [] }
+}
+```
+
+- `version` differente du dernier commit de `main` : la build de release n'est pas passee, ou le
+  cron de deploiement n'a pas encore tourne (il passe toutes les 5 minutes).
+- `migrations.aJour` a `false` : l'application sert le bon code sur une base restee en arriere.
+  C'est le cas le plus trompeur, parce que l'application repond normalement et que le defaut
+  n'apparait qu'au premier ecran qui touche une colonne absente. Rejouer les migrations :
+  `cd ~/azmg-gpao/current && node dist/server/cli.js migrate`.
+- `migrations.erreur` renseigne : l'etat n'a pas pu etre lu, le plus souvent sur une base neuve
+  dont le schema `drizzle` n'existe pas encore.
+
 ## Chaine de deploiement
 
 La session de developpement et GitHub Actions ne se connectent jamais a o2switch : l'acces SSH y

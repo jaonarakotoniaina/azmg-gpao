@@ -2147,8 +2147,8 @@ var init_service2 = __esm({
 var import_express16 = __toESM(require("express"));
 var import_compression = __toESM(require("compression"));
 var import_helmet = __toESM(require("helmet"));
-var import_node_path4 = __toESM(require("node:path"));
-var import_node_fs = __toESM(require("node:fs"));
+var import_node_path5 = __toESM(require("node:path"));
+var import_node_fs2 = __toESM(require("node:fs"));
 init_config();
 
 // src/server/lib/file.ts
@@ -5661,6 +5661,40 @@ routesExport.post("/reporting", exigerRole("admin", "manager"), envoi2.single("f
   res.send(fichier);
 });
 
+// src/server/lib/migrations.ts
+var import_node_fs = __toESM(require("node:fs"));
+var import_node_path2 = __toESM(require("node:path"));
+init_config();
+init_client();
+var journal2 = null;
+function lireJournal() {
+  if (journal2) return journal2;
+  const chemin = import_node_path2.default.join(config.racine, "drizzle", "meta", "_journal.json");
+  const brut = JSON.parse(import_node_fs.default.readFileSync(chemin, "utf8"));
+  journal2 = (brut.entries ?? []).map((e) => ({ when: Number(e.when), tag: String(e.tag) }));
+  return journal2;
+}
+async function etatMigrations() {
+  let attendues = 0;
+  try {
+    const entrees = lireJournal();
+    attendues = entrees.length;
+    const { rows } = await getPool().query(
+      "SELECT count(*)::text AS total, max(created_at)::text AS dernier FROM drizzle.__drizzle_migrations"
+    );
+    const appliquees = Number(rows[0]?.total ?? 0);
+    const dernier = rows[0]?.dernier ? Number(rows[0].dernier) : null;
+    return {
+      attendues,
+      appliquees,
+      derniere: entrees.find((e) => e.when === dernier)?.tag ?? null,
+      aJour: appliquees >= attendues
+    };
+  } catch (e) {
+    return { attendues, appliquees: 0, derniere: null, aJour: false, erreur: e.message.slice(0, 120) };
+  }
+}
+
 // src/server/modules/mcp/routes.ts
 var import_express10 = __toESM(require("express"));
 var import_express_rate_limit2 = __toESM(require("express-rate-limit"));
@@ -6410,7 +6444,7 @@ var import_express13 = require("express");
 var import_express14 = __toESM(require("express"));
 var import_multer3 = __toESM(require("multer"));
 var import_express_rate_limit4 = __toESM(require("express-rate-limit"));
-var import_node_path3 = __toESM(require("node:path"));
+var import_node_path4 = __toESM(require("node:path"));
 var import_zod13 = require("zod");
 var import_drizzle_orm27 = require("drizzle-orm");
 init_client();
@@ -6420,7 +6454,7 @@ init_journal();
 
 // src/server/lib/stockage.ts
 var import_promises = __toESM(require("node:fs/promises"));
-var import_node_path2 = __toESM(require("node:path"));
+var import_node_path3 = __toESM(require("node:path"));
 init_config();
 init_securite();
 var EXTENSIONS_ACCEPTEES = /* @__PURE__ */ new Set([
@@ -6447,27 +6481,27 @@ var EXTENSIONS_ACCEPTEES = /* @__PURE__ */ new Set([
   ".json"
 ]);
 function extensionAcceptee(nomFichier) {
-  return EXTENSIONS_ACCEPTEES.has(import_node_path2.default.extname(nomFichier).toLowerCase());
+  return EXTENSIONS_ACCEPTEES.has(import_node_path3.default.extname(nomFichier).toLowerCase());
 }
 function cheminAbsolu(cheminRelatif) {
-  const racine = import_node_path2.default.resolve(config.stockage);
-  const absolu = import_node_path2.default.resolve(racine, cheminRelatif);
-  if (absolu !== racine && !absolu.startsWith(racine + import_node_path2.default.sep)) {
+  const racine = import_node_path3.default.resolve(config.stockage);
+  const absolu = import_node_path3.default.resolve(racine, cheminRelatif);
+  if (absolu !== racine && !absolu.startsWith(racine + import_node_path3.default.sep)) {
     throw new Error("Chemin de fichier hors du dossier de stockage");
   }
   return absolu;
 }
 async function rangerFichier(contenu, nomFichier, sousDossier = "pieces") {
   const empreinte = sha256(contenu);
-  const extension = import_node_path2.default.extname(nomFichier).toLowerCase().slice(0, 12);
-  const chemin = import_node_path2.default.join(sousDossier, empreinte.slice(0, 2), empreinte.slice(2, 4), `${empreinte}${extension}`);
+  const extension = import_node_path3.default.extname(nomFichier).toLowerCase().slice(0, 12);
+  const chemin = import_node_path3.default.join(sousDossier, empreinte.slice(0, 2), empreinte.slice(2, 4), `${empreinte}${extension}`);
   const absolu = cheminAbsolu(chemin);
   try {
     const stat = await import_promises.default.stat(absolu);
     return { chemin, empreinte, tailleOctets: stat.size, deja: true };
   } catch {
   }
-  await import_promises.default.mkdir(import_node_path2.default.dirname(absolu), { recursive: true });
+  await import_promises.default.mkdir(import_node_path3.default.dirname(absolu), { recursive: true });
   await import_promises.default.writeFile(absolu, contenu);
   return { chemin, empreinte, tailleOctets: contenu.length, deja: false };
 }
@@ -6843,7 +6877,7 @@ routesCollecte.post("/import", exigerRole("admin", "manager"), envoi3.array("fic
       try {
         messages.push(await analyserMessage(brut));
       } catch (e) {
-        illisibles.push({ fichier: import_node_path3.default.basename(fichier.originalname), raison: messageErreur(e).slice(0, 200) });
+        illisibles.push({ fichier: import_node_path4.default.basename(fichier.originalname), raison: messageErreur(e).slice(0, 200) });
       }
     }
   }
@@ -7513,12 +7547,19 @@ function creerApplication() {
   app2.get("/health", async (_req, res) => {
     try {
       await getPool().query("SELECT 1");
-      res.json({ statut: "ok", service: "AZMG GPAO", version: "ae8d6d3b164e32598364b0c7e49f02733c337ace", deploiement, mcp: etatMcp() });
+      res.json({
+        statut: "ok",
+        service: "AZMG GPAO",
+        version: "40cb26f9675493345f3a749ef83a3ad30d7e13ed",
+        deploiement,
+        migrations: await etatMigrations(),
+        mcp: etatMcp()
+      });
     } catch {
       res.status(503).json({ statut: "erreur", service: "AZMG GPAO" });
     }
   });
-  const dossierPublic = [import_node_path4.default.join(__dirname, "public"), import_node_path4.default.join(config.racine, "src", "server", "public")].find((d) => import_node_fs.default.existsSync(d));
+  const dossierPublic = [import_node_path5.default.join(__dirname, "public"), import_node_path5.default.join(config.racine, "src", "server", "public")].find((d) => import_node_fs2.default.existsSync(d));
   if (dossierPublic) app2.use("/public", import_express16.default.static(dossierPublic, { maxAge: config.production ? "7d" : 0 }));
   app2.use("/api/agent", routesAgent);
   app2.use("/api/collecte/apps-script", routesWebhookCollecte);
@@ -7549,13 +7590,13 @@ function creerApplication() {
   app2.use("/api/collecte", routesCollecte);
   app2.use("/api/brouillons", routesBrouillons);
   app2.use("/api", (_req, res) => res.status(404).json({ erreur: "Route inconnue" }));
-  const dossierWeb = import_node_path4.default.join(config.racine, "dist", "web");
-  if (import_node_fs.default.existsSync(dossierWeb)) {
+  const dossierWeb = import_node_path5.default.join(config.racine, "dist", "web");
+  if (import_node_fs2.default.existsSync(dossierWeb)) {
     app2.use(import_express16.default.static(dossierWeb, { index: false, maxAge: config.production ? "30d" : 0 }));
     app2.get(/^\/(?!api\/|public\/).*/, (req, res, next) => {
       if (req.method !== "GET") return next();
       res.setHeader("cache-control", "no-cache");
-      res.sendFile(import_node_path4.default.join(dossierWeb, "index.html"));
+      res.sendFile(import_node_path5.default.join(dossierWeb, "index.html"));
     });
   }
   app2.use(gestionErreurs);
@@ -7563,7 +7604,7 @@ function creerApplication() {
 }
 function lireCommitDeploye() {
   try {
-    return import_node_fs.default.readFileSync(import_node_path4.default.join(config.racine, ".release-commit"), "utf8").trim();
+    return import_node_fs2.default.readFileSync(import_node_path5.default.join(config.racine, ".release-commit"), "utf8").trim();
   } catch {
     return null;
   }
