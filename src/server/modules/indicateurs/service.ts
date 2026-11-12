@@ -344,6 +344,14 @@ export interface TableauDeBord {
   echeancesProches: { dossierId: number; dossier: string; type: string; libelle: string | null; echeanceLe: Date; joursRestants: number }[];
   /** Demandes en attente DO depuis plus que le seuil des parametres. */
   attentesDoLongues: { demandeId: number; objet: string; dossier: string; minutesAttente: number }[];
+  /**
+   * Vrai quand le compte n'a jamais recu la moindre demande, toutes periodes confondues.
+   *
+   * Des zeros partout veulent dire deux choses tres differentes : une semaine sans activite, ou
+   * une GPAO qui n'a encore rien recu. L'ecran doit pouvoir les distinguer, sans quoi une mise en
+   * route qui n'a pas abouti ressemble a un calme plat.
+   */
+  miseEnRoute: boolean;
 }
 
 export async function tableauDeBord(jours: number, filtres: FiltresIndicateurs = {}, maintenant = new Date()): Promise<TableauDeBord> {
@@ -394,7 +402,15 @@ export async function tableauDeBord(jours: number, filtres: FiltresIndicateurs =
     .filter((l) => l.minutesAttente >= seuilAttenteMinutes)
     .sort((a, b) => b.minutesAttente - a.minutesAttente);
 
+  // Une seule demande suffit a dire que le compte a deja vecu : on ne compte pas au-dela.
+  const [premiere] = await db
+    .select({ id: schema.demandes.id })
+    .from(schema.demandes)
+    .where(and(...conditionsCommunes(filtres)))
+    .limit(1);
+
   return {
+    miseEnRoute: !premiere,
     periode: { debut: courante.debut.toISOString(), fin: courante.fin.toISOString(), jours },
     flux: fluxCourant,
     stock: stockCourant,
