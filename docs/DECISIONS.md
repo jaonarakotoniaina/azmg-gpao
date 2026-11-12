@@ -427,3 +427,26 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Un test verifie qu'aucun mot sensible n'apparait dans la reponse, `/health` etant public.
 - Retour arriere : `src/server/lib/migrations.ts`, et le champ se retire du JSON sans toucher au
   reste.
+
+## 2026-11-12 : script Apps Script adapte a o2switch (taille, anti-robots, encodage)
+
+- Sujet : a la mise en service sur `suivimasenz@gmail.com`, la premiere version du script a echoue
+  trois fois de suite, pour trois causes distinctes, aucune visible en developpement :
+  `Limite depassee : Taille POST URLFetch` (50 messages avec pieces jointes dans un seul envoi),
+  `307` (controle anti-robots d'o2switch par cookie `o2s-chl`), puis `401 Signature invalide`
+  (signature calculee sur une chaine sans encodage fixe, alors que les mails contiennent des
+  accents).
+- Options pour le 307 : desactiver la « Securite par defaut » de TigerProtect sur le sous-domaine,
+  ou faire passer le controle par le script. Choix : le script recupere le cookie et rejoue
+  l'appel. Raison : aucun affaiblissement de la protection de l'hebergeur, et rien a reconfigurer
+  si o2switch reinitialise ses regles.
+- Taille : lots d'environ 12 millions de caracteres (marge sous les 25 Mo acceptes par le webhook),
+  8 envois au plus par passage. Un message de plus de 10 Mo part sans ses pieces jointes, avec les
+  memes en-tetes (dedoublonnage et rattachement au fil intacts) et la liste des pieces en fin de
+  texte. Un fil n'est etiquete « GPAO traite » qu'une fois tous ses messages acceptes.
+- Signature : la charge est encodee une seule fois en UTF-8 ; ces octets sont a la fois signes et
+  envoyes. Aucun changement cote serveur.
+- Resultat : premier passage reussi le 12/11/2026, 45 messages envoyes, 38 evenements enregistres
+  apres dedoublonnage.
+- Retour arriere : le script de `docs/apps-script.md` est autonome ; l'ancienne version reste dans
+  l'historique Git, mais elle ne fonctionne pas derriere o2switch.
