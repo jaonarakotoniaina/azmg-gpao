@@ -1,0 +1,45 @@
+# Controles sur les branches de travail et les pull requests, sans publication d'artefact.
+name: Verification
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main, release]
+
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controler:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:9.6
+        env:
+          POSTGRES_USER: azmg
+          POSTGRES_PASSWORD: azmg
+          POSTGRES_DB: azmg_gpao_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U azmg" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgresql://azmg:azmg@localhost:5432/azmg_gpao_test
+      DATABASE_URL_E2E: postgresql://azmg:azmg@localhost:5432/azmg_gpao_test
+      PLAYWRIGHT_BROWSERS_PATH: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run eval
+      - run: npm run build
+      - name: Parcours end-to-end (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e

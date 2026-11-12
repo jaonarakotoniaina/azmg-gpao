@@ -1,0 +1,90 @@
+# Chaine de release : a chaque push sur main, controles complets puis publication de l'artefact
+# pret a l'emploi sur la branche « release ». Le serveur o2switch recupere cette branche par cron
+# (scripts/auto-deploy.sh) : aucune connexion entrante vers o2switch n'est necessaire.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verifier-et-publier:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Meme version majeure que la production o2switch : les migrations et les requetes
+        # sont donc validees sur le moteur reel, pas seulement sur une version plus recente.
+        image: postgres:9.6
+        env:
+          POSTGRES_USER: azmg
+          POSTGRES_PASSWORD: azmg
+          POSTGRES_DB: azmg_gpao_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U azmg" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgresql://azmg:azmg@localhost:5432/azmg_gpao_test
+      DATABASE_URL_E2E: postgresql://azmg:azmg@localhost:5432/azmg_gpao_test
+      PLAYWRIGHT_BROWSERS_PATH: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests unitaires et d'integration
+        run: npm test
+
+      - name: Mesure du typage sur les jeux de mails fictifs
+        run: npm run eval
+
+      - name: Build de production
+        run: npm run build
+        env:
+          APP_VERSION: ${{ github.sha }}
+
+      - name: Parcours end-to-end (Playwright)
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      - name: Assemblage de l'artefact
+        run: |
+          mkdir -p artefact
+          cp -r dist drizzle scripts deploy app.js package.json package-lock.json .env.example README.md artefact/
+          mkdir -p artefact/tmp
+          echo "${{ github.sha }}" > artefact/RELEASE_SHA
+
+      - name: Publication sur la branche release
+        run: |
+          git config user.name "azmg-release"
+          git config user.email "release@azmg-solutions.com"
+          git fetch origin release || true
+          if git show-ref --verify --quiet refs/remotes/origin/release; then
+            git worktree add ../release origin/release
+            cd ../release && git checkout -B release
+          else
+            git worktree add --orphan -b release ../release
+            cd ../release
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r "$GITHUB_WORKSPACE/artefact/." .
+          git add -A
+          git commit -m "release: ${GITHUB_SHA::7}" || echo "Aucun changement"
+          git push origin release

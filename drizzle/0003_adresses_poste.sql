@@ -1,0 +1,1 @@
+ALTER TABLE "comptes_clients" ADD COLUMN "adresses_poste" jsonb DEFAULT '[]'::jsonb NOT NULL;
