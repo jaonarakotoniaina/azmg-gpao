@@ -44,6 +44,8 @@ export const compteSchema = z.object({
   fuseau: z.string().trim().min(3).max(64).optional(),
   donneurOrdreNom: z.string().trim().max(120).nullish(),
   donneurOrdreEmail: z.union([emailSchema, z.literal('')]).nullish(),
+  /** Adresses du client a ne pas suivre : leurs messages ne sont pas collectes. */
+  adressesIgnorees: z.array(emailSchema).max(20).optional(),
   managerId: z.number().int().positive().nullish(),
 });
 

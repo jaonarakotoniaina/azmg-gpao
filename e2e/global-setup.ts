@@ -25,18 +25,7 @@ export default async function () {
     });
   }
 
-  // Compte client et poste du parcours, crees directement en base pour un demarrage rapide.
-  const c2 = new Client({ connectionString: E2E.db });
-  await c2.connect();
-  const { rows } = await c2.query("SELECT id FROM utilisateurs WHERE email = 'elysa@azmg-solutions.com'");
-  const compte = await c2.query(
-    `INSERT INTO comptes_clients (nom, code, pays, ville, fuseau, donneur_ordre_nom)
-     VALUES ('Compte de parcours', 'parcours', 'Espagne', 'Barcelone', 'Europe/Madrid', 'Responsable export (fictive)')
-     RETURNING id`,
-  );
-  await c2.query(`INSERT INTO postes (compte_id, intitule, collaborateur_id) VALUES ($1, 'Assistante export', $2)`, [
-    compte.rows[0].id,
-    rows[0].id,
-  ]);
-  await c2.end();
+  // Le compte client et le poste ne sont PAS crees ici : c'est le premier parcours qui les cree
+  // par l'interface. Les creer en base masquait l'ecran du premier demarrage, ou l'application
+  // arrive vide, et aucun test ne voyait donc ce chemin.
 }

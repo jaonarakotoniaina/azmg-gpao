@@ -25,6 +25,7 @@ La procedure pas a pas est dans `README.md`.
 | Copie des mails du poste dans les **deux sens**, recus et envoyes | regle de copie cote Masenz | **a verifier une fois** |
 | Adresses de chaque poste suivi | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Adresse de la donneuse d'ordre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
+| Adresses du client a ne pas suivre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer a la mise en ligne |
 | Ou, a defaut : acces IMAP de la boite | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | a fournir |
 
@@ -40,6 +41,17 @@ saisissent dans l'ecran Parametres, pas dans le depot : ce sont des donnees du c
 **Un poste par collaborateur suivi.** Le compte Masenz porte deux postes : l'assistante export et la
 designer. Chacun a son intitule, son metier, ses adresses et son perimetre de familles. Le travail
 de la designer n'apparait donc pas dans la file de l'assistante export, et inversement.
+
+**Les adresses a ne pas suivre arretent la collecte avant tout traitement.** Une boite du client qui
+ne correspond a aucun poste suivi (une boite commerciale, par exemple) y figure : ses messages ne
+creent ni evenement, ni dossier, ni demande, et le bilan de collecte les compte a part. La regle est
+prudente : il suffit qu'une adresse d'un poste figure parmi l'expediteur ou les destinataires pour
+que le message soit collecte malgre tout. Un mail adresse a la fois a la boite commerciale et au
+poste reste donc du travail du poste.
+
+**Un encadrant AZMG n'est pas la donneuse d'ordre.** Un message venu d'un domaine interne AZMG est
+reconnu comme tel a son seul domaine, et ce signal l'emporte sur le vocabulaire : un dirigeant qui
+demande un tableau de situation n'est pas classe comme une consigne du client.
 
 **La boite dediee delimite le perimetre.** Le script tourne sur `suivimasenz@gmail.com`, qui ne sert
 qu'au suivi de ce compte : la constante `LIBELLE_SOURCE` reste vide et le script lit la boite de

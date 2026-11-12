@@ -20,6 +20,7 @@ interface Bilan {
   lus: number;
   crees: number;
   doublons: number;
+  ignores: number;
   horsPerimetre: number;
   aClasser: number;
   piecesRangees: number;
@@ -179,6 +180,10 @@ export default function ImportMails() {
                 <Indicateur libelle="Pieces jointes" valeur={bilan.piecesRangees} />
               </div>
               <ul className="space-y-1 text-sm">
+                <li className="flex items-center justify-between gap-3">
+                  <span>Adresses a ne pas suivre, non collectes</span>
+                  <Badge>{bilan.ignores}</Badge>
+                </li>
                 <li className="flex items-center justify-between gap-3">
                   <span>Hors perimetre, ecartes du pilotage</span>
                   <Badge>{bilan.horsPerimetre}</Badge>

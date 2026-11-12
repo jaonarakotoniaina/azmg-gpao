@@ -340,3 +340,67 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   adresse est un fait et une famille un typage qui peut se tromper.
 - Retour arriere : la migration `0004` est rejouable sur base vide, et un poste sans adresse
   retrouve le comportement par domaine.
+
+## 2026-11-12 : une adresse du client peut etre ecartee avant tout traitement
+
+- Sujet : une boite du client qui ne correspond a aucun poste suivi (une boite commerciale) recoit
+  du courrier qui arrive dans la boite de suivi.
+- Options : la laisser passer et compter sur le typage pour la ranger en T00, ou l'ecarter avant
+  tout traitement.
+- Choix : `comptes_clients.adresses_ignorees`. Un message qui ne concerne qu'elles n'est pas
+  collecte du tout : ni evenement, ni dossier, ni demande. Le bilan de collecte les compte a part.
+- Raison : T00 laisse une trace a lire, et c'est voulu pour un mail qui concerne le poste sans
+  relever de son travail. Pour une boite qui n'est pas suivie, il n'y a rien a lire du tout : une
+  trace serait du bruit, et le volume finirait par peser sur les indicateurs de flux.
+- Garde-fou : la regle est prudente. Il suffit qu'une adresse d'un poste figure parmi l'expediteur
+  ou les destinataires pour que le message soit collecte malgre tout. Un mail adresse a la fois a
+  la boite commerciale et au poste reste du travail du poste.
+- Retour arriere : une liste vide retablit exactement le comportement precedent.
+
+## 2026-11-12 : une adresse l'emporte sur un mot-cle pour l'interlocuteur
+
+- Sujet : un encadrant AZMG qui ecrit au poste etait classe d'apres le vocabulaire du message. Un
+  dirigeant demandant un « tableau de situation » devenait ainsi la donneuse d'ordre, parce que
+  cette demande vient habituellement d'elle.
+- Choix : la deduction par adresse **ecrase** ce que les mots-cles avaient devine, dans cet ordre :
+  l'adresse exacte de la DO d'abord, le domaine interne AZMG ensuite.
+- Raison : une adresse est un fait, un mot-cle une inference. C'est le meme raisonnement que pour
+  le sens d'un message, et il doit valoir pour l'interlocuteur.
+- Effet secondaire a connaitre : un message dont la nature n'est que deduite du sens reste sous le
+  seuil de confiance et part en « A classer », interlocuteur compris. Le typage se lit alors dans
+  les justificatifs, sans etre pose sur l'evenement. C'est voulu : un classement faible se corrige
+  a la main plutot que de s'appliquer d'office.
+- Retour arriere : `deduireInterlocuteur` dans `src/server/modules/typage/regles.ts`.
+
+## 2026-11-12 : le jeu de parcours part d'une application vide
+
+- Sujet : `e2e/global-setup.ts` creait le compte client et le poste directement en SQL, « pour un
+  demarrage rapide ».
+- Ce que cela a coute : le premier ecran qu'un utilisateur voit, une application sans aucun compte,
+  n'etait exerce par aucun test. Le manque, aucun moyen de creer un compte par l'interface, n'est
+  apparu qu'a la premiere mise en ligne.
+- Choix : la preparation ne cree plus que les comptes utilisateurs. Le premier parcours cree le
+  compte client et ses postes **par l'interface**, et les suivants travaillent dessus.
+- Cout assume : les parcours deviennent dependants de leur ordre, ce que `test.describe.configure({
+  mode: 'serial' })` garantissait deja. Le premier parcours ajoute environ deux secondes.
+- Benefice immediat : le second parcours est tombe des le premier essai, parce qu'un poste cree par
+  l'interface n'etait rattache a aucun collaborateur. Le champ manquait dans le formulaire, et un
+  poste sans rattachement n'apparait dans la file de personne.
+- Regle a en tirer : tout raccourci de preparation qui court-circuite l'interface cache le chemin
+  qu'il court-circuite. Quand un ecran est le seul moyen de faire une chose, un parcours doit passer
+  par cet ecran.
+
+## 2026-11-12 : le mot de passe initial est saisi, pas envoye
+
+- Sujet : comment donner son premier mot de passe a un nouvel utilisateur depuis l'ecran Equipe.
+- Options : envoyer un lien de reinitialisation par courriel, engendrer un mot de passe et
+  l'afficher une fois, ou laisser l'administrateur le saisir.
+- Choix : l'administrateur le saisit, et le transmet par un autre canal que le courriel.
+- Raison : la reinitialisation par courriel existe, mais elle depend du SMTP, qui reste en mode
+  simule tant que les identifiants ne sont pas fournis. Un mot de passe initial saisi a la main ne
+  depend de rien et fonctionne des la mise en ligne. C'est la meme regle que partout ailleurs dans
+  ce projet : ce qui est bloquant ne doit dependre d'aucune integration externe.
+- Consequence : l'onglet « Mon compte » devient necessaire, et il a ete ajoute dans le meme
+  mouvement. Sans lui, un mot de passe pose par l'administrateur serait definitif.
+- Retour arriere : la route `POST /api/auth/mot-de-passe-oublie` est inchangee et prendra le relais
+  des que le SMTP sera fourni.

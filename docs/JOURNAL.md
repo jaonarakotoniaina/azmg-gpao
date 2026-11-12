@@ -759,3 +759,125 @@ temoin lui ferait perdre tout son interet.
 Dans Parametres, onglet « Comptes clients » : l'adresse de la donneuse d'ordre pour le compte, et
 les adresses de chaque poste. Le poste de la designer doit etre cree s'il ne l'est pas encore, avec
 le metier « designer », qui pre-remplit son perimetre de familles.
+
+---
+
+## 2026-11-12 (fin) : ce qui n'est pas suivi, et qui est interne
+
+Deux precisions sur le compte, et leurs consequences.
+
+**Une boite du client n'est pas suivie**
+
+`comptes_clients.adresses_ignorees` (migration `0005`). Un message qui ne concerne qu'une de ces
+adresses n'est pas collecte du tout : ni evenement, ni dossier, ni demande. Le bilan de collecte les
+compte a part, a cote des doublons et du hors perimetre.
+
+C'est plus net que de les classer T00, qui laisse une trace a lire. Pour une boite qui n'est pas
+suivie, il n'y a rien a lire : une trace serait du bruit, et le volume finirait par peser sur les
+indicateurs de flux. La regle reste prudente : il suffit qu'une adresse d'un poste figure parmi
+l'expediteur ou les destinataires pour que le message soit collecte malgre tout.
+
+**Un encadrant AZMG n'est pas la donneuse d'ordre**
+
+Un dirigeant AZMG qui demandait un « tableau de situation » etait classe comme la donneuse d'ordre,
+parce que cette demande vient habituellement d'elle. La deduction par adresse ecrase maintenant ce
+que les mots-cles devinent : l'adresse exacte de la DO d'abord, le domaine interne AZMG ensuite.
+Une adresse est un fait, un mot-cle une inference.
+
+A noter pour la lecture des ecrans : un message dont la nature n'est que deduite du sens reste sous
+le seuil de confiance et part en « A classer », interlocuteur compris. Le typage se lit alors dans
+les justificatifs sans etre pose sur l'evenement, et c'est voulu : un classement faible se corrige
+a la main plutot que de s'appliquer d'office. Un test le verifie explicitement, pour qu'on ne le
+prenne pas plus tard pour un defaut.
+
+**Verifications**
+
+5 tests de plus (325 au total). Le jeu temoin du typage reste a 86,4 %.
+
+---
+
+## 2026-11-12 (apres mise en ligne) : l'application arrivait sans porte d'entree
+
+Premiere mise en ligne, et aucun compte client visible. Ce n'etait pas un defaut de deploiement :
+rien dans l'interface ne permettait de creer un compte.
+
+**Ce qui manquait**
+
+Les routes `POST /api/comptes` et `POST /api/postes` existaient depuis la phase 1, mais aucun ecran
+ne les appelait. Le seed de demonstration est desactive en production, a juste titre. Une
+installation neuve se retrouvait donc avec un compte administrateur et rien d'autre, sans moyen
+d'aller plus loin.
+
+S'y ajoutait un ecran trompeur : l'onglet « Comptes clients » testait `!comptes?.length` avant
+d'afficher la liste, et montrait donc un chargement perpetuel quand la liste etait vide, au lieu de
+dire qu'il n'y avait aucun compte.
+
+**Pourquoi aucun test ne l'a vu**
+
+Le jeu de parcours creait le compte et le poste **directement en SQL**, dans `e2e/global-setup.ts`,
+« pour un demarrage rapide ». Tous les parcours partaient donc d'une application deja peuplee, et
+le premier ecran qu'un utilisateur voit en vrai n'etait exerce par rien.
+
+C'est la correction la plus utile de la journee : la preparation ne cree plus ni compte ni poste, et
+le **premier parcours les cree par l'interface**. Le chemin du premier demarrage fait desormais
+partie de la suite, et les dix-neuf autres parcours travaillent sur ce que celui-la a cree.
+
+**Ce qui a ete ajoute**
+
+- Formulaire de creation d'un compte client (administrateur) : nom, pays, ville, nom et adresse de
+  la donneuse d'ordre. Le code du compte est derive du nom.
+- Formulaire de creation d'un poste sous chaque compte : intitule, metier (qui pre-remplit le
+  perimetre de familles), adresses, et **collaborateur rattache**. Ce dernier champ manquait aussi :
+  un poste sans rattachement n'apparait dans la file d'aucun collaborateur, ce que le second
+  parcours a revele des que le premier a cesse de passer par SQL.
+- Etats vides explicites, a la place du chargement perpetuel.
+- `README.md` : une etape « Premier compte client et premiers postes » dans la mise en place, et le
+  guide utilisateur decrit l'onglet.
+
+**Verifications**
+
+20 parcours Playwright (un de plus), 325 tests Vitest.
+
+---
+
+## 2026-11-12 (suite) : les comptes utilisateurs, et le meme manque trois fois
+
+L'ecran Equipe affichait la liste des comptes utilisateurs sans permettre d'en creer un. Exactement
+le manque corrige une heure plus tot sur les comptes clients, et pour la meme raison : les routes
+existaient depuis la phase 1, `POST /api/utilisateurs` et `PATCH /api/utilisateurs/:id`, mais aucun
+ecran ne les appelait. Seule la ligne de commande savait creer un utilisateur.
+
+En ecrivant le formulaire, un troisieme cas du meme defaut est apparu. Le texte d'aide annoncait
+que « chacun peut changer son mot de passe ensuite depuis son compte », et c'etait faux :
+`POST /api/auth/changer-mot-de-passe` existait, sans aucun ecran pour l'appeler. Ecrire la phrase a
+suffi a reveler qu'elle mentait.
+
+**Ce qui est livre**
+
+- Onglet **Equipe** : creation d'un compte (nom, adresse email, role, mot de passe initial),
+  changement de role depuis la liste, desactivation et reactivation. La desactivation ferme les
+  sessions ouvertes, ce que faisait deja la route. Un administrateur ne peut pas se retirer ses
+  propres droits, et sa ligne ne porte donc aucune action.
+- Onglet **Mon compte**, visible par tous les roles : changement de son propre mot de passe, avec
+  confirmation et verification du mot de passe actuel.
+- Etats vides et erreurs de chargement distingues, comme sur l'onglet des comptes clients.
+
+**Le mot de passe initial**
+
+L'administrateur le saisit et le transmet par un autre canal que le courriel. La reinitialisation
+par courriel existe, mais elle depend du SMTP, qui reste en mode simule tant que les identifiants
+ne sont pas fournis. Un mot de passe initial saisi a la main ne depend de rien et fonctionne des la
+mise en ligne.
+
+**Verifications**
+
+22 parcours Playwright, deux de plus : creation puis modification puis desactivation d'un compte,
+et changement de mot de passe, y compris le refus d'un mot de passe actuel errone.
+
+**La lecon, trois fois la meme**
+
+Une route sans ecran n'existe pas pour l'utilisateur. Les trois manques se ressemblaient, et aucun
+test ne les voyait parce que les parcours contournaient l'interface : par SQL pour les comptes
+clients, par la ligne de commande pour les utilisateurs. Le reste du produit est couvert ; ce sont
+les chemins de mise en route qui ne l'etaient pas, et ce sont precisement ceux qu'on emprunte une
+seule fois, le jour de la mise en ligne.

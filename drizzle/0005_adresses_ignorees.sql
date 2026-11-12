@@ -1,0 +1,1 @@
+ALTER TABLE "comptes_clients" ADD COLUMN "adresses_ignorees" jsonb DEFAULT '[]'::jsonb NOT NULL;
