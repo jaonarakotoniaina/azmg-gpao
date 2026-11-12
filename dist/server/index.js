@@ -235,6 +235,12 @@ var init_schema = __esm({
       /** Donneur d'ordre : seule autorite de validation cote client. */
       donneurOrdreNom: (0, import_pg_core.text)("donneur_ordre_nom"),
       donneurOrdreEmail: (0, import_pg_core.text)("donneur_ordre_email"),
+      /**
+       * Adresses du client a ne pas suivre. Un message qui ne concerne qu'elles n'est pas collecte
+       * du tout : il ne cree ni evenement, ni dossier, ni demande. C'est plus net que de le classer
+       * hors perimetre, qui laisse une trace a lire.
+       */
+      adressesIgnorees: (0, import_pg_core.jsonb)("adresses_ignorees").notNull().default([]),
       /** Manager AZMG qui pilote le compte. */
       managerId: ref("manager_id").references(() => utilisateurs.id, { onDelete: "set null" }),
       /** Horaires ouvres du compte (null : horaires generaux des parametres). */
@@ -1452,9 +1458,11 @@ function texteDuMessage(message) {
   const corps = normaliserTypage(message.corps ?? "");
   return `${objet} ${objet} ${corps}`.trim();
 }
+var DOMAINES_INTERNES_PAR_DEFAUT;
 var init_typage = __esm({
   "src/shared/typage.ts"() {
     "use strict";
+    DOMAINES_INTERNES_PAR_DEFAUT = ["azmg-solutions.com"];
   }
 });
 
@@ -1523,15 +1531,20 @@ function appliquerRegles(message, regles = REGLES_INITIALES) {
   return { typage, regle: principale.regle, signaux: principale.signaux };
 }
 function deduireInterlocuteur(typage, message) {
-  if (typage.interlocuteur || !message.adresseDo) return;
-  if (estUneDe(message.expediteur, [message.adresseDo])) {
-    typage.interlocuteur = "do";
-    typage.justificatifs.push("message recu de l\u2019adresse de la donneuse d\u2019ordre");
-    return;
+  if (message.adresseDo) {
+    const deLaDo = estUneDe(message.expediteur, [message.adresseDo]);
+    const versLaDo = message.destinataires?.some((d) => estUneDe(d, [message.adresseDo])) ?? false;
+    if (deLaDo || versLaDo) {
+      typage.interlocuteur = "do";
+      typage.justificatifs.push(deLaDo ? "message recu de l\u2019adresse de la donneuse d\u2019ordre" : "message adresse a la donneuse d\u2019ordre");
+      return;
+    }
   }
-  if (message.destinataires?.some((d) => estUneDe(d, [message.adresseDo]))) {
-    typage.interlocuteur = "do";
-    typage.justificatifs.push("message adresse a la donneuse d\u2019ordre");
+  const domaine = domaineDe(message.expediteur);
+  const internes = message.domainesInternes ?? DOMAINES_INTERNES_PAR_DEFAUT;
+  if (domaine && internes.some((d) => domaine.endsWith(d))) {
+    typage.interlocuteur = "interne_azmg";
+    typage.justificatifs.push("expediteur sur un domaine interne AZMG");
   }
 }
 function completerParDefaut(typage, message) {
@@ -2420,6 +2433,8 @@ var compteSchema = import_zod.z.object({
   fuseau: import_zod.z.string().trim().min(3).max(64).optional(),
   donneurOrdreNom: import_zod.z.string().trim().max(120).nullish(),
   donneurOrdreEmail: import_zod.z.union([emailSchema, import_zod.z.literal("")]).nullish(),
+  /** Adresses du client a ne pas suivre : leurs messages ne sont pas collectes. */
+  adressesIgnorees: import_zod.z.array(emailSchema).max(20).optional(),
   managerId: import_zod.z.number().int().positive().nullish()
 });
 var modificationCompteSchema = compteSchema.partial().extend({ actif: import_zod.z.boolean().optional(), horaires: import_zod.z.unknown().optional() });
@@ -2698,6 +2713,7 @@ async function creerCompte(entree, auteur) {
     fuseau: entree.fuseau ?? "Europe/Madrid",
     donneurOrdreNom: entree.donneurOrdreNom ?? null,
     donneurOrdreEmail: entree.donneurOrdreEmail ?? null,
+    adressesIgnorees: entree.adressesIgnorees ?? [],
     managerId: entree.managerId ?? null,
     horaires: entree.horaires ?? null
   }).returning();
@@ -2706,7 +2722,7 @@ async function creerCompte(entree, auteur) {
 }
 async function modifierCompte(id2, modifs, auteur) {
   const valeurs = { majLe: /* @__PURE__ */ new Date() };
-  for (const champ of ["nom", "pays", "ville", "fuseau", "donneurOrdreNom", "donneurOrdreEmail", "managerId", "horaires", "actif"]) {
+  for (const champ of ["nom", "pays", "ville", "fuseau", "donneurOrdreNom", "donneurOrdreEmail", "adressesIgnorees", "managerId", "horaires", "actif"]) {
     if (modifs[champ] !== void 0) valeurs[champ] = modifs[champ];
   }
   const [maj] = await db.update(schema_exports.comptesClients).set(valeurs).where((0, import_drizzle_orm6.eq)(schema_exports.comptesClients.id, id2)).returning();
@@ -2724,6 +2740,7 @@ async function listerComptes(comptes) {
     fuseau: schema_exports.comptesClients.fuseau,
     donneurOrdreNom: schema_exports.comptesClients.donneurOrdreNom,
     donneurOrdreEmail: schema_exports.comptesClients.donneurOrdreEmail,
+    adressesIgnorees: schema_exports.comptesClients.adressesIgnorees,
     managerId: schema_exports.comptesClients.managerId,
     actif: schema_exports.comptesClients.actif,
     dossiersOuverts: import_drizzle_orm6.sql`(
@@ -6610,7 +6627,7 @@ init_typage();
 init_constantes();
 var TAILLE_MAX_PIECE = 10 * 1024 * 1024;
 function bilanVide() {
-  return { lus: 0, crees: 0, doublons: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
+  return { lus: 0, crees: 0, doublons: 0, ignores: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
 }
 function sensDuMessage(message, config2) {
   if (estUneDe(message.expediteur, config2.adressesPoste)) return "sortant";
@@ -6619,8 +6636,17 @@ function sensDuMessage(message, config2) {
   if (domaine && (config2.domainesInternes ?? []).some((d) => domaine.endsWith(d))) return "sortant";
   return "entrant";
 }
+function estIgnore(message, config2) {
+  if (!config2.adressesIgnorees.length) return false;
+  const correspondants = [message.expediteur, ...message.destinataires ?? []];
+  if (correspondants.some((a) => estUneDe(a, config2.adressesPoste))) return false;
+  return correspondants.some((a) => estUneDe(a, config2.adressesIgnorees));
+}
 async function configDuCompte(compteId) {
-  const [compte] = await db.select({ donneurOrdreEmail: schema_exports.comptesClients.donneurOrdreEmail }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.id, compteId));
+  const [compte] = await db.select({
+    donneurOrdreEmail: schema_exports.comptesClients.donneurOrdreEmail,
+    adressesIgnorees: schema_exports.comptesClients.adressesIgnorees
+  }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.id, compteId));
   const lignes = await db.select({
     id: schema_exports.postes.id,
     intitule: schema_exports.postes.intitule,
@@ -6637,7 +6663,8 @@ async function configDuCompte(compteId) {
   return {
     postes: postes2,
     adressesPoste: postes2.flatMap((p) => p.adresses),
-    adresseDo: compte?.donneurOrdreEmail ?? null
+    adresseDo: compte?.donneurOrdreEmail ?? null,
+    adressesIgnorees: chaines(compte?.adressesIgnorees)
   };
 }
 function posteDuMessage(message, postes2, famille2) {
@@ -6662,6 +6689,7 @@ async function enregistrerMessage(message, opts, auteur) {
   const [deja] = await db.select({ id: schema_exports.evenements.id }).from(schema_exports.evenements).where((0, import_drizzle_orm26.eq)(schema_exports.evenements.messageId, message.messageId));
   if (deja) return null;
   const config2 = opts.config ?? await configDuCompte(opts.compteId);
+  if (estIgnore(message, config2)) return { ignore: true };
   const domainesInternes = opts.domainesInternes ?? ["azmg-solutions.com"];
   const sens = sensDuMessage(message, { adressesPoste: config2.adressesPoste, domainesInternes });
   const typage = await typerMessage(
@@ -6750,6 +6778,10 @@ async function enregistrerLot(messages, opts, auteur) {
       const resultat = await enregistrerMessage(message, { ...opts, config: config2 }, auteur);
       if (!resultat) {
         bilan.doublons++;
+        continue;
+      }
+      if (resultat.ignore) {
+        bilan.ignores++;
         continue;
       }
       bilan.crees++;
@@ -7481,7 +7513,7 @@ function creerApplication() {
   app2.get("/health", async (_req, res) => {
     try {
       await getPool().query("SELECT 1");
-      res.json({ statut: "ok", service: "AZMG GPAO", version: "93a0e8a1f63203ba42eaf9bb1d309dac0ffba472", deploiement, mcp: etatMcp() });
+      res.json({ statut: "ok", service: "AZMG GPAO", version: "ae8d6d3b164e32598364b0c7e49f02733c337ace", deploiement, mcp: etatMcp() });
     } catch {
       res.status(503).json({ statut: "erreur", service: "AZMG GPAO" });
     }

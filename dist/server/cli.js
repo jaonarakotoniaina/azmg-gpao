@@ -120,6 +120,12 @@ var init_schema = __esm({
       /** Donneur d'ordre : seule autorite de validation cote client. */
       donneurOrdreNom: (0, import_pg_core.text)("donneur_ordre_nom"),
       donneurOrdreEmail: (0, import_pg_core.text)("donneur_ordre_email"),
+      /**
+       * Adresses du client a ne pas suivre. Un message qui ne concerne qu'elles n'est pas collecte
+       * du tout : il ne cree ni evenement, ni dossier, ni demande. C'est plus net que de le classer
+       * hors perimetre, qui laisse une trace a lire.
+       */
+      adressesIgnorees: (0, import_pg_core.jsonb)("adresses_ignorees").notNull().default([]),
       /** Manager AZMG qui pilote le compte. */
       managerId: ref("manager_id").references(() => utilisateurs.id, { onDelete: "set null" }),
       /** Horaires ouvres du compte (null : horaires generaux des parametres). */
@@ -1451,9 +1457,11 @@ function texteDuMessage(message) {
   const corps = normaliserTypage(message.corps ?? "");
   return `${objet} ${objet} ${corps}`.trim();
 }
+var DOMAINES_INTERNES_PAR_DEFAUT;
 var init_typage = __esm({
   "src/shared/typage.ts"() {
     "use strict";
+    DOMAINES_INTERNES_PAR_DEFAUT = ["azmg-solutions.com"];
   }
 });
 
@@ -1522,15 +1530,20 @@ function appliquerRegles(message, regles = REGLES_INITIALES) {
   return { typage, regle: principale.regle, signaux: principale.signaux };
 }
 function deduireInterlocuteur(typage, message) {
-  if (typage.interlocuteur || !message.adresseDo) return;
-  if (estUneDe(message.expediteur, [message.adresseDo])) {
-    typage.interlocuteur = "do";
-    typage.justificatifs.push("message recu de l\u2019adresse de la donneuse d\u2019ordre");
-    return;
+  if (message.adresseDo) {
+    const deLaDo = estUneDe(message.expediteur, [message.adresseDo]);
+    const versLaDo = message.destinataires?.some((d) => estUneDe(d, [message.adresseDo])) ?? false;
+    if (deLaDo || versLaDo) {
+      typage.interlocuteur = "do";
+      typage.justificatifs.push(deLaDo ? "message recu de l\u2019adresse de la donneuse d\u2019ordre" : "message adresse a la donneuse d\u2019ordre");
+      return;
+    }
   }
-  if (message.destinataires?.some((d) => estUneDe(d, [message.adresseDo]))) {
-    typage.interlocuteur = "do";
-    typage.justificatifs.push("message adresse a la donneuse d\u2019ordre");
+  const domaine = domaineDe(message.expediteur);
+  const internes = message.domainesInternes ?? DOMAINES_INTERNES_PAR_DEFAUT;
+  if (domaine && internes.some((d) => domaine.endsWith(d))) {
+    typage.interlocuteur = "interne_azmg";
+    typage.justificatifs.push("expediteur sur un domaine interne AZMG");
   }
 }
 function completerParDefaut(typage, message) {
@@ -2260,6 +2273,7 @@ async function creerCompte(entree, auteur) {
     fuseau: entree.fuseau ?? "Europe/Madrid",
     donneurOrdreNom: entree.donneurOrdreNom ?? null,
     donneurOrdreEmail: entree.donneurOrdreEmail ?? null,
+    adressesIgnorees: entree.adressesIgnorees ?? [],
     managerId: entree.managerId ?? null,
     horaires: entree.horaires ?? null
   }).returning();
