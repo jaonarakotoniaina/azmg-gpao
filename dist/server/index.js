@@ -7552,7 +7552,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "5480f4687e49d27ac2e40d26ff4320f776c68b73",
+        version: "05342ee94f31d1281debc2fdf86b518cfc7b3134",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
