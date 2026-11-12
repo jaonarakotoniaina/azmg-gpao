@@ -216,7 +216,8 @@ export default function ImportMails() {
         <Carte titre="Dernier passage de la collecte" id="derniere-passe" className="mt-6">
           <p className="text-sm text-texte-doux">
             {dateHeure(etat.dernierePasse.le)} : {etat.dernierePasse.bilan?.crees ?? 0} message(s) enregistre(s),{' '}
-            {etat.dernierePasse.bilan?.doublons ?? 0} deja connu(s).
+            {etat.dernierePasse.bilan?.doublons ?? 0} deja connu(s), {etat.dernierePasse.bilan?.ignores ?? 0} ecarte(s) par les
+            adresses a ne pas suivre.
           </p>
         </Carte>
       )}

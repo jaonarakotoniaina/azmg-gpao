@@ -951,3 +951,40 @@ Playwright verifie la carte, les trois liens et l'absence d'indicateurs trompeur
 Apres les trois manques d'ecran de la journee, celui-ci est de la meme eau : le produit savait
 calculer, mais ne savait pas dire qu'il n'avait rien a calculer. Les chemins de mise en route sont
 ceux qu'on emprunte une seule fois, et ce sont ceux qui etaient les moins soignes.
+
+---
+
+## 2026-11-12 (collecte branchee) : un faux succes qui aurait perdu des mails
+
+La collecte automatique est branchee en production : le webhook repond « Signature invalide »
+(401) et non « non configuree » (503), ce qui etablit que `APPS_SCRIPT_SECRET` est bien en place.
+
+En relisant la route maintenant qu'elle est ouverte, un defaut serieux est apparu. Le webhook
+acceptait n'importe quel `compteId` sans verifier qu'il existe. Avec un `COMPTE_ID` errone dans le
+script, chaque message aurait echoue un par un, les erreurs seraient parties dans le bilan, et le
+webhook aurait repondu **en succes**. Le script, qui n'etiquette un fil qu'apres un succes, aurait
+alors marque « GPAO traite » des fils dont rien n'avait ete enregistre : les mails consommes et
+perdus, sans reprise possible, et pour seul signe visible un compteur a zero.
+
+`exigerCompteCollecte` verifie desormais le compte avant de toucher au moindre message, et repond
+404 en nommant la constante a corriger. Le script reessaie au passage suivant, rien n'est perdu.
+
+Les erreurs **par message** restent en succes, volontairement : un message qui echoue toujours
+ferait boucler le script sur le meme lot si le webhook refusait tout, et le dedoublonnage rend un
+nouveau passage sans danger.
+
+La regle a retenir : un refus est acceptable, un faux succes ne l'est pas. Quand l'appelant efface
+sa source d'apres notre reponse, cette reponse doit etre exacte.
+
+**Aussi**
+
+Le dernier passage de la collecte affichait les messages enregistres et les doublons, mais pas les
+messages ecartes par les adresses a ne pas suivre. Un lot entierement ecarte se lisait donc
+« 0 enregistre, 0 deja connu », impossible a distinguer d'un lot qui ne serait jamais arrive. Le
+compteur est ajoute.
+
+**Verifications**
+
+4 tests de plus (333 au total) et un parcours de plus (24). Le message d'erreur est teste pour
+qu'il nomme `COMPTE_ID` : il se lit dans le journal d'execution d'Apps Script, loin du code, et
+doit dire quoi corriger.

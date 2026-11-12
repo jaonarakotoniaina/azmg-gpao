@@ -15,7 +15,7 @@ import { cheminAbsolu, fichierExiste } from '../../lib/stockage';
 import { exigerCompte, perimetreDe } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { adaptateurCollecte, analyserMessage, decouperMbox, verifierSignature, type MessageCollecte } from '../../adapters/collecte-mail';
-import { enregistrerLot } from './service';
+import { enregistrerLot, exigerCompteCollecte } from './service';
 import { AUTEUR_SYSTEME } from '../demandes/service';
 
 /** Taille maximale d'un fichier importe (.eml ou .mbox d'historique). */
@@ -172,6 +172,16 @@ routesWebhookCollecte.post('/', async (req, res) => {
     charge = chargeSchema.parse(JSON.parse(corpsBrut));
   } catch (e) {
     res.status(400).json({ erreur: `Charge invalide : ${messageErreur(e).slice(0, 200)}` });
+    return;
+  }
+
+  // Le compte doit exister et etre actif AVANT de toucher au moindre message : voir
+  // `exigerCompteCollecte`, qui explique pourquoi un refus franc vaut mieux qu'un bilan en erreur.
+  try {
+    await exigerCompteCollecte(charge.compteId);
+  } catch (e) {
+    journal.warn('Webhook de collecte refuse : compte inconnu ou inactif', { compteId: charge.compteId });
+    res.status(404).json({ erreur: messageErreur(e) });
     return;
   }
 

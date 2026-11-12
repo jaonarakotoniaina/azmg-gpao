@@ -427,3 +427,23 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Un test verifie qu'aucun mot sensible n'apparait dans la reponse, `/health` etant public.
 - Retour arriere : `src/server/lib/migrations.ts`, et le champ se retire du JSON sans toucher au
   reste.
+
+## 2026-11-12 : le webhook refuse franchement plutot que de repondre en succes
+
+- Sujet : le webhook de collecte acceptait n'importe quel `compteId` sans verifier qu'il existe.
+- Ce que cela coutait, une fois la collecte branchee : avec un `COMPTE_ID` errone dans le script,
+  chaque message echouait un par un, les erreurs partaient dans le bilan, et le webhook repondait
+  tout de meme en succes. Le script, qui n'etiquette qu'apres un succes, posait alors son etiquette
+  « GPAO traite » sur des fils dont **rien n'avait ete enregistre**. Les mails etaient consommes et
+  perdus, sans reprise possible, et le seul signe visible aurait ete un compteur a zero.
+- Choix : le compte est verifie avant de toucher au moindre message, et un compte inconnu ou
+  inactif fait repondre 404 avec un message qui nomme la constante a corriger.
+- Pourquoi un refus et pas un bilan en erreur : le script ne pose son etiquette qu'en cas de
+  succes. Un refus franc le fait donc reessayer au passage suivant, et rien n'est perdu.
+- Ce qui reste volontairement en succes : les erreurs **par message**. Un message qui echoue
+  toujours ferait boucler le script indefiniment sur le meme lot si le webhook refusait tout. Le
+  dedoublonnage par identifiant rend de toute facon un nouveau passage sans danger.
+- La regle generale : un refus est acceptable, un faux succes ne l'est pas. Quand l'appelant decide
+  d'effacer sa source d'apres notre reponse, notre reponse doit etre exacte.
+- Retour arriere : `exigerCompteCollecte` dans le service de collecte, appelee par la seule route
+  du webhook.

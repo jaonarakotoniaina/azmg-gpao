@@ -206,6 +206,7 @@ et rejette l'appel sinon. Le secret ne circule jamais : seule la signature voyag
 | `401 Signature invalide` | la cle du script n'est pas celle du `.env`, ou le corps a ete modifie en route |
 | `400 Charge invalide` | `COMPTE_ID` absent ou faux dans le script |
 | Rien n'arrive, aucune erreur | la recherche Gmail ne trouve rien : verifier l'etiquette « GPAO traite » et la fenetre `newer_than` |
+| `404 Compte client N inconnu ou inactif` | le `COMPTE_ID` du script ne correspond a aucun compte actif. Le relever dans l'URL de l'ecran Dossiers. Les fils ne sont pas etiquetes, ils repartiront au passage suivant une fois la constante corrigee |
 | `Libelle source introuvable` | `LIBELLE_SOURCE` ne correspond a aucun libelle : recopier le nom exact, accents et majuscules compris. Un libelle imbrique s'ecrit en entier, par exemple `A - Clients/Masenz`. Sur une boite dediee, laisser la constante vide |
 | Les mails recus arrivent, ceux du poste non | la boite ne recoit qu'une copie des mails entrants. Completer la regle de copie dans les deux sens, sans quoi aucune demande ne passera en attente DO |
 | Des mails etrangers au poste arrivent dans la GPAO | ils sont hors perimetre et classes T00, donc absents du pilotage. S'ils sont nombreux, c'est le libelle qui est trop large cote Gmail |
