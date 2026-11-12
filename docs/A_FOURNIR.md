@@ -19,14 +19,26 @@ La procedure pas a pas est dans `README.md`.
 
 ## 2. Collecte des mails du poste (phase 4)
 
-| Element | Variable | Etat |
+| Element | Variable ou emplacement | Etat |
 |---|---|---|
-| Boite Gmail de suivi recevant la copie des mails du poste | compte Google | existe, acces a confirmer |
-| Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer au moment de la phase 4 |
-| Ou, a defaut : acces IMAP de la boite de suivi | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD` | a fournir |
+| Libelle Gmail sous lequel les mails du poste sont ranges | constante `LIBELLE_SOURCE` du script | **fourni** : libelle `Masenz` dans la boite du CEO |
+| Adresses depuis lesquelles le poste ecrit | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
+| Adresse de la donneuse d'ordre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
+| Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer a la mise en ligne |
+| Ou, a defaut : acces IMAP de la boite | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | a fournir |
 
 Sans ces elements, `COLLECTE_MAIL` reste en `mock` : la GPAO vit de la saisie rapide et de
 l'import de fichiers `.eml` ou `.mbox`, qui fonctionne sans aucun acces a la boite.
+
+**Les deux adresses sont indispensables.** Le poste ecrit depuis une adresse du client, sur le meme
+domaine que la donneuse d'ordre. Sans elles, la GPAO lit tout ce que le poste envoie comme du
+courrier recu : aucune demande ne passe en attente DO et le digest de validation reste vide. Elles
+se saisissent dans l'ecran Parametres, pas dans le depot : ce sont des donnees du client.
+
+**Le libelle delimite le perimetre.** La boite qui porte le libelle contient aussi d'autres clients
+et du courrier personnel. Le script ne lit que le libelle, et un libelle introuvable l'arrete au
+lieu d'elargir la recherche. Ce qui tombe dans le libelle sans concerner le poste est classe T00 et
+reste hors de toutes les vues de pilotage et de tous les exports.
 
 La mise en place du script Google est decrite pas a pas dans
 [`docs/apps-script.md`](apps-script.md). Elle ne demande ni mot de passe d'application, ni

@@ -128,8 +128,134 @@ describe('analyse d’un message', () => {
 
   it('deduit le sens selon le domaine de l’expediteur', () => {
     const base = { messageId: '<x>', filId: '<x>', destinataires: [], objet: '', corps: '', survenuLe: new Date(), pieces: [] };
-    expect(sensDuMessage({ ...base, expediteur: 'elysa@azmg-solutions.com' }, ['azmg-solutions.com'])).toBe('sortant');
-    expect(sensDuMessage({ ...base, expediteur: 'client@exemple-fictif.test' }, ['azmg-solutions.com'])).toBe('entrant');
+    const interne = { domainesInternes: ['azmg-solutions.com'] };
+    expect(sensDuMessage({ ...base, expediteur: 'elysa@azmg-solutions.com' }, interne)).toBe('sortant');
+    expect(sensDuMessage({ ...base, expediteur: 'client@exemple-fictif.test' }, interne)).toBe('entrant');
+  });
+
+  it('reconnait un envoi du poste depuis une adresse du client', () => {
+    // Cas reel du poste : il ecrit depuis une boite du client, sur le meme domaine que la DO.
+    // Au domaine seul, tout ce qu'il envoie serait lu comme du courrier recu.
+    const base = { messageId: '<x>', filId: '<x>', objet: '', corps: '', survenuLe: new Date(), pieces: [] };
+    const config = { adressesPoste: ['info@client-fictif.test'], domainesInternes: ['azmg-solutions.com'] };
+    expect(sensDuMessage({ ...base, destinataires: ['do@client-fictif.test'], expediteur: 'info@client-fictif.test' }, config)).toBe('sortant');
+    // La DO, sur le meme domaine, reste un interlocuteur entrant.
+    expect(sensDuMessage({ ...base, destinataires: ['info@client-fictif.test'], expediteur: 'do@client-fictif.test' }, config)).toBe('entrant');
+    // Mise en forme avec nom d'affichage et chevrons.
+    expect(sensDuMessage({ ...base, destinataires: [], expediteur: '"Le Poste" <INFO@client-fictif.test>' }, config)).toBe('sortant');
+  });
+
+  it('lit comme entrant un message adresse au poste par un interne', () => {
+    const base = { messageId: '<x>', filId: '<x>', objet: '', corps: '', survenuLe: new Date(), pieces: [] };
+    const config = { adressesPoste: ['info@client-fictif.test'], domainesInternes: ['azmg-solutions.com'] };
+    expect(
+      sensDuMessage({ ...base, expediteur: 'manager@azmg-solutions.com', destinataires: ['info@client-fictif.test'] }, config),
+    ).toBe('entrant');
+  });
+});
+
+/**
+ * Forme reelle du compte : le poste ecrit depuis une boite du client (par exemple « info »), sur
+ * le meme domaine que la donneuse d'ordre (« export »). Le sens ne peut alors pas se deduire du
+ * domaine, et c'est le cas qui compte en production.
+ */
+describe('poste et donneuse d’ordre sur le domaine du client', () => {
+  beforeEach(async () => {
+    await db
+      .update(schema.comptesClients)
+      .set({ adressesPoste: ['info@client-fictif.test'], donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  it('passe en attente DO sur un envoi a la DO, meme sans mot de validation', async () => {
+    const messages = await Promise.all(
+      [
+        mailBrut({
+          messageId: '<d1@exemple-fictif.test>',
+          de: 'achat@alpha-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Proforma a etablir',
+          corps: 'Pourriez vous nous etablir la proforma en dollars pour cette commande ?',
+          date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+        }),
+        // Un simple transfert a la DO, sans aucun mot de validation : c'est la forme habituelle.
+        mailBrut({
+          messageId: '<d2@exemple-fictif.test>',
+          de: 'info@client-fictif.test',
+          a: 'export@client-fictif.test',
+          objet: 'TR: Proforma a etablir',
+          corps: 'fw',
+          date: 'Mon, 02 Mar 2026 11:00:00 +0100',
+          references: '<d1@exemple-fictif.test>',
+        }),
+      ].map((m) => analyserMessage(m)),
+    );
+
+    await enregistrerLot(messages, { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const [demande] = await db.select().from(schema.demandes);
+    expect(demande.statut).toBe('attente_do');
+    expect(demande.acteurAttendu).toBe('do');
+
+    // Le message du poste est bien enregistre comme sortant, et son interlocuteur est la DO.
+    const [, sortant] = await db.select().from(schema.evenements).orderBy(schema.evenements.survenuLe);
+    expect(sortant.sens).toBe('sortant');
+    expect(sortant.interlocuteur).toBe('do');
+  });
+
+  it('repasse en cours sur la reponse de la DO, venue du meme domaine que le poste', async () => {
+    const messages = await Promise.all(
+      [
+        mailBrut({
+          messageId: '<e1@exemple-fictif.test>',
+          de: 'achat@alpha-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Proforma a etablir',
+          corps: 'Pourriez vous nous etablir la proforma en dollars pour cette commande ?',
+          date: 'Mon, 02 Mar 2026 08:00:00 +0100',
+        }),
+        mailBrut({
+          messageId: '<e2@exemple-fictif.test>',
+          de: 'info@client-fictif.test',
+          a: 'export@client-fictif.test',
+          objet: 'TR: Proforma a etablir',
+          corps: 'Peux tu valider la proforma avant envoi au client ?',
+          date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+          references: '<e1@exemple-fictif.test>',
+        }),
+        mailBrut({
+          messageId: '<e3@exemple-fictif.test>',
+          de: 'export@client-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'RE: Proforma a etablir',
+          corps: 'Je valide, tu peux envoyer.',
+          date: 'Mon, 02 Mar 2026 15:00:00 +0100',
+          references: '<e1@exemple-fictif.test> <e2@exemple-fictif.test>',
+        }),
+      ].map((m) => analyserMessage(m)),
+    );
+
+    await enregistrerLot(messages, { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const [demande] = await db.select().from(schema.demandes);
+    expect(demande.statut).toBe('en_cours');
+    expect(demande.acteurAttendu).toBe('poste');
+  });
+
+  it('n’ouvre aucune demande sur un simple envoi du poste', async () => {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<f9@exemple-fictif.test>',
+        de: 'info@client-fictif.test',
+        a: 'client@alpha-fictif.test',
+        objet: 'Documents d’expedition',
+        corps: 'Veuillez trouver ci-joint le BL et la packing list.',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    await enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const [evenement] = await db.select().from(schema.evenements);
+    // Lu comme sortant grace a l'adresse du poste, et non comme une demande du client.
+    expect(evenement.sens).toBe('sortant');
+    expect(await db.select().from(schema.demandes)).toHaveLength(0);
   });
 });
 

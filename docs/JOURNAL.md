@@ -658,3 +658,47 @@ Les dettes de chaque phase sont detaillees dans son entree du journal. Les plus 
    sont des hypotheses. Les confronter aux temps observes sur trois mois rendrait l'indicateur de
    charge exploitable pour dimensionner le poste, ce qui est la question que se posera le
    commanditaire au moment d'ouvrir un deuxieme compte client.
+
+---
+
+## 2026-11-12 : la collecte branchee sur un libelle, et un defaut bloquant corrige
+
+Les mails du poste arrivent desormais dans une boite reelle, sous un libelle. Deux ecarts entre ce
+que l'application supposait et ce que la realite montre ont ete corriges.
+
+**1. Le sens d'un mail se lisait au domaine : il se lit a l'adresse**
+
+`sensDuMessage` tenait `azmg-solutions.com` pour seul domaine interne. Or le poste ecrit depuis une
+adresse du **client**, et la donneuse d'ordre est sur **le meme domaine** que lui. Consequence :
+tout ce que le poste envoyait etait enregistre comme entrant, aucune demande ne passait « En attente
+DO », et le digest de validation restait vide. Le critere de la phase 4 passait en test parce que le
+jeu de test faisait ecrire le poste depuis une adresse AZMG.
+
+Correction : les adresses du poste se configurent par compte (`comptes_clients.adresses_poste`,
+migration `0003`), et l'adresse exacte passe avant le domaine. L'adresse de la donneuse d'ordre,
+deja dans `donneur_ordre_email`, sert maintenant de signal de typage deterministe : un envoi a la DO
+est reconnu comme une demande de validation **meme sans aucun mot de validation**, la ou les
+mots-cles echouaient sur un message reduit a « fw ». Nouvel onglet « Comptes clients » dans
+Parametres pour la saisie.
+
+**2. Le script Apps Script pouvait pousser toute une boite personnelle**
+
+Il cherchait `(in:inbox OR in:sent)`, ce qui convenait a une boite dediee. Installe sur une boite
+qui contient d'autres clients et du courrier prive, il aurait envoye le tout a la GPAO d'un seul
+compte. La recherche porte maintenant sur le libelle et sur rien d'autre, un libelle par compte
+client, et le script s'arrete si le libelle est introuvable plutot que de renvoyer une liste vide
+qui ressemble a un « rien a collecter ».
+
+**Verifications**
+
+5 tests de plus (312 au total), dont trois a la forme reelle du compte : poste et DO sur le domaine
+du client. Celui qui compte le plus verifie qu'un transfert a la DO reduit a « fw », sans aucun mot
+de validation, fait bien passer la demande en attente DO.
+
+**Ce qui reste a faire pour brancher la collecte**
+
+1. Saisir les deux adresses dans Parametres, onglet « Comptes clients » (indispensable, voir
+   `docs/A_FOURNIR.md`).
+2. Generer `APPS_SCRIPT_SECRET` et installer le script sur la boite qui porte le libelle.
+3. Pour l'historique : Google Takeout sur le libelle, puis depot du `.mbox` dans « Import des
+   mails ». L'import et la collecte se dedoublonnent entre eux.

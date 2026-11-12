@@ -13,6 +13,14 @@ interface Reponse {
   perimetre: { comptes: number[] | null; postes: number[]; lectureSeule: boolean };
 }
 
+interface CompteClient {
+  id: number;
+  nom: string;
+  donneurOrdreNom: string | null;
+  donneurOrdreEmail: string | null;
+  adressesPoste: string[];
+}
+
 interface Utilisateur {
   id: number;
   email: string;
@@ -26,10 +34,17 @@ export default function Parametres() {
   const { peut } = useAuth();
   const notifier = useNotifier();
   const client = useQueryClient();
-  const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'equipe'>('referentiels');
+  const [onglet, setOnglet] = useState<'referentiels' | 'delais' | 'automatisations' | 'comptes' | 'equipe'>('referentiels');
+  /** Saisie en cours par compte : adresses du poste et adresse de la DO. */
+  const [adresses, setAdresses] = useState<Record<number, { poste: string; do: string }>>({});
   const [brouillon, setBrouillon] = useState<ParametresType | null>(null);
 
   const { data, isLoading, error } = useQuery({ queryKey: ['parametres'], queryFn: () => api.get<Reponse>('/api/parametres') });
+  const { data: comptes } = useQuery({
+    queryKey: ['comptes-clients'],
+    queryFn: () => api.get<CompteClient[]>('/api/comptes'),
+    enabled: peut('admin', 'manager'),
+  });
   const { data: equipe } = useQuery({
     queryKey: ['utilisateurs'],
     queryFn: () => api.get<Utilisateur[]>('/api/utilisateurs'),
@@ -39,6 +54,21 @@ export default function Parametres() {
   useEffect(() => {
     if (data?.parametres && !brouillon) setBrouillon(structuredClone(data.parametres));
   }, [data, brouillon]);
+
+  const enregistrerAdresses = useMutation({
+    mutationFn: (v: { id: number; adressesPoste: string[]; donneurOrdreEmail: string | null }) =>
+      api.patch(`/api/comptes/${v.id}`, { adressesPoste: v.adressesPoste, donneurOrdreEmail: v.donneurOrdreEmail }),
+    onSuccess: (_r, v) => {
+      notifier('Adresses du compte enregistrees');
+      setAdresses((a) => {
+        const suite = { ...a };
+        delete suite[v.id];
+        return suite;
+      });
+      void client.invalidateQueries({ queryKey: ['comptes-clients'] });
+    },
+    onError: (e) => notifier(messageErreur(e), 'rouge'),
+  });
 
   const enregistrer = useMutation({
     mutationFn: () => api.put('/api/parametres', brouillon),
@@ -92,6 +122,7 @@ export default function Parametres() {
             { id: 'referentiels', libelle: 'Referentiels' },
             { id: 'delais', libelle: 'Delais et horaires' },
             { id: 'automatisations', libelle: 'Automatisations' },
+            { id: 'comptes', libelle: 'Comptes clients' },
             { id: 'equipe', libelle: 'Equipe' },
           ]}
         />
@@ -342,6 +373,67 @@ export default function Parametres() {
               );
             })}
           </ul>
+        </Carte>
+        </Panneau>
+      )}
+
+      {onglet === 'comptes' && (
+        <Panneau prefixe="parametres" id="comptes">
+        <Carte titre="Adresses des comptes clients" id="comptes">
+          {!peut('admin', 'manager') ? (
+            <Vide>Seuls un administrateur et un manager voient les comptes clients.</Vide>
+          ) : !comptes?.length ? (
+            <Chargement />
+          ) : (
+            <>
+              <Alerte ton="bleu">
+                Le poste ecrit souvent depuis une adresse du client, sur le meme domaine que la donneuse d&rsquo;ordre. Sans ces deux
+                renseignements, un mail parti du poste est lu comme un mail recu, et une demande de validation ne passe jamais en
+                attente DO.
+              </Alerte>
+              <ul className="mt-4 space-y-5">
+                {comptes.map((c) => {
+                  const saisie = adresses[c.id] ?? { poste: c.adressesPoste.join(', '), do: c.donneurOrdreEmail ?? '' };
+                  const modifieCompte = saisie.poste !== c.adressesPoste.join(', ') || saisie.do !== (c.donneurOrdreEmail ?? '');
+                  return (
+                    <li key={c.id} className="border-b border-ligne pb-5 last:border-0">
+                      <p className="font-medium">{c.nom}</p>
+                      <form
+                        className="mt-2 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          enregistrerAdresses.mutate({
+                            id: c.id,
+                            adressesPoste: saisie.poste
+                              .split(',')
+                              .map((a) => a.trim())
+                              .filter(Boolean),
+                            donneurOrdreEmail: saisie.do.trim() || null,
+                          });
+                        }}
+                      >
+                        <ChampTexte
+                          libelle="Adresses du poste"
+                          aide="Separees par des virgules"
+                          value={saisie.poste}
+                          onChange={(e) => setAdresses((a) => ({ ...a, [c.id]: { ...saisie, poste: e.target.value } }))}
+                        />
+                        <ChampTexte
+                          libelle="Adresse de la donneuse d’ordre"
+                          aide={c.donneurOrdreNom ? `Actuellement : ${c.donneurOrdreNom}` : 'Seule autorite de validation'}
+                          value={saisie.do}
+                          onChange={(e) => setAdresses((a) => ({ ...a, [c.id]: { ...saisie, do: e.target.value } }))}
+                        />
+                        <Bouton type="submit" disabled={!modifieCompte} chargement={enregistrerAdresses.isPending}>
+                          Enregistrer
+                        </Bouton>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
         </Carte>
         </Panneau>
       )}

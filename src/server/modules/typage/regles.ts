@@ -13,7 +13,7 @@
  * plus de signaux l'emporte : un domaine connu plus deux mots-cles bat un seul mot-cle isole.
  */
 import type { Interlocuteur, Nature, Sens } from '@shared/constantes';
-import { contientExpression, domaineDe, normaliserTypage, texteDuMessage, type MessageAClasser, type Typage } from '@shared/typage';
+import { contientExpression, domaineDe, estUneDe, normaliserTypage, texteDuMessage, type MessageAClasser, type Typage } from '@shared/typage';
 
 export interface RegleTypage {
   id?: number;
@@ -434,14 +434,42 @@ export function appliquerRegles(message: MessageAClasser, regles: RegleTypage[] 
  *    est une information. C'est le comportement par defaut le moins faux, et il baisse la
  *    confiance pour que le cas passe sous le seuil s'il est isole.
  */
+/**
+ * Reconnait la donneuse d'ordre a son adresse.
+ *
+ * Les regles ne savent la reconnaitre qu'au domaine de l'expediteur. Or la DO partage souvent son
+ * domaine avec le poste (une boite « export » et une boite « info » chez le meme client) : seule
+ * l'adresse exacte les distingue. Ce signal est deterministe, il passe donc avant les mots-cles.
+ */
+function deduireInterlocuteur(typage: Typage, message: MessageAClasser) {
+  if (typage.interlocuteur || !message.adresseDo) return;
+  if (estUneDe(message.expediteur, [message.adresseDo])) {
+    typage.interlocuteur = 'do';
+    typage.justificatifs.push('message recu de l’adresse de la donneuse d’ordre');
+    return;
+  }
+  if (message.destinataires?.some((d) => estUneDe(d, [message.adresseDo!]))) {
+    typage.interlocuteur = 'do';
+    typage.justificatifs.push('message adresse a la donneuse d’ordre');
+  }
+}
+
 function completerParDefaut(typage: Typage, message: MessageAClasser) {
+  deduireInterlocuteur(typage, message);
   if (!typage.famille && typage.nature && ['validation_do', 'refus_do', 'demande_validation_do'].includes(typage.nature)) {
     typage.famille = 'T13';
     typage.justificatifs.push('decision attendue de la DO, sans autre famille identifiee');
   }
   if (!typage.nature && message.sens) {
-    typage.nature = message.sens === 'sortant' ? 'envoi_livrable' : 'information';
-    typage.justificatifs.push(`nature deduite du sens « ${message.sens} »`);
+    if (message.sens === 'sortant' && typage.interlocuteur === 'do') {
+      // Un envoi a la DO attend une decision : la demande doit passer « En attente DO », pas
+      // « en attente du destinataire ». C'est ce qui alimente le digest de validation.
+      typage.nature = 'demande_validation_do';
+      typage.justificatifs.push('envoi a la donneuse d’ordre, decision attendue');
+    } else {
+      typage.nature = message.sens === 'sortant' ? 'envoi_livrable' : 'information';
+      typage.justificatifs.push(`nature deduite du sens « ${message.sens} »`);
+    }
   }
 }
 

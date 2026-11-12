@@ -19,6 +19,7 @@ export interface EntreeCompte {
   fuseau?: string;
   donneurOrdreNom?: string | null;
   donneurOrdreEmail?: string | null;
+  adressesPoste?: string[];
   managerId?: number | null;
   horaires?: HorairesOuvres | null;
 }
@@ -38,6 +39,7 @@ export async function creerCompte(entree: EntreeCompte, auteur: Auteur): Promise
       fuseau: entree.fuseau ?? 'Europe/Madrid',
       donneurOrdreNom: entree.donneurOrdreNom ?? null,
       donneurOrdreEmail: entree.donneurOrdreEmail ?? null,
+      adressesPoste: entree.adressesPoste ?? [],
       managerId: entree.managerId ?? null,
       horaires: entree.horaires ?? null,
     })
@@ -48,7 +50,7 @@ export async function creerCompte(entree: EntreeCompte, auteur: Auteur): Promise
 
 export async function modifierCompte(id: number, modifs: Partial<EntreeCompte> & { actif?: boolean }, auteur: Auteur): Promise<CompteClient> {
   const valeurs: Record<string, unknown> = { majLe: new Date() };
-  for (const champ of ['nom', 'pays', 'ville', 'fuseau', 'donneurOrdreNom', 'donneurOrdreEmail', 'managerId', 'horaires', 'actif'] as const) {
+  for (const champ of ['nom', 'pays', 'ville', 'fuseau', 'donneurOrdreNom', 'donneurOrdreEmail', 'adressesPoste', 'managerId', 'horaires', 'actif'] as const) {
     if (modifs[champ as keyof typeof modifs] !== undefined) valeurs[champ] = modifs[champ as keyof typeof modifs];
   }
   const [maj] = await db.update(schema.comptesClients).set(valeurs).where(eq(schema.comptesClients.id, id)).returning();
@@ -68,6 +70,7 @@ export async function listerComptes(comptes: number[] | null) {
       fuseau: schema.comptesClients.fuseau,
       donneurOrdreNom: schema.comptesClients.donneurOrdreNom,
       donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail,
+      adressesPoste: schema.comptesClients.adressesPoste,
       managerId: schema.comptesClients.managerId,
       actif: schema.comptesClients.actif,
       dossiersOuverts: sql<number>`(

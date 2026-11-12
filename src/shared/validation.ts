@@ -44,6 +44,8 @@ export const compteSchema = z.object({
   fuseau: z.string().trim().min(3).max(64).optional(),
   donneurOrdreNom: z.string().trim().max(120).nullish(),
   donneurOrdreEmail: z.union([emailSchema, z.literal('')]).nullish(),
+  /** Adresses depuis lesquelles le poste ecrit, souvent des adresses du client. */
+  adressesPoste: z.array(emailSchema).max(10).optional(),
   managerId: z.number().int().positive().nullish(),
 });
 

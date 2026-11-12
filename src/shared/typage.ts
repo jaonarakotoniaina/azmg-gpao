@@ -31,6 +31,29 @@ export interface MessageAClasser {
   expediteur?: string | null;
   destinataires?: string[];
   sens?: Sens | null;
+  /**
+   * Adresses depuis lesquelles le poste ecrit. Le poste travaille souvent depuis une adresse du
+   * client (par exemple la boite « info »), sur le meme domaine que la donneuse d'ordre : le
+   * domaine ne suffit donc pas a dire si un message part ou arrive.
+   */
+  adressesPoste?: string[];
+  /** Adresse de la donneuse d'ordre, seul signal fiable pour la reconnaitre sur ce domaine. */
+  adresseDo?: string | null;
+}
+
+/** Adresse email seule, en minuscules, sans le nom d'affichage ni les chevrons. */
+export function adresseNue(brut: string | null | undefined): string | null {
+  if (!brut) return null;
+  const m = /<([^>]+)>/.exec(brut);
+  const candidat = (m ? m[1] : brut).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidat) ? candidat : null;
+}
+
+/** Vrai si `brut` designe l'une des adresses de `liste`, quelle que soit la mise en forme. */
+export function estUneDe(brut: string | null | undefined, liste: readonly string[] | null | undefined): boolean {
+  const adresse = adresseNue(brut);
+  if (!adresse || !liste?.length) return false;
+  return liste.some((a) => adresseNue(a) === adresse);
 }
 
 /** Minuscules sans accents, ponctuation reduite a des espaces : base de toute comparaison. */

@@ -249,3 +249,42 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   une minute, pour que les taches periodiques aient toujours de quoi tourner.
 - Retour arriere : `PERIODICITES` dans `src/server/taches-periodiques.ts` decrit tout, et chaque
   tache reste executable seule en ligne de commande.
+
+## 2026-11-12 : le sens d'un mail se lit a l'adresse, pas au domaine
+
+- Sujet : la collecte deduisait le sens d'un message (entrant, sortant) du domaine de l'expediteur,
+  avec `azmg-solutions.com` comme seul domaine interne.
+- Ce que la realite a montre : le poste ecrit depuis une adresse du **client**, et la donneuse
+  d'ordre est sur **le meme domaine** que lui (une boite « info » et une boite « export » chez le
+  meme client). Au domaine seul, tout ce que le poste envoyait etait lu comme du courrier recu, et
+  aucune demande ne passait « En attente DO » : le critere de la phase 4 ne tenait qu'a la forme de
+  jeu de test, ou le poste ecrivait depuis une adresse AZMG.
+- Options : etendre les domaines internes au domaine du client (ce qui rendait la DO interne elle
+  aussi, donc indistinguable), ou configurer les adresses exactes du poste par compte.
+- Choix : les adresses exactes, dans `comptes_clients.adresses_poste`, et l'adresse de la DO dans
+  `donneur_ordre_email`, deja presente. L'adresse exacte passe avant le domaine, qui reste un filet
+  pour les messages internes AZMG.
+- Consequence : deux renseignements a saisir par compte, dans Parametres, onglet « Comptes
+  clients ». La saisie est indispensable, elle est donc signalee dans `docs/A_FOURNIR.md` et en
+  tete de la mise en place de `docs/apps-script.md`.
+- Effet de bord utile : l'adresse de la DO devient un signal deterministe de typage. Un envoi a la
+  DO sans aucun mot de validation (« fw », « pour validation » absents) est reconnu comme une
+  demande de validation, la ou les mots-cles echouaient.
+- Retour arriere : `sensDuMessage` et `deduireInterlocuteur` concentrent la logique ; un compte sans
+  adresses saisies retrouve exactement l'ancien comportement.
+
+## 2026-11-12 : le libelle Gmail est la seule limite du perimetre
+
+- Sujet : la collecte etait pensee pour une boite Gmail dediee, dont tout le contenu concernait le
+  poste. Les mails arrivent en fait dans la boite du CEO, sous un libelle.
+- Risque : le script cherchait `(in:inbox OR in:sent)`. Installe sur une boite personnelle, il
+  aurait pousse la totalite de cette boite, autres clients et courrier prive compris, vers la GPAO
+  d'un seul compte client.
+- Choix : la recherche porte sur `label:"<libelle>"` et sur rien d'autre, un libelle par compte
+  client, et le script **s'arrete** si le libelle est introuvable.
+- Raison du dernier point : un libelle mal orthographie rendait la recherche vide, ce qui ressemble
+  a un « rien a collecter » normal. Mieux vaut une erreur visible dans le journal d'execution.
+- Ce qui n'est pas traite par le libelle l'est par le typage : infolettres, notifications d'outils
+  et travail de la designer tombent en T00, hors perimetre, donc hors de toutes les vues et de tous
+  les exports.
+- Retour arriere : la constante `LIBELLE_SOURCE` en tete du script.

@@ -19,7 +19,7 @@ import { ajouterEvenement } from '../evenements/service';
 import { trouverOuCreerDossier } from '../dossiers/service';
 import { typerMessage } from '../typage/service';
 import type { MessageCollecte } from '../../adapters/collecte-mail';
-import { domaineDe } from '@shared/typage';
+import { domaineDe, estUneDe } from '@shared/typage';
 import { estHorsPerimetre, type Nature, type Sens } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
@@ -45,10 +45,34 @@ export function bilanVide(): BilanCollecte {
  * Sens d'un message vu du poste : sortant si le poste en est l'expediteur, entrant sinon.
  * Les adresses du poste sont celles du domaine d'AZMG-Solutions.
  */
-export function sensDuMessage(message: MessageCollecte, domainesInternes: string[]): Sens {
+/**
+ * Sens d'un message : part-il du poste, ou lui arrive-t-il ?
+ *
+ * L'adresse exacte passe avant le domaine, et c'est essentiel : le poste ecrit depuis une adresse
+ * du client (par exemple la boite « info »), sur **le meme domaine que la donneuse d'ordre**. Un
+ * test au domaine seul lirait tout ce que le poste envoie comme du courrier recu, et plus aucune
+ * demande de validation ne passerait « En attente DO ».
+ */
+export function sensDuMessage(message: MessageCollecte, config: { adressesPoste?: string[]; domainesInternes?: string[] }): Sens {
+  if (estUneDe(message.expediteur, config.adressesPoste)) return 'sortant';
+  // Une adresse du poste parmi les destinataires designe un message qui lui arrive, meme si
+  // l'expediteur appartient par ailleurs a un domaine interne.
+  if (message.destinataires?.some((d) => estUneDe(d, config.adressesPoste))) return 'entrant';
   const domaine = domaineDe(message.expediteur);
-  if (domaine && domainesInternes.some((d) => domaine.endsWith(d))) return 'sortant';
+  if (domaine && (config.domainesInternes ?? []).some((d) => domaine.endsWith(d))) return 'sortant';
   return 'entrant';
+}
+
+/** Configuration d'un compte utile a la collecte : qui est le poste, qui est la donneuse d'ordre. */
+export async function configDuCompte(compteId: number): Promise<{ adressesPoste: string[]; adresseDo: string | null }> {
+  const [compte] = await db
+    .select({ adressesPoste: schema.comptesClients.adressesPoste, donneurOrdreEmail: schema.comptesClients.donneurOrdreEmail })
+    .from(schema.comptesClients)
+    .where(eq(schema.comptesClients.id, compteId));
+  return {
+    adressesPoste: ((compte?.adressesPoste as string[]) ?? []).filter((a) => typeof a === 'string'),
+    adresseDo: compte?.donneurOrdreEmail ?? null,
+  };
 }
 
 /** Objet debarrasse des prefixes de reponse et de transfert, pour comparer deux messages d'un fil. */
@@ -76,8 +100,10 @@ export interface OptionsCollecte {
   posteId?: number | null;
   /** Dossier de rattachement par defaut, quand le fil est inconnu. */
   dossierParDefautId?: number | null;
-  /** Domaines consideres comme internes, pour deduire le sens. */
+  /** Domaines consideres comme internes, pour deduire le sens quand aucune adresse ne tranche. */
   domainesInternes?: string[];
+  /** Config du compte, chargee une fois par lot plutot qu'a chaque message. */
+  config?: { adressesPoste: string[]; adresseDo: string | null };
   source?: 'mail' | 'import';
 }
 
@@ -96,12 +122,23 @@ export async function enregistrerMessage(
   const [deja] = await db.select({ id: schema.evenements.id }).from(schema.evenements).where(eq(schema.evenements.messageId, message.messageId));
   if (deja) return null;
 
+  const config = opts.config ?? (await configDuCompte(opts.compteId));
   const domainesInternes = opts.domainesInternes ?? ['azmg-solutions.com'];
-  const sens = sensDuMessage(message, domainesInternes);
+  const sens = sensDuMessage(message, { adressesPoste: config.adressesPoste, domainesInternes });
 
-  // 2. Typage : il donne la famille, la nature et l'interlocuteur.
+  // 2. Typage : il donne la famille, la nature et l'interlocuteur. Les adresses du compte lui
+  // permettent de reconnaitre la donneuse d'ordre, ce que les mots-cles ne peuvent pas faire
+  // quand elle partage son domaine avec le poste.
   const typage = await typerMessage(
-    { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, sens },
+    {
+      objet: message.objet,
+      corps: message.corps,
+      expediteur: message.expediteur,
+      destinataires: message.destinataires,
+      sens,
+      adressesPoste: config.adressesPoste,
+      adresseDo: config.adresseDo,
+    },
     { compteId: opts.compteId },
   );
   const horsPerimetre = estHorsPerimetre(typage.typage.famille);
@@ -185,11 +222,13 @@ export async function enregistrerLot(messages: MessageCollecte[], opts: OptionsC
   // Les messages sont traites du plus ancien au plus recent : un fil se construit dans l'ordre,
   // sans quoi une reponse arriverait avant la demande qu'elle fait avancer.
   const ordonnes = [...messages].sort((a, b) => a.survenuLe.getTime() - b.survenuLe.getTime());
+  // La config du compte est la meme pour tout le lot : une lecture, pas une par message.
+  const config = opts.config ?? (await configDuCompte(opts.compteId));
 
   for (const message of ordonnes) {
     bilan.lus++;
     try {
-      const resultat = await enregistrerMessage(message, opts, auteur);
+      const resultat = await enregistrerMessage(message, { ...opts, config }, auteur);
       if (!resultat) {
         bilan.doublons++;
         continue;

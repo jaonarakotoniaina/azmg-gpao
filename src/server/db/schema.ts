@@ -93,6 +93,11 @@ export const comptesClients = pgTable('comptes_clients', {
   /** Donneur d'ordre : seule autorite de validation cote client. */
   donneurOrdreNom: text('donneur_ordre_nom'),
   donneurOrdreEmail: text('donneur_ordre_email'),
+  /**
+   * Adresses depuis lesquelles le poste ecrit, souvent des adresses du client sur le meme domaine
+   * que la donneuse d'ordre. Sans elles, un mail parti du poste est lu comme un mail recu.
+   */
+  adressesPoste: jsonb('adresses_poste').notNull().default([]),
   /** Manager AZMG qui pilote le compte. */
   managerId: ref('manager_id').references(() => utilisateurs.id, { onDelete: 'set null' }),
   /** Horaires ouvres du compte (null : horaires generaux des parametres). */
