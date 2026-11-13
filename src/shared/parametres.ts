@@ -29,6 +29,7 @@ export const AUTOMATISATIONS = [
   { cle: 'digest_do', libelle: 'Digest de validation pour la DO', defaut: 'brouillon' },
   { cle: 'daily', libelle: 'Reporting quotidien', defaut: 'brouillon' },
   { cle: 'typage_ia', libelle: 'Typage des evenements par l’IA', defaut: 'auto' },
+  { cle: 'synthese_demande', libelle: 'Synthese des demandes recues (action attendue, type, priorite)', defaut: 'auto' },
   { cle: 'echantillon_qualite', libelle: 'Tirage de l’echantillon qualite hebdomadaire', defaut: 'auto' },
 ] as const;
 

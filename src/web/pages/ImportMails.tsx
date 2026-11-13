@@ -21,6 +21,7 @@ interface Bilan {
   crees: number;
   doublons: number;
   ignores: number;
+  synthetisees: number;
   horsPerimetre: number;
   aClasser: number;
   piecesRangees: number;
@@ -180,6 +181,10 @@ export default function ImportMails() {
                 <Indicateur libelle="Pieces jointes" valeur={bilan.piecesRangees} />
               </div>
               <ul className="space-y-1 text-sm">
+                <li className="flex items-center justify-between gap-3">
+                  <span>Demandes synthetisees (action, type, priorite)</span>
+                  <Badge ton="vert">{bilan.synthetisees}</Badge>
+                </li>
                 <li className="flex items-center justify-between gap-3">
                   <span>Adresses a ne pas suivre, non collectes</span>
                   <Badge>{bilan.ignores}</Badge>

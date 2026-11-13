@@ -587,3 +587,27 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   colonnes que le commanditaire demandait en premier, et elles se calculent au lieu de se saisir.
 - Un second import rafraichit la ligne source : le manager peut avoir complete un commentaire.
 - Retour arriere : `suiviDesDemandes` dans `pilotage/suivi.ts`, et la colonne reste facultative.
+
+## 2026-11-13 : la synthese remplace le classeur, elle ne le complete pas
+
+- Sujet : le commanditaire a demande pourquoi importer un fichier alors que ce fichier est tire
+  des mails, que la GPAO collecte deja. La question est juste.
+- Ce que le classeur ajoutait aux mails : quatre colonnes qui sont des **syntheses**, pas des
+  champs. L'action qui debloque, le type de la demande, sa priorite et, s'il s'agit d'une reprise,
+  sa cause. Le reste (date, sujet, fil, statut, famille, lien) se lit deja dans le mail.
+- Choix : une tache IA `synthetiser_demande`, appelee au fil de la collecte sur les messages
+  entrants qui appellent un travail. Les quatre colonnes se remplissent toutes seules, et le
+  classeur n'a plus a etre tenu.
+- Ce qui declenche la synthese : un message **entrant**, dont le typage est applicable, et dont la
+  nature appelle un travail (demande entrante, consigne, relance recue, refus). Ni ce que le poste
+  envoie, ni une information : il n'y aurait rien a en degager.
+- Ce que la synthese ne touche jamais : une demande qui existait deja. Elle ne remplace l'objet que
+  sur une demande que ce message vient de creer, et jamais ce qu'un humain a pose.
+- Degradation : sans fournisseur IA disponible, ou sous le seuil de confiance, la synthese est
+  vide et la demande garde ce que les regles savent en dire. Une colonne vide se voit, une colonne
+  inventee ne se voit pas.
+- Ce que l'import devient : une reprise d'historique, a jouer une fois, et non un geste quotidien.
+- Regles inscrites dans le prompt : l'action decrit ce qui debloque et jamais le reproche ; ce que
+  le message ne dit pas reste vide ; la priorite ne doit pas etre haute partout.
+- Retour arriere : l'interrupteur « Synthese des demandes recues » dans Parametres, et le prompt
+  versionne `synthetiser_demande@1`.
