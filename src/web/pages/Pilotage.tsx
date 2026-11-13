@@ -21,6 +21,7 @@ interface Semaine {
   recidives: number;
   tauxRecidive: number | null;
   delaiMedianHeures: number | null;
+  delaiMoyenHeures: number | null;
   p1EnRetard: number;
 }
 
@@ -31,7 +32,14 @@ interface Reponse {
   causes: { cause: string | null; libelle: string; nombre: number }[];
   dossiersRepetes: { dossierId: number; libelle: string; reprises: number }[];
   retoursPositifs: number;
-  total: { demandesOuvertes: number; reprises: number; recidives: number; delaiMedianHeures: number | null };
+  total: {
+    demandesOuvertes: number;
+    reprises: number;
+    recidives: number;
+    delaiMedianHeures: number | null;
+    delaiMoyenHeures: number | null;
+    p1EnRetard: number;
+  };
   ecartsPriorite: { demandeId: number; objet: string; dossier: string; declaree: string; conseillee: string; raison: string }[];
 }
 
@@ -39,7 +47,12 @@ function heures(valeur: number | null): string {
   return valeur === null ? 'non mesure' : `${Math.round(valeur)} h`;
 }
 
-export default function Accompagnement() {
+/** Libelle court d'une semaine, celui que porte la courbe au survol. */
+function libelleSemaine(s: Semaine): string {
+  return `S${s.semaine}`;
+}
+
+export default function Pilotage() {
   const [posteId, setPosteId] = useState('');
   const { data: postes } = useQuery({ queryKey: ['postes'], queryFn: () => api.get<Poste[]>('/api/postes') });
 
@@ -49,16 +62,16 @@ export default function Accompagnement() {
   }, [postes, posteId]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['accompagnement', posteId],
-    queryFn: () => api.get<Reponse>(`/api/postes/${posteId}/accompagnement`),
+    queryKey: ['pilotage', posteId],
+    queryFn: () => api.get<Reponse>(`/api/postes/${posteId}/pilotage`),
     enabled: Boolean(posteId),
   });
 
   return (
     <>
       <EntetePage
-        titre="Accompagnement"
-        description="Est-ce que ca s’ameliore ? Les causes disent sur quoi travailler, la courbe dit si l’effort porte. Les delais sont comptes en heures ouvrees du client."
+        titre="Pilotage"
+        description="Est-ce que ca s’ameliore ? Quatre indicateurs par collaborateur, semaine apres semaine : reclamations, taux de recidive, delai moyen de cloture, P1 en retard. Les causes disent sur quoi travailler, la courbe dit si l’effort porte. Les delais sont comptes en heures ouvrees du client."
       />
 
       <Carte className="mb-6">
@@ -79,16 +92,55 @@ export default function Accompagnement() {
       {!posteId ? (
         <Vide>Choisissez un poste.</Vide>
       ) : isLoading ? (
-        <Chargement texte="Calcul de l’accompagnement" />
+        <Chargement texte="Calcul des indicateurs" />
       ) : !data ? null : !data.total.demandesOuvertes ? (
         <Vide>Aucune demande sur la periode pour ce poste.</Vide>
       ) : (
         <div className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Indicateur libelle="Demandes" valeur={data.total.demandesOuvertes} />
-            <Indicateur libelle="Reprises" valeur={data.total.reprises} detail={`dont ${data.total.recidives} recidive(s)`} />
-            <Indicateur libelle="Delai median de cloture" valeur={heures(data.total.delaiMedianHeures)} detail="en heures ouvrees" />
-            <Indicateur libelle="Retours positifs" valeur={data.retoursPositifs} detail="validations sans correction" />
+          {/*
+            Les quatre indicateurs du bilan, dans l'ordre ou ils se lisent : combien de fois il a
+            fallu revenir, est-ce que ce sont les memes sujets, combien de temps pour clore, et ce
+            qui est en retard malgre une priorite haute. Chacun porte sa courbe : c'est la pente,
+            pas le chiffre du jour, qui dit si l'effort porte.
+          */}
+          <div id="indicateurs" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Indicateur
+              libelle="Reclamations"
+              valeur={data.total.reprises}
+              detail={`sur ${data.total.demandesOuvertes} demandes`}
+              tendance={data.semaines.map((s) => ({ libelle: libelleSemaine(s), valeur: s.reprises }))}
+            />
+            <Indicateur
+              libelle="Taux de recidive"
+              valeur={data.total.reprises ? `${Math.round((data.total.recidives / data.total.reprises) * 100)} %` : 'sans objet'}
+              detail={`${data.total.recidives} sur un dossier ou une cause deja vus`}
+              tendance={data.semaines.map((s) => ({
+                libelle: libelleSemaine(s),
+                valeur: s.tauxRecidive === null ? null : Math.round(s.tauxRecidive * 100),
+              }))}
+              uniteTendance=" %"
+            />
+            <Indicateur
+              libelle="Delai moyen de cloture"
+              valeur={heures(data.total.delaiMoyenHeures)}
+              detail={`median ${heures(data.total.delaiMedianHeures)}, en heures ouvrees`}
+              tendance={data.semaines.map((s) => ({
+                libelle: libelleSemaine(s),
+                valeur: s.delaiMoyenHeures === null ? null : Math.round(s.delaiMoyenHeures),
+              }))}
+              uniteTendance=" h"
+            />
+            <Indicateur
+              libelle="P1 en retard"
+              valeur={data.total.p1EnRetard}
+              detail="priorite haute, delai cible depasse"
+              tendance={data.semaines.map((s) => ({ libelle: libelleSemaine(s), valeur: s.p1EnRetard }))}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Indicateur libelle="Demandes sur la periode" valeur={data.total.demandesOuvertes} />
+            <Indicateur libelle="Retours positifs" valeur={data.retoursPositifs} detail="validations de la DO sans correction" />
           </div>
 
           <Carte titre="Sur quoi travailler" id="causes">
@@ -121,6 +173,7 @@ export default function Accompagnement() {
                     <th scope="col">Demandes</th>
                     <th scope="col">Reprises</th>
                     <th scope="col">Taux de recidive</th>
+                    <th scope="col">Delai moyen</th>
                     <th scope="col">Delai median</th>
                     <th scope="col">P1 en retard</th>
                   </tr>
@@ -134,6 +187,7 @@ export default function Accompagnement() {
                       <td>{s.demandesOuvertes}</td>
                       <td>{s.reprises}</td>
                       <td>{s.tauxRecidive === null ? 'sans objet' : `${Math.round(s.tauxRecidive * 100)} %`}</td>
+                      <td>{heures(s.delaiMoyenHeures)}</td>
                       <td>{heures(s.delaiMedianHeures)}</td>
                       <td>{s.p1EnRetard}</td>
                     </tr>

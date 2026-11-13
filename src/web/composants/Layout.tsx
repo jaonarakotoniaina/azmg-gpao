@@ -42,7 +42,7 @@ export function Layout() {
     { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },
     { vers: '/brouillons', libelle: 'Brouillons', icone: <PenLine className="h-4 w-4" aria-hidden /> },
     { vers: '/qualite', libelle: 'Qualite', icone: <ClipboardCheck className="h-4 w-4" aria-hidden /> },
-    { vers: '/accompagnement', libelle: 'Accompagnement', icone: <TrendingUp className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
+    { vers: '/pilotage', libelle: 'Pilotage', icone: <TrendingUp className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/export', libelle: 'Export du reporting', icone: <FileSpreadsheet className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/import-mails', libelle: 'Import des mails', icone: <Mails className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
     { vers: '/import', libelle: 'Import du classeur', icone: <Upload className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },

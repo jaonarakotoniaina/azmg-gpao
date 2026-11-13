@@ -17,7 +17,7 @@ const Export = lazy(() => import('./pages/Export'));
 const Qualite = lazy(() => import('./pages/Qualite'));
 const DigestDo = lazy(() => import('./pages/DigestDo'));
 const Brouillons = lazy(() => import('./pages/Brouillons'));
-const Accompagnement = lazy(() => import('./pages/Accompagnement'));
+const Pilotage = lazy(() => import('./pages/Pilotage'));
 const Suivi = lazy(() => import('./pages/Suivi'));
 const AClasser = lazy(() => import('./pages/AClasser'));
 const ImportMails = lazy(() => import('./pages/ImportMails'));
@@ -60,7 +60,7 @@ export function App() {
             <Route path="qualite" element={<Qualite />} />
             <Route path="digest" element={<DigestDo />} />
             <Route path="brouillons" element={<Brouillons />} />
-            <Route path="accompagnement" element={<Accompagnement />} />
+            <Route path="pilotage" element={<Pilotage />} />
             <Route path="suivi" element={<Suivi />} />
             <Route path="a-classer" element={<AClasser />} />
             <Route path="import-mails" element={<ImportMails />} />

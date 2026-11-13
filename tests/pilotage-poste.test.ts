@@ -1,5 +1,5 @@
 /**
- * Pilotage de l'accompagnement : est-ce que ca s'ameliore ?
+ * Pilotage d'un collaborateur : est-ce que ca s'ameliore ?
  *
  * Un releve dit combien de reprises il y a eu. Ce qui permet de decider, c'est la pente entre
  * deux semaines, la part de reprises qui reviennent sur le meme dossier ou la meme cause, et le
@@ -12,7 +12,7 @@ import { baseVierge, creerCompteDeTest, creerPosteDeTest, creerUtilisateurDeTest
 import { changerStatut, creerDemande, AUTEUR_SYSTEME } from '../src/server/modules/demandes/service';
 import { ajouterEvenement } from '../src/server/modules/evenements/service';
 import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
-import { accompagnement, ecartsPriorite, prioriteConseillee } from '../src/server/modules/pilotage/accompagnement';
+import { pilotagePoste, ecartsPriorite, prioriteConseillee } from '../src/server/modules/pilotage/poste';
 import { horairesDuCompte, modifierParametres } from '../src/server/lib/parametres';
 import { FUSEAU_CLIENT_DEFAUT } from '../src/shared/heures-ouvrees';
 
@@ -68,7 +68,7 @@ describe('semaines', () => {
     await reprise({ dossierId: dossierB, le: '2026-11-04T09:00', cause: 'erreur_document' });
     await reprise({ dossierId: dossierA, le: '2026-11-10T09:00', cause: 'delai_reponse' });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.semaines).toHaveLength(2);
     expect(bilan.semaines[0].reprises).toBe(2);
     expect(bilan.semaines[1].reprises).toBe(1);
@@ -81,7 +81,7 @@ describe('semaines', () => {
     // Un dossier neuf avec une cause neuve n'en est pas une.
     await reprise({ dossierId: dossierB, le: '2026-11-11T09:00', cause: 'qualite_livrable' });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.semaines[0].recidives).toBe(0);
     expect(bilan.semaines[1].recidives).toBe(1);
     expect(bilan.semaines[1].tauxRecidive).toBe(0.5);
@@ -90,14 +90,14 @@ describe('semaines', () => {
 
   it('ne compte pas de recidive sur la premiere apparition', async () => {
     await reprise({ dossierId: dossierA, le: '2026-11-03T09:00', cause: 'delai_reponse' });
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.semaines[0].recidives).toBe(0);
     expect(bilan.semaines[0].tauxRecidive).toBe(0);
   });
 
   it('laisse le taux de recidive vide quand il n’y a aucune reprise', async () => {
     await creerDemande({ dossierId: dossierA, famille: 'T01', objet: 'Travail ordinaire', ouverteLe: t('2026-11-03T09:00') }, AUTEUR);
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.semaines[0].reprises).toBe(0);
     expect(bilan.semaines[0].tauxRecidive).toBeNull();
   });
@@ -109,7 +109,7 @@ describe('delai de cloture', () => {
     const demande = await reprise({ dossierId: dossierA, le: '2026-11-06T09:00' });
     await changerStatut(demande.id, 'termine', AUTEUR, { survenuLe: t('2026-11-09T09:00') });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.total.delaiMedianHeures).toBeCloseTo(9, 1);
   });
 
@@ -118,7 +118,7 @@ describe('delai de cloture', () => {
     await changerStatut(close.id, 'termine', AUTEUR, { survenuLe: t('2026-11-03T12:00') });
     await reprise({ dossierId: dossierB, le: '2026-11-03T09:00' });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.total.delaiMedianHeures).toBeCloseTo(3, 1);
   });
 });
@@ -129,7 +129,7 @@ describe('causes et dossiers repetes', () => {
     await reprise({ dossierId: dossierB, le: '2026-11-04T09:00', cause: 'classement_tracabilite' });
     await reprise({ dossierId: dossierA, le: '2026-11-05T09:00', cause: 'delai_reponse' });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.causes[0].cause).toBe('classement_tracabilite');
     expect(bilan.causes[0].nombre).toBe(2);
     expect(bilan.causes[0].libelle).toBe('Classement et tracabilite');
@@ -137,7 +137,7 @@ describe('causes et dossiers repetes', () => {
 
   it('nomme la cause non renseignee plutot que de la passer sous silence', async () => {
     await reprise({ dossierId: dossierA, le: '2026-11-03T09:00' });
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.causes[0].cause).toBeNull();
     expect(bilan.causes[0].libelle).toBe('Cause non renseignee');
   });
@@ -147,7 +147,7 @@ describe('causes et dossiers repetes', () => {
     await reprise({ dossierId: dossierA, le: '2026-11-05T09:00' });
     await reprise({ dossierId: dossierB, le: '2026-11-06T09:00' });
 
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.dossiersRepetes).toHaveLength(1);
     expect(bilan.dossiersRepetes[0].dossierId).toBe(dossierA);
     expect(bilan.dossiersRepetes[0].reprises).toBe(2);
@@ -235,7 +235,7 @@ describe('retours positifs', () => {
       },
       AUTEUR,
     );
-    const bilan = await accompagnement(posteId, PERIODE);
+    const bilan = await pilotagePoste(posteId, PERIODE);
     expect(bilan.retoursPositifs).toBe(1);
   });
 });

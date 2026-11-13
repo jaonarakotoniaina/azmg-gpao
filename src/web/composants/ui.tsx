@@ -297,12 +297,98 @@ export function Panneau({ prefixe = 'onglet', id, children }: { prefixe?: string
   );
 }
 
-export function Indicateur({ libelle, valeur, detail }: { libelle: string; valeur: ReactNode; detail?: ReactNode }) {
+export interface PointTendance {
+  /** Libelle de la periode, lu au survol et par un lecteur d'ecran (« S46 »). */
+  libelle: string;
+  /** Valeur de la periode. `null` quand l'indicateur n'est pas mesurable cette semaine. */
+  valeur: number | null;
+}
+
+/**
+ * Courbe de tendance d'un indicateur, en SVG, sans aucune bibliotheque.
+ *
+ * Elle repond a la seule question du bilan de fin de mois : est-ce que ca monte ou est-ce que ca
+ * descend ? Le trace est volontairement discret, et seul le dernier segment porte la couleur
+ * d'accent : c'est la periode en cours qu'on vient lire. Les valeurs exactes sont dans le tableau
+ * en dessous, qui est la vue de reference ; la courbe ne porte aucun chiffre.
+ *
+ * Dimensions fixes : une unite du `viewBox` vaut un pixel, donc l'epaisseur du trait et le rayon
+ * du point final sont exactement ceux voulus, sans dependre de la largeur de la carte.
+ */
+export function Tendance({ points, unite = '' }: { points: PointTendance[]; unite?: string }) {
+  const mesures = points.filter((p) => p.valeur !== null) as { libelle: string; valeur: number }[];
+  if (mesures.length < 2) return null;
+
+  const LARGEUR = 132;
+  const HAUTEUR = 36;
+  const MARGE = 5;
+  const haut = MARGE;
+  const bas = HAUTEUR - MARGE;
+  // L'echelle part de zero : sur des comptages, un plancher flottant exagererait la pente.
+  const max = Math.max(...mesures.map((m) => m.valeur), 1);
+  const pas = mesures.length > 1 ? (LARGEUR - 2 * MARGE) / (mesures.length - 1) : 0;
+  const coordonnees = mesures.map((m, i) => ({
+    ...m,
+    x: MARGE + i * pas,
+    y: bas - (m.valeur / max) * (bas - haut),
+  }));
+
+  const chemin = coordonnees.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`);
+  const dernier = coordonnees[coordonnees.length - 1];
+  const avantDernier = coordonnees[coordonnees.length - 2];
+  const resume = coordonnees.map((c) => `${c.libelle} ${c.valeur}${unite}`).join(', ');
+
+  return (
+    <svg
+      width={LARGEUR}
+      height={HAUTEUR}
+      viewBox={`0 0 ${LARGEUR} ${HAUTEUR}`}
+      role="img"
+      aria-label={`Tendance : ${resume}`}
+      className="mt-2 block overflow-visible"
+    >
+      {/* Le passe, en retrait : il situe la pente sans se disputer la lecture. */}
+      <polyline
+        points={chemin.slice(0, -1).join(' ')}
+        fill="none"
+        stroke="#746C89"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* La periode en cours, en accent : c'est elle qu'on vient lire. */}
+      <polyline points={`${avantDernier.x.toFixed(1)},${avantDernier.y.toFixed(1)} ${dernier.x.toFixed(1)},${dernier.y.toFixed(1)}`} fill="none" stroke="#8B25CF" strokeWidth={2} strokeLinecap="round" />
+      <circle cx={dernier.x} cy={dernier.y} r={4} fill="#8B25CF" stroke="#FFFFFF" strokeWidth={2} />
+      {/* Cibles de survol plus larges que les marques, pour atteindre un point a la souris. */}
+      {coordonnees.map((c) => (
+        <circle key={c.libelle} cx={c.x} cy={c.y} r={9} fill="transparent">
+          <title>{`${c.libelle} : ${c.valeur}${unite}`}</title>
+        </circle>
+      ))}
+    </svg>
+  );
+}
+
+export function Indicateur({
+  libelle,
+  valeur,
+  detail,
+  tendance,
+  uniteTendance,
+}: {
+  libelle: string;
+  valeur: ReactNode;
+  detail?: ReactNode;
+  /** Courbe des periodes precedentes, quand l'indicateur en a une. */
+  tendance?: PointTendance[];
+  uniteTendance?: string;
+}) {
   return (
     <div className="carte p-4">
       <p className="text-sm text-texte-doux">{libelle}</p>
       <p className="mt-1 font-display text-3xl font-semibold">{valeur}</p>
       {detail && <p className="mt-1 text-xs text-texte-discret">{detail}</p>}
+      {tendance && <Tendance points={tendance} unite={uniteTendance} />}
     </div>
   );
 }
