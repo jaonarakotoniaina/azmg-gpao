@@ -346,7 +346,9 @@ test('la navigation tient en sept entrees, et les pages gardent leur adresse', a
     'Export du reporting',
     'Parametres',
   ]) {
-    await expect(navigation.getByRole('link', { name: page_, exact: true })).toBeVisible();
+    // Le nom est compare sur son debut : l'entree « A classer » porte en plus son compteur, qui
+    // fait partie du nom accessible du lien.
+    await expect(navigation.getByRole('link', { name: new RegExp(`^${page_}`) }).first()).toBeVisible();
   }
 
   // Un lien direct vers une page de groupe ouvre le bon onglet : les favoris et les liens
