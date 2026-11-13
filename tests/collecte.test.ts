@@ -6,13 +6,13 @@
  *  - un mail sortant de demande de validation fait passer la demande en « En attente DO » ;
  *  - la reponse de la DO la fait repasser en cours.
  */
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs/promises';
 import { eq, sql } from 'drizzle-orm';
 import { baseVierge, creerCompteDeTest, creerPosteDeTest, db, schema } from './aide';
 import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
 import { AUTEUR_SYSTEME } from '../src/server/modules/demandes/service';
-import { analyserMessage, decouperMbox, identifiantFil, signerCharge, verifierSignature } from '../src/server/adapters/collecte-mail';
+import { analyserMessage, decouperMbox, identifiantFil, partieUtile, signerCharge, verifierSignature } from '../src/server/adapters/collecte-mail';
 import {
   configDuCompte,
   demandeDuFil,
@@ -27,6 +27,10 @@ import { creerPoste } from '../src/server/modules/comptes/service';
 import { appliquerRegles } from '../src/server/modules/typage/regles';
 import { initialiserRegles } from '../src/server/modules/typage/service';
 import { cheminAbsolu, extensionAcceptee, rangerFichier } from '../src/server/lib/stockage';
+import { appliquerSynthese } from '../src/server/modules/typage/synthese';
+import { syntheseParRegles } from '../src/server/modules/typage/synthese-regles';
+import { suiviDesDemandes } from '../src/server/modules/pilotage/suivi';
+import { config } from '../src/server/config';
 
 const AUTEUR = AUTEUR_SYSTEME;
 
@@ -553,6 +557,218 @@ describe('synthese des demandes recues', () => {
     const suivi = demande.suivi as Record<string, unknown>;
     expect(typeof suivi.confiance).toBe('number');
     expect(Array.isArray(suivi.justificatifs)).toBe(true);
+  });
+});
+
+describe('synthese sans routine IA : les colonnes ne restent pas vides', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    await db
+      .update(schema.comptesClients)
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+    // Mode `agent` : la tache part en file et personne n'y repond, exactement comme en production
+    // tant que la routine n'est pas installee. C'est le cas qui laissait les colonnes vides.
+    config.ia.fournisseur = 'agent';
+  });
+
+  afterEach(() => {
+    config.ia.fournisseur = 'mock';
+  });
+
+  async function recevoir(messageId: string, objet: string, corps: string) {
+    const message = await analyserMessage(
+      mailBrut({ messageId, de: 'export@client-fictif.test', a: 'info@client-fictif.test', objet, corps, date: 'Mon, 02 Mar 2026 09:00:00 +0100' }),
+    );
+    return enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+  }
+
+  it('remplit l’action, le type et la priorite par regles quand la routine n’a pas repondu', async () => {
+    const bilan = await recevoir('<regles1@exemple-fictif.test>', 'Proforma a etablir', 'Pourriez vous etablir la proforma en dollars pour cette commande ?');
+    expect(bilan.synthetisees).toBe(1);
+
+    const [demande] = await db.select().from(schema.demandes);
+    const suivi = demande.suivi as Record<string, unknown>;
+    expect(suivi.origine).toBe('regles');
+    // L'action est la phrase de demande du message, citee telle quelle : rien d'invente.
+    expect(String(suivi.action)).toContain('etablir la proforma');
+    expect(suivi.type).toBe('demande');
+    expect(demande.objet).toBe(suivi.action);
+  });
+
+  it('laisse une tache en file, pour que la routine puisse corriger plus tard', async () => {
+    await recevoir('<regles3@exemple-fictif.test>', 'Cotation aerien', 'Pourriez vous demander une cotation aerienne pour 180 kg ?');
+    const [tache] = await db.select().from(schema.aiTasks).where(eq(schema.aiTasks.type, 'synthetiser_demande'));
+    const [demande] = await db.select().from(schema.demandes);
+    expect(tache.statut).toBe('en_attente');
+    // La demande est portee dans le contexte : c'est par elle que la routine retrouvera la ligne.
+    expect((tache.contexte as Record<string, unknown>).demandeId).toBe(demande.id);
+  });
+
+  it('la reponse de la routine remplace les colonnes posees par les regles', async () => {
+    await recevoir('<regles4@exemple-fictif.test>', 'Facture a corriger', 'Pourriez vous corriger la facture ?');
+    const [avant] = await db.select().from(schema.demandes);
+
+    const applique = await appliquerSynthese(avant.id, {
+      action: 'Renvoyer la facture avec le NIF du client',
+      type: 'reclamation',
+      priorite: 'haute',
+      cause: 'erreur_document',
+      confiance: 0.9,
+      justificatifs: ['le NIF manque sur la facture'],
+    });
+
+    expect(applique).toBe(true);
+    const [apres] = await db.select().from(schema.demandes).where(eq(schema.demandes.id, avant.id));
+    expect(apres.objet).toBe('Renvoyer la facture avec le NIF du client');
+    expect(apres.cause).toBe('erreur_document');
+    expect(apres.reprise).toBe(true);
+    expect((apres.suivi as Record<string, unknown>).origine).toBe('synthese_ia');
+  });
+
+  it('ne remplace jamais une ligne qui ne vient pas des regles', async () => {
+    await recevoir('<regles5@exemple-fictif.test>', 'Facture a corriger', 'Pourriez vous corriger la facture ?');
+    const [demande] = await db.select().from(schema.demandes);
+    // Une ligne importee du classeur, ou corrigee a la main, porte une autre origine.
+    await db
+      .update(schema.demandes)
+      .set({ objet: 'Action posee par le manager', suivi: { ...(demande.suivi as object), origine: 'import' } })
+      .where(eq(schema.demandes.id, demande.id));
+
+    const applique = await appliquerSynthese(demande.id, {
+      action: 'Action proposee par la routine',
+      type: 'demande',
+      priorite: 'normale',
+      cause: null,
+      confiance: 0.95,
+      justificatifs: [],
+    });
+
+    expect(applique).toBe(false);
+    const [apres] = await db.select().from(schema.demandes).where(eq(schema.demandes.id, demande.id));
+    expect(apres.objet).toBe('Action posee par le manager');
+  });
+});
+
+describe('synthese par regles, prise a part', () => {
+  it('cite la phrase de demande du message, sans la reformuler', () => {
+    const sortie = syntheseParRegles({
+      objet: 'Proforma a etablir',
+      corps: 'Bonjour,\n\nPourriez vous etablir la proforma en dollars ?\n\nMerci.',
+      famille: 'T03',
+    });
+    expect(sortie.action).toBe('Pourriez vous etablir la proforma en dollars ?');
+    expect(sortie.type).toBe('demande');
+    expect(sortie.priorite).toBe('normale');
+    expect(sortie.cause).toBeNull();
+  });
+
+  it('se rabat sur le travail que la famille designe, suivi de l’objet', () => {
+    const sortie = syntheseParRegles({ objet: 'Proforma LAM 272 kg', corps: 'Ci joint le bon de commande.', famille: 'T03' });
+    expect(sortie.action).toBe('Etablir ou corriger la facture ou la proforma : Proforma LAM 272 kg');
+    // Une action deduite de la seule famille est moins sure qu'une phrase lue dans le message.
+    expect(sortie.confiance).toBeLessThan(0.7);
+  });
+
+  it('reconnait une reprise, sa cause et sa priorite', () => {
+    const sortie = syntheseParRegles({
+      objet: 'Facture a revoir',
+      corps: 'Il faut corriger la facture, elle comporte une erreur de reference. Je l’avais deja signale.',
+      famille: 'T03',
+    });
+    expect(sortie.type).toBe('reclamation');
+    expect(sortie.priorite).toBe('haute');
+    expect(sortie.cause).toBe('erreur_document');
+    // Le mot qui a declenche la regle est rendu : la conclusion est verifiable.
+    expect(sortie.justificatifs.join(' ')).toContain('erreur');
+  });
+
+  it('ne pose aucune cause en dehors d’une reprise', () => {
+    const sortie = syntheseParRegles({ objet: 'Cotation', corps: 'Pourriez vous demander une cotation aerienne ?', famille: 'T01' });
+    expect(sortie.type).toBe('demande');
+    expect(sortie.cause).toBeNull();
+  });
+
+  it('range une consigne de procedure en priorite basse', () => {
+    const sortie = syntheseParRegles({
+      objet: 'Nouvelle regle',
+      corps: 'Desormais, il faut joindre systematiquement le scan du BL au dossier.',
+      famille: 'T02',
+    });
+    expect(sortie.type).toBe('procedure');
+    expect(sortie.priorite).toBe('basse');
+  });
+
+  it('ne rend jamais une action vide, meme sur un message sans famille', () => {
+    const sortie = syntheseParRegles({ objet: '', corps: '', famille: null });
+    expect(sortie.action.length).toBeGreaterThan(0);
+  });
+});
+
+describe('lien de retour vers le mail d’origine', () => {
+  it('conserve le lien fourni par la boite et le rend dans le suivi', async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<lien1@exemple-fictif.test>',
+        de: 'client@alpha-fictif.test',
+        a: 'info@client-fictif.test',
+        objet: 'Documents a renvoyer',
+        corps: 'Pourriez vous renvoyer le BL signe ?',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    await enregistrerLot(
+      [{ ...message, lienExterne: 'https://mail.google.com/mail/u/0/#all/18c0affaire' }],
+      { compteId, posteId, dossierParDefautId: dossierId },
+      AUTEUR,
+    );
+
+    const [evenement] = await db.select().from(schema.evenements).where(eq(schema.evenements.messageId, '<lien1@exemple-fictif.test>'));
+    expect(evenement.lienExterne).toBe('https://mail.google.com/mail/u/0/#all/18c0affaire');
+
+    // Le tableau de suivi le reprend, meme pour une demande qui ne vient pas du classeur.
+    const lignes = await suiviDesDemandes({ compteId });
+    expect(lignes[0].lienMail).toBe('https://mail.google.com/mail/u/0/#all/18c0affaire');
+  });
+
+  it('n’invente aucun lien quand la source n’en fournit pas', async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<lien2@exemple-fictif.test>',
+        de: 'client@alpha-fictif.test',
+        a: 'info@client-fictif.test',
+        objet: 'Sans lien',
+        corps: 'Pourriez vous confirmer la reception ?',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    await enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const [evenement] = await db.select().from(schema.evenements).where(eq(schema.evenements.messageId, '<lien2@exemple-fictif.test>'));
+    expect(evenement.lienExterne).toBeNull();
+  });
+});
+
+describe('resume lisible d’un mail de fil ancien', () => {
+  it('ne garde que le premier message, sans la chaine citee', () => {
+    const corps = [
+      'Pourriez vous renvoyer la facture avec le NIF ?',
+      '',
+      'Le 02/03/2026 a 08:12, Service export a ecrit :',
+      '> Bonjour, voici la facture en piece jointe.',
+      '> Cordialement',
+      '',
+      '-- ',
+      'Signature automatique',
+    ].join('\n');
+    const utile = partieUtile(corps);
+    expect(utile).toBe('Pourriez vous renvoyer la facture avec le NIF ?');
+  });
+
+  it('rend le debut du texte plutot que rien quand tout est cite', () => {
+    const corps = '> Tout le message est une citation, il n’y a pas de texte neuf.';
+    expect(partieUtile(corps)).toContain('Tout le message est une citation');
   });
 });
 

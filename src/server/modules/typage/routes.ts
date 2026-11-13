@@ -11,6 +11,7 @@ import { auteurDe } from '../../lib/auteur';
 import { egaliteConstante } from '../../lib/securite';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { accepterRegle, proposerRegle, refuserRegle, reglesProposees, sortieTypageSchema, typerMessage } from './service';
+import { appliquerSynthese, sortieSyntheseSchema } from './synthese';
 import { enregistrerResultat, etatFileIa, tachesEnAttente } from '../../ai/service';
 import { CODES_FAMILLES, INTERLOCUTEURS, NATURES, SENS } from '@shared/constantes';
 
@@ -160,6 +161,20 @@ routesAgent.post('/ia/taches/:id/resultat', async (req, res) => {
       return res.status(422).json({ ...bilan, erreur: 'Sortie invalide, la tache repart en file' });
     }
     return res.json(await enregistrerResultat(id, valide.data));
+  }
+
+  if (tache.type === 'synthetiser_demande') {
+    const valide = sortieSyntheseSchema.safeParse(corps.resultat);
+    if (!valide.success) {
+      const bilan = await enregistrerResultat(id, null, valide.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join(' ; '));
+      return res.status(422).json({ ...bilan, erreur: 'Sortie invalide, la tache repart en file' });
+    }
+    const bilan = await enregistrerResultat(id, valide.data);
+    // La sortie sert a quelque chose : elle remplace les colonnes que les regles avaient posees
+    // sur la demande. Sans cette etape, la routine tournerait pour rien.
+    const demandeId = Number((tache.contexte as { demandeId?: unknown } | null)?.demandeId ?? 0);
+    const appliquee = demandeId > 0 ? await appliquerSynthese(demandeId, valide.data) : false;
+    return res.json({ ...bilan, appliquee });
   }
 
   res.json(await enregistrerResultat(id, corps.resultat as Record<string, unknown>));

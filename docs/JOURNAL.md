@@ -988,3 +988,62 @@ compteur est ajoute.
 4 tests de plus (333 au total) et un parcours de plus (24). Le message d'erreur est teste pour
 qu'il nomme `COMPTE_ID` : il se lit dans le journal d'execution d'Apps Script, loin du code, et
 doit dire quoi corriger.
+
+---
+
+## 2026-11-13 : le tableau etait illisible, et l'onglet portait le mauvais nom
+
+Six remarques du commanditaire sur l'ecran livre la veille, toutes justes. Elles se ramenent a
+deux fautes.
+
+**La premiere, la plus grossiere.** Il avait demande un onglet « Pilotage » hebdomadaire avec
+quatre indicateurs par collaborateur. J'ai livre l'ecran sous le nom « Accompagnement ». Il ne
+pouvait pas le trouver, et il a conclu qu'il n'existait pas. L'ecran, sa route (`/pilotage`), le
+module serveur et les tests portent desormais le nom demande. Un ecran qu'on ne trouve pas n'est
+pas un ecran livre.
+
+Dans la foulee, les quatre indicateurs sont nommes exactement comme il les a nommes, et chacun
+porte sa courbe : reclamations, taux de recidive, **delai moyen** de cloture (la mediane reste a
+cote : sur dix demandes par semaine, l'ecart entre les deux dit si une seule demande oubliee tire
+la moyenne), P1 en retard. La courbe est en SVG, sans bibliotheque : le passe en gris, la semaine
+en cours en violet, les valeurs au survol et dans le tableau en dessous.
+
+**La seconde, plus grave.** Les colonnes « action attendue » et « type » etaient vides, et la
+chronologie d'un dossier affichait un mur de texte cite.
+
+Vides, parce que le fournisseur IA de production est `agent` : la tache part dans `ai_tasks` et
+attend une routine Claude Code. Deux defauts se cumulaient. La routine n'est pas installee, donc
+la reponse n'arrivait jamais ; et meme installee, **rien n'appliquait son resultat a la demande**.
+La tache etait ecrite, relevable, repondable, et sa reponse ne servait a rien.
+
+Les deux sont corriges. `synthese-regles.ts` remplit les quatre colonnes tout de suite, sans aucun
+appel exterieur : l'action est la phrase de demande du message, citee telle quelle, ou a defaut le
+travail que la famille designe dans le referentiel, suivi de l'objet. Le type, la priorite et la
+cause viennent de mots effectivement presents dans le texte, et chaque conclusion rend le mot qui
+l'a declenchee. Rien d'invente : du texte lu et du referentiel. Le suivi porte
+`origine: 'regles'`, l'ecran affiche « deduite, a relire », et `appliquerSynthese` remplace ces
+colonnes quand la routine repond, sans jamais toucher a une ligne posee par un humain ou venue de
+l'import.
+
+C'est la regle de CLAUDE.md prise dans le bon sens. « Une colonne vide se voit, une colonne
+inventee ne se voit pas » interdisait d'inventer, pas de deduire et de le dire.
+
+**Le reste**
+
+- `partieUtile` coupe la chaine citee, les en-tetes de transfert et la signature. Elle est
+  appliquee aussi **a la lecture** de la chronologie, pas seulement a la collecte : les evenements
+  deja enregistres portent le debut brut du mail, et ils devaient redevenir lisibles eux aussi.
+  L'affichage est limite a trois lignes.
+- Le lien vers le mail d'origine. Il manquait pour une raison de fond : l'identifiant RFC 5322 ne
+  permet pas de construire une adresse Gmail, seul l'identifiant interne de la boite le permet, et
+  c'est le script Apps Script qui le connait. Il l'envoie desormais (`lienExterne`), une colonne le
+  conserve (migration 0008), et la chronologie comme le tableau de suivi renvoient vers le mail.
+  Quand la source n'en fournit pas, il n'y a pas de lien : une adresse fausse coute plus cher.
+- L'heure dans le tableau de suivi. La colonne n'affichait que le jour.
+
+**Verifications**
+
+14 tests de plus (398 au total), dont la file IA vide, le remplacement par la routine, le refus de
+remplacer une ligne humaine, le lien conserve et l'absence de lien invente. Lint, typecheck, build
+de production et un parcours Playwright qui verifie que l'onglet « Pilotage » se trouve bien dans
+la navigation, sous ce nom.

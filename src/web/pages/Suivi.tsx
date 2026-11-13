@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import { api, messageErreur } from '../lib/api';
-import { jour as formaterJour } from '../lib/format';
+import { dateHeure } from '../lib/format';
 import { Alerte, Badge, Carte, ChampSelect, Chargement, EntetePage, Indicateur, Vide } from '../composants/ui';
 import { libelleStatut, LIBELLES_PRIORITES, type Statut } from '@shared/constantes';
 
@@ -36,6 +36,7 @@ interface Ligne {
   poste: string | null;
   commentaire: string;
   lienMail: string;
+  origine: string;
   statutClasseur: string;
   type: string;
   echeanceLe: string | null;
@@ -139,7 +140,7 @@ export default function Suivi() {
                 <caption className="sr-only">Suivi des demandes</caption>
                 <thead>
                   <tr>
-                    <th scope="col">Date</th>
+                    <th scope="col">Date et heure</th>
                     <th scope="col">Priorite</th>
                     <th scope="col">Statut</th>
                     <th scope="col">Type</th>
@@ -155,7 +156,7 @@ export default function Suivi() {
                 <tbody>
                   {data.map((l) => (
                     <tr key={l.demandeId}>
-                      <td className="whitespace-nowrap">{formaterJour(l.ouverteLe)}</td>
+                      <td className="whitespace-nowrap">{dateHeure(l.ouverteLe)}</td>
                       <td>
                         <Badge ton={TONS_PRIORITE[l.priorite] ?? 'neutre'}>{LIBELLES_PRIORITES[l.priorite as never] ?? l.priorite}</Badge>
                       </td>
@@ -168,6 +169,11 @@ export default function Suivi() {
                       <td className="max-w-[22rem]">
                         <Link to={`/demandes/${l.demandeId}`}>{l.action}</Link>
                         {l.commentaire && <p className="text-xs text-texte-discret">{l.commentaire}</p>}
+                        {l.origine === 'regles' && (
+                          <p className="text-xs text-texte-discret" title="Action deduite du message et du referentiel, pas encore relue par la routine IA.">
+                            deduite, a relire
+                          </p>
+                        )}
                       </td>
                       <td className="whitespace-nowrap text-sm">{l.poste ?? ''}</td>
                       <td className="text-sm">{l.causeLibelle ?? ''}</td>

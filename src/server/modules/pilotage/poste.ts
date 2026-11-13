@@ -1,5 +1,5 @@
 /**
- * Pilotage de l'accompagnement d'un collaborateur, semaine par semaine.
+ * Pilotage d'un collaborateur, semaine par semaine.
  *
  * Repond a une question precise : **est-ce que ca s'ameliore ?** Un releve de reprises dit
  * seulement combien il y en a eu. Ce qui permet de decider, c'est la pente entre deux semaines,
@@ -18,7 +18,7 @@ import { tempsDemandeAvecHoraires, type Demande } from '../demandes/service';
 import { minutesOuvrees, type HorairesOuvres } from '@shared/heures-ouvrees';
 import { FAMILLE_HORS_PERIMETRE, LIBELLES_CAUSES, type Cause } from '@shared/constantes';
 
-export interface SemaineAccompagnement {
+export interface SemainePoste {
   /** Lundi de la semaine, en AAAA-MM-JJ. */
   debut: string;
   /** Numero de semaine ISO, pour le libelle. */
@@ -30,23 +30,36 @@ export interface SemaineAccompagnement {
   tauxRecidive: number | null;
   /** Delai median de cloture, en heures ouvrees du client. */
   delaiMedianHeures: number | null;
+  /**
+   * Delai moyen de cloture, en heures ouvrees du client.
+   *
+   * Les deux sont rendus : la moyenne est celle qu'on annonce au client, la mediane dit si une
+   * seule demande oubliee a tire la moyenne vers le haut. Sur une semaine de dix demandes, l'ecart
+   * entre les deux est une information en soi.
+   */
+  delaiMoyenHeures: number | null;
   /** Demandes prioritaires encore ouvertes au-dela de leur echeance SLA. */
   p1EnRetard: number;
 }
 
-export interface Accompagnement {
+export interface PilotagePoste {
   posteId: number;
   poste: string;
   collaborateur: string | null;
   periode: { debut: string; fin: string };
-  semaines: SemaineAccompagnement[];
+  semaines: SemainePoste[];
   /** Causes des reprises sur toute la periode, de la plus frequente a la moins frequente. */
   causes: { cause: Cause | null; libelle: string; nombre: number }[];
   /** Dossiers sur lesquels la donneuse d'ordre a du revenir plusieurs fois. */
   dossiersRepetes: { dossierId: number; libelle: string; reprises: number }[];
   /** Retours positifs recus sur la periode : validations de la DO sans correction. */
   retoursPositifs: number;
-  total: { demandesOuvertes: number; reprises: number; recidives: number; delaiMedianHeures: number | null };
+  total: { demandesOuvertes: number; reprises: number; recidives: number; delaiMedianHeures: number | null; delaiMoyenHeures: number | null; p1EnRetard: number };
+}
+
+function moyenne(valeurs: number[]): number | null {
+  if (!valeurs.length) return null;
+  return Math.round((valeurs.reduce((somme, v) => somme + v, 0) / valeurs.length) * 10) / 10;
 }
 
 function mediane(valeurs: number[]): number | null {
@@ -61,11 +74,11 @@ function lundi(jour: DateTime): DateTime {
   return jour.startOf('week');
 }
 
-export async function accompagnement(
+export async function pilotagePoste(
   posteId: number,
   periode: { debut: Date; fin: Date },
   maintenant = new Date(),
-): Promise<Accompagnement> {
+): Promise<PilotagePoste> {
   const [poste] = await db
     .select({
       id: schema.postes.id,
@@ -98,7 +111,7 @@ export async function accompagnement(
   // Une reprise est une recidive si son dossier ou sa cause est deja apparu plus tot.
   const dossiersVus = new Set<number>();
   const causesVues = new Set<string>();
-  const parSemaine = new Map<string, SemaineAccompagnement>();
+  const parSemaine = new Map<string, SemainePoste>();
   const parCause = new Map<string, number>();
   const parDossier = new Map<number, { libelle: string; reprises: number }>();
   const delaisPeriode: number[] = [];
@@ -115,6 +128,7 @@ export async function accompagnement(
         recidives: 0,
         tauxRecidive: null,
         delaiMedianHeures: null,
+          delaiMoyenHeures: null,
         p1EnRetard: 0,
       };
     parSemaine.set(cle, semaine);
@@ -137,9 +151,9 @@ export async function accompagnement(
     if (demande.termineeLe) {
       const heures = minutesOuvrees(horaires, demande.ouverteLe, demande.termineeLe) / 60;
       delaisPeriode.push(heures);
-      const delaisSemaine = (semaine as SemaineAccompagnement & { _delais?: number[] })._delais ?? [];
+      const delaisSemaine = (semaine as SemainePoste & { _delais?: number[] })._delais ?? [];
       delaisSemaine.push(heures);
-      (semaine as SemaineAccompagnement & { _delais?: number[] })._delais = delaisSemaine;
+      (semaine as SemainePoste & { _delais?: number[] })._delais = delaisSemaine;
     } else if (demande.priorite === 'haute' || demande.priorite === 'critique') {
       const temps = tempsDemandeAvecHoraires(demande, debuts.get(demande.id) ?? demande.ouverteLe, horaires, maintenant);
       const depasse = demande.slaHeures !== null && temps.total / 60 > demande.slaHeures;
@@ -150,12 +164,13 @@ export async function accompagnement(
   const semaines = [...parSemaine.values()]
     .sort((a, b) => a.debut.localeCompare(b.debut))
     .map((s) => {
-      const delais = (s as SemaineAccompagnement & { _delais?: number[] })._delais ?? [];
-      delete (s as SemaineAccompagnement & { _delais?: number[] })._delais;
+      const delais = (s as SemainePoste & { _delais?: number[] })._delais ?? [];
+      delete (s as SemainePoste & { _delais?: number[] })._delais;
       return {
         ...s,
         tauxRecidive: s.reprises ? Math.round((s.recidives / s.reprises) * 100) / 100 : null,
         delaiMedianHeures: mediane(delais),
+        delaiMoyenHeures: moyenne(delais),
       };
     });
 
@@ -184,6 +199,8 @@ export async function accompagnement(
       reprises: semaines.reduce((s, x) => s + x.reprises, 0),
       recidives: semaines.reduce((s, x) => s + x.recidives, 0),
       delaiMedianHeures: mediane(delaisPeriode),
+      delaiMoyenHeures: moyenne(delaisPeriode),
+      p1EnRetard: semaines.reduce((s, x) => s + x.p1EnRetard, 0),
     },
   };
 }

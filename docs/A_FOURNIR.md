@@ -26,7 +26,7 @@ La procedure pas a pas est dans `README.md`.
 | Adresses de chaque poste suivi | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Adresse de la donneuse d'ordre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
 | Adresses du client a ne pas suivre | Parametres, onglet « Comptes clients » | **a saisir**, voir ci-dessous |
-| Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | a generer a la mise en ligne |
+| Secret partage du webhook Apps Script | `APPS_SCRIPT_SECRET` | **fourni** |
 | Ou, a defaut : acces IMAP de la boite | `IMAP_HOST`, `IMAP_USER`, `IMAP_PASSWORD`, `IMAP_FOLDER` | a fournir |
 
 Sans ces elements, `COLLECTE_MAIL` reste en `mock` : la GPAO vit de la saisie rapide et de
@@ -89,6 +89,30 @@ DO. Le SMTP ne sert qu'aux notifications internes et a la reinitialisation de mo
 | Cle API Anthropic, seulement si un traitement instantane est voulu | `ANTHROPIC_API_KEY` | facultatif, cout API |
 
 Le mode par defaut en production est `agent` : aucun cout API recurrent.
+
+**Ce que l'absence de routine coute aujourd'hui.** La tache `synthetiser_demande` remplit quatre
+colonnes du tableau de suivi au fil de la collecte : l'action qui debloque, le type, la priorite et
+la cause d'une reprise. Ce sont les quatre colonnes que le manager remplissait a la main dans son
+classeur.
+
+Sans la routine, ces colonnes **ne sont plus vides** : des regles deterministes les remplissent a
+l'arrivee du message, et le tableau affiche « deduite, a relire » sous l'action. L'action est alors
+la phrase de demande du message, citee telle quelle, ou le travail que la famille designe dans le
+referentiel, suivi de l'objet. Rien n'est invente, mais rien n'est lu finement non plus : une
+consigne enroulee dans un long message passe a cote.
+
+La routine apporte donc la finesse, et elle remplace les colonnes deduites des qu'elle repond,
+sans jamais toucher a une ligne posee a la main ou venue de l'import. C'est une amelioration, plus
+un prerequis.
+
+Trois gestes, dans cet ordre :
+
+1. Generer `AGENT_API_TOKEN` (`openssl rand -hex 32`) et l'ajouter au `.env` de production, comme
+   cela a ete fait pour `APPS_SCRIPT_SECRET`. Redemarrer : `touch ~/azmg-gpao/app/tmp/restart.txt`.
+2. Creer une tache planifiee Claude Code, frequence horaire, et y coller l'instruction de
+   [`docs/agent-ia.md`](agent-ia.md), section « Instruction prete a coller dans la routine ».
+3. Verifier au passage suivant : dans l'ecran « Suivi des demandes », la mention « deduite, a
+   relire » doit avoir disparu sous les actions des demandes nouvellement arrivees.
 
 ## 5. Connecteur Claude (phase 2)
 
