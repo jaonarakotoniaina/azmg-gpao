@@ -649,7 +649,9 @@ test('un tableau de situation reprend les statuts exacts du reporting client', a
 
   await page.goto('/brouillons');
   await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
-  await page.getByRole('textbox', { name: 'Situation d’un client' }).fill('achat-situation');
+  // Le dossier ouvert par la collecte porte le domaine du correspondant comme client, et le
+  // sujet du message comme operation : c'est ainsi qu'on le retrouve.
+  await page.getByRole('textbox', { name: 'Situation d’un client' }).fill('alpha-fictif');
   await page.getByRole('button', { name: 'Preparer', exact: true }).click();
 
   const carte = page.locator('#liste-brouillons > li', { hasText: 'Situation' }).first();

@@ -57,6 +57,12 @@ export const FAMILLES: readonly Famille[] = [
   { code: 'D01', libelle: 'Publications et reseaux sociaux (LinkedIn, pages)', validation: 'la DO valide avant publication', tempsStandardMinutes: 30, slaHeures: 16 },
   { code: 'D02', libelle: 'Visuels et supports (brochures, bannieres, PLV, packaging)', validation: 'la DO valide le visuel', tempsStandardMinutes: 45, slaHeures: 24 },
   { code: 'D03', libelle: 'Catalogue, fiches produits et contenus marketing', validation: 'la DO pour les textes et les prix', tempsStandardMinutes: 40, slaHeures: 24 },
+  // Famille de repli, pour un message de travail dont la famille n'est pas encore etablie.
+  //
+  // Elle existe parce que l'alternative etait pire : sans famille, aucune demande n'etait ouverte,
+  // et le message n'apparaissait que dans la chronologie de son dossier. Le travail existait et
+  // restait invisible. Une famille a confirmer se voit et se corrige ; un travail absent, non.
+  { code: 'T99', libelle: 'A classer (famille a confirmer)', validation: 'a confirmer', tempsStandardMinutes: 15, slaHeures: 24 },
 ] as const;
 
 /**
@@ -103,6 +109,8 @@ export const LIBELLES_METIERS: Record<Metier, string> = {
 
 export const CODES_FAMILLES = FAMILLES.map((f) => f.code);
 export const FAMILLE_HORS_PERIMETRE = 'T00';
+/** Famille de repli d'un message de travail dont la famille reste a etablir. */
+export const FAMILLE_A_CLASSER = 'T99';
 /** Familles visibles dans le pilotage et les exports (T00 exclu partout). */
 export const FAMILLES_PILOTAGE = FAMILLES.filter((f) => !f.horsPerimetre);
 

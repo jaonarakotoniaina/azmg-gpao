@@ -704,3 +704,49 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   de marcher, et le bouton « precedent » du navigateur aussi.
 - Retour arriere : le composant `GroupePages` est un conteneur, les pages n'ont pas ete touchees.
   Remettre une entree par page dans `Layout.tsx` et une route par page dans `App.tsx` suffit.
+
+---
+
+## 2026-11-13 (soir) : un message qui n'est pas une information est un travail
+
+- Sujet : le commanditaire constate que la GPAO ne repond pas a son besoin et garde son classeur.
+  Les mails de la donneuse d'ordre n'apparaissent que dans la chronologie d'un dossier, qu'il faut
+  ouvrir. Le tableau de suivi, lui, reste vide.
+- Cause : une demande n'etait ouverte que par deux natures (`demande_entrante`, `consigne_do`), et
+  un typage sous le seuil de confiance etait **jete** au profit de la nature « information », qui
+  n'ouvre rien. Un message mal type etait donc enregistre et son travail perdu : absent de la file,
+  du suivi, des indicateurs, et joignable seulement par la chronologie de son dossier. Sans routine
+  IA, c'etait le cas de la majorite des messages.
+- Options envisagees :
+  1. attendre la routine IA, qui releverait la confiance au-dessus du seuil ;
+  2. ouvrir une demande pour tout message qui n'est pas une pure information, meme mal type ;
+  3. afficher les evenements sans demande dans le tableau de suivi.
+- Choix : l'option 2, avec trois consequences assumees.
+  - **Toutes les natures sauf `information` ouvrent une demande** quand l'evenement n'en a pas
+    deja une. Un message qui n'est pas une pure information est un travail.
+  - **Le typage incertain est conserve** au lieu d'etre jete : la famille trouvee par les regles
+    est gardee meme sous le seuil, completee par `T99` (« A classer, famille a confirmer ») quand
+    rien n'a ete trouve, et la nature est deduite du sens (recu : une demande a traiter ; envoye :
+    un livrable). La confiance reste basse, donc l'evenement passe quand meme par « A classer » :
+    on signale le doute sans effacer le travail.
+  - **Le hors perimetre exige un typage applicable.** Un `T00` devine sous le seuil ne suffit plus
+    a faire disparaitre un message de toutes les vues. La mise a l'ecart est la decision la plus
+    lourde du typage ; elle ne se prend pas sur un doute.
+- Raison : l'option 1 laissait le produit inutilisable en attendant un branchement qui n'est pas
+  venu. L'option 3 aurait fait cohabiter deux objets dans la meme table, l'un avec un statut et
+  des delais, l'autre sans. Un travail visible et mal classe se corrige en un clic ; un travail
+  absent ne se corrige pas, parce qu'on ne sait pas qu'il manque.
+- Retour arriere : remettre `creation: false` dans `effetNature` pour les natures concernees et
+  rendre `typerMessage` jetant a nouveau un typage non applicable. `T99` peut rester, il ne gene
+  rien.
+
+## 2026-11-13 (soir) : un dossier par sujet, pas un dossier par boite
+
+- Sujet : tous les messages d'une meme boite tombaient dans un dossier unique, nomme d'apres la
+  partie locale de l'adresse (« export »), qu'il fallait ouvrir pour voir quoi que ce soit.
+- Choix : le dossier ouvert automatiquement porte le domaine du correspondant comme client, et
+  l'objet normalise du message comme operation.
+- Raison : c'est plus proche de ce qu'est un dossier dans le referentiel (client x produit x
+  operation), et surtout cela se reconnait dans une liste. Les reponses d'un meme fil restent
+  rattachees a la meme demande par `demandeDuFil`, donc un fil ne cree pas un dossier par message.
+- Retour arriere : reprendre la partie locale de l'adresse dans `enregistrerMessage`.

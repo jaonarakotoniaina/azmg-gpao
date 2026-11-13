@@ -1174,3 +1174,46 @@ GPAO.
 3 tests de plus (410 au total) et un parcours de plus (29) : le journal dit « Demande ouverte »
 pour un message de travail et « Hors perimetre » pour un automate, les passages sont conserves,
 et deux comptes ne se melangent pas.
+
+---
+
+## 2026-11-13 (nuit) : « la GPAO ne repond pas du tout a ma demande »
+
+Le commanditaire garde son classeur comme outil de travail et n'utilise pas la GPAO. Dans la
+GPAO, dit-il, il faut cliquer sur un dossier nomme « export » pour voir les mails de la donneuse
+d'ordre. C'est le retour le plus important de la journee, et il ne porte pas sur un ecran mais sur
+le modele.
+
+**Ce qui se passait.** Une demande n'etait ouverte que par deux natures. Et un typage sous le
+seuil de confiance etait **jete** au profit de la nature « information », qui n'ouvre rien. Donc :
+message enregistre, travail perdu. Invisible dans la file, dans le suivi, dans les indicateurs,
+joignable seulement par la chronologie de son dossier. Sans routine IA, c'etait le cas de la
+majorite des messages. Le tableau de suivi restait vide, et la seule chose qui marchait etait
+d'ouvrir le dossier fourre-tout.
+
+J'avais corrige la synthese le matin meme en rendant les regles applicables a defaut d'IA. Je
+n'avais pas fait le meme raisonnement pour le typage, et c'est pourtant lui qui decide si le
+travail existe.
+
+**Ce qui change.** Trois decisions, dans `docs/DECISIONS.md` :
+
+- toutes les natures sauf l'information ouvrent une demande ;
+- un typage incertain est conserve, complete par `T99` (« A classer, famille a confirmer ») et par
+  une nature deduite du sens, avec une confiance basse qui laisse l'evenement dans « A classer » ;
+- le hors perimetre exige un typage applicable : un `T00` devine sous le seuil ne fait plus
+  disparaitre un message.
+
+Et le dossier ouvert automatiquement porte desormais le correspondant et le sujet du message, au
+lieu de la partie locale de l'adresse. Un dossier par sujet se reconnait dans une liste ; un
+dossier « export » qui contient tout, non.
+
+La regle qui manquait, et qui est maintenant ecrite dans le code : **un travail visible et mal
+classe se corrige en un clic ; un travail absent ne se corrige pas, parce qu'on ne sait pas qu'il
+manque.**
+
+**Verifications**
+
+3 tests de plus (413 au total), dont celui qui compte : un flot de quatre messages ordinaires
+(une consigne, un message que rien ne permet de classer, un envoi du poste, une notification
+d'automate) produit **trois lignes** dans le tableau de suivi, et l'automate seul en est absent.
+Avant ce changement, une seule ligne apparaissait.

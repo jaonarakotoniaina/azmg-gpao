@@ -466,7 +466,7 @@ export function appliquerRegles(message: MessageAClasser, regles: RegleTypage[] 
  *  - une validation, un refus ou une demande de validation sans famille identifiee releve du
  *    transfert a la DO pour decision (T13), qui est precisement la famille de ces echanges ;
  *  - un message sortant qui ne releve d'aucune nature connue est un envoi, un message entrant
- *    est une information. C'est le comportement par defaut le moins faux, et il baisse la
+ *    est une demande a traiter. C'est le comportement par defaut le moins faux, et il baisse la
  *    confiance pour que le cas passe sous le seuil s'il est isole.
  */
 /**
@@ -511,7 +511,12 @@ function completerParDefaut(typage: Typage, message: MessageAClasser) {
       typage.nature = 'demande_validation_do';
       typage.justificatifs.push('envoi a la donneuse d’ordre, decision attendue');
     } else {
-      typage.nature = message.sens === 'sortant' ? 'envoi_livrable' : 'information';
+      // Un message recu par le poste est un travail a faire jusqu'a preuve du contraire. Il
+      // etait auparavant deduit « information », une nature qui n'ouvre aucune demande : le
+      // message etait enregistre et le travail perdu, visible nulle part ailleurs que dans la
+      // chronologie de son dossier. La confiance reste basse, donc le cas passe quand meme par
+      // « A classer ».
+      typage.nature = message.sens === 'sortant' ? 'envoi_livrable' : 'demande_entrante';
       typage.justificatifs.push(`nature deduite du sens « ${message.sens} »`);
     }
   }

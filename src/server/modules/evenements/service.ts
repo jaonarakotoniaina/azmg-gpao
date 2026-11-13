@@ -69,7 +69,12 @@ export interface ResultatEvenement {
 
 /**
  * Effet d'une nature sur la demande.
- * `creation` : la nature ouvre une demande si l'evenement n'est pas deja rattache a une demande.
+ *
+ * `creation` : la nature ouvre une demande **quand l'evenement n'en a pas deja une**. Toutes les
+ * natures sauf l'information l'ouvrent, et c'est le point le plus important du modele : un
+ * message qui n'est pas une pure information est un travail. Le refuser revient a enregistrer le
+ * message et a perdre le travail, qui n'apparait alors ni dans la file, ni dans le suivi, ni dans
+ * les indicateurs, et n'est joignable qu'en ouvrant la chronologie de son dossier.
  */
 interface Effet {
   creation: boolean;
@@ -87,21 +92,21 @@ export function effetNature(nature: Nature, interlocuteur?: Interlocuteur | null
       return { creation: true, statut: 'en_cours', acteur: 'poste' };
     case 'envoi_livrable':
       // Le livrable part vers le destinataire : l'attente est a lui.
-      return { creation: false, statut: 'attente_tiers', acteur: interlocuteur === 'client' ? 'client' : 'tiers', premiereReponse: true };
+      return { creation: true, statut: 'attente_tiers', acteur: interlocuteur === 'client' ? 'client' : 'tiers', premiereReponse: true };
     case 'demande_validation_do':
-      return { creation: false, statut: 'attente_do', acteur: 'do', premiereReponse: true };
+      return { creation: true, statut: 'attente_do', acteur: 'do', premiereReponse: true };
     case 'validation_do':
       // La DO a valide : le travail revient au poste, qui finalise puis cloture lui-meme.
-      return { creation: false, statut: 'en_cours', acteur: 'poste' };
+      return { creation: true, statut: 'en_cours', acteur: 'poste' };
     case 'refus_do':
-      return { creation: false, statut: 'en_cours', acteur: 'poste' };
+      return { creation: true, statut: 'en_cours', acteur: 'poste' };
     case 'relance_emise':
-      return { creation: false, relance: true };
+      return { creation: true, relance: true };
     case 'relance_recue':
       // Le tiers relance : la balle est revenue au poste.
-      return { creation: false, statut: 'en_cours', acteur: 'poste' };
+      return { creation: true, statut: 'en_cours', acteur: 'poste' };
     case 'reponse_tiers':
-      return { creation: false, statut: 'en_cours', acteur: 'poste' };
+      return { creation: true, statut: 'en_cours', acteur: 'poste' };
     case 'information':
       return { creation: false };
   }
