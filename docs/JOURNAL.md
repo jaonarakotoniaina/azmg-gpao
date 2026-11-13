@@ -1047,3 +1047,54 @@ inventee ne se voit pas » interdisait d'inventer, pas de deduire et de le dire.
 remplacer une ligne humaine, le lien conserve et l'absence de lien invente. Lint, typecheck, build
 de production et un parcours Playwright qui verifie que l'onglet « Pilotage » se trouve bien dans
 la navigation, sous ce nom.
+
+---
+
+## 2026-11-13 (fin de journee) : la file « A classer » noyait les vraies demandes
+
+Le commanditaire voyait dans sa boite des mails de la donneuse d'ordre et de la designer qu'il ne
+retrouvait pas dans la GPAO. J'ai fait tourner le moteur de regles sur des cas representatifs
+plutot que de supposer. Resultat, en trois lignes :
+
+- les notifications du CRM (une par contact modifie, plusieurs dizaines par jour, qui portent le
+  nom de la donneuse d'ordre en nom d'affichage) ne correspondaient a **aucune regle**, donc
+  partaient dans « A classer » : ce sont elles, le compteur a 50 ;
+- la vraie consigne de la donneuse d'ordre a la designer, elle, est typee avec une confiance de
+  0,95 et cree bien une demande ;
+- une facture fournisseur ne correspond a aucune regle non plus, et reste a classer. C'est juste :
+  c'est un vrai message, personne ne sait encore a quel dossier il se rattache.
+
+Donc le probleme n'etait pas le typage des vraies demandes, mais le bruit qui les enterrait.
+
+`estExpediteurAutomatique` classe desormais hors perimetre les boites auxquelles on ne peut pas
+repondre (`no-reply`, `noresponder`, `mailer-daemon`, `bounce`), avant les regles et avant l'IA,
+sans parametrage et sans creer de tache. La liste est courte exprès : `notification@` et
+`tracking@` n'y sont pas, parce qu'un avis de transporteur porte sur un dossier reel. Une regle de
+domaine livree couvre en plus les notifications du CRM du compte, et elle se bascule en T08 dans
+Parametres si le poste doit agir dessus.
+
+**Quinze entrees de navigation, sept**
+
+Meme journee, autre demande : il y avait trop de modules. Aucun ne meritait d'etre supprime, tous
+repondent a un besoin reel. Ils sont regroupes par moment de travail, en onglets :
+
+| Entree | Ce qu'elle contient |
+|---|---|
+| File du jour | ma file, a classer, echeances |
+| Saisie rapide | inchangee |
+| Dossiers | dossiers, suivi des demandes |
+| Brouillons | brouillons, digest de validation |
+| Pilotage | tableau de bord, par collaborateur, qualite |
+| Imports et exports | import des mails, import du classeur, export du reporting |
+| Parametres | inchangee |
+
+Chaque page garde son adresse : `/suivi` ouvre le groupe « Dossiers » sur le bon onglet. Les liens
+deja envoyes, les favoris et les parcours de test continuent de marcher, et l'entree du groupe
+reste allumee dans la barre pour savoir ou l'on se trouve.
+
+**Verifications**
+
+5 tests de plus (403 au total) sur les expediteurs automatiques et les notifications, dont deux
+qui verifient qu'une consigne de la donneuse d'ordre n'est pas prise pour une notification. Un
+parcours de plus (28) : sept entrees dans la barre, un lien direct qui ouvre le bon onglet, et le
+changement d'onglet qui change l'adresse.

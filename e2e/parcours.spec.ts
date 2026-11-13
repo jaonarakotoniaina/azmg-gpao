@@ -324,6 +324,29 @@ test('le suivi rend le tableau du classeur, colonnes comprises', async ({ page }
   await expect(tableau.getByRole('link', { name: 'Relancer le transitaire et transmettre la cotation' })).toBeVisible();
 });
 
+test('la navigation tient en sept entrees, et les pages gardent leur adresse', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
+  await expect(navigation.getByRole('link')).toHaveCount(7);
+  for (const entree of ['File du jour', 'Saisie rapide', 'Dossiers', 'Brouillons', 'Pilotage', 'Imports et exports', 'Parametres']) {
+    await expect(navigation.getByRole('link', { name: new RegExp(`^${entree}`) })).toBeVisible();
+  }
+
+  // Un lien direct vers une page de groupe ouvre le bon onglet : les favoris et les liens
+  // envoyes par mail continuent de marcher.
+  await page.goto('/suivi');
+  const onglets = page.getByRole('tablist', { name: 'Dossiers' });
+  await expect(onglets.getByRole('tab', { name: 'Suivi des demandes' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'Suivi des demandes' })).toBeVisible();
+
+  // Et l'entree du groupe reste allumee dans la barre, pour savoir ou l'on se trouve.
+  await expect(navigation.getByRole('link', { name: /^Dossiers/ })).toHaveClass(/text-violet/);
+
+  // Changer d'onglet change l'adresse, donc le bouton « precedent » fonctionne.
+  await onglets.getByRole('tab', { name: 'Dossiers' }).click();
+  await expect(page).toHaveURL(/\/dossiers$/);
+});
+
 test('le pilotage met les causes avant la courbe', async ({ page }) => {
   await seConnecter(page, COMPTES.ceo);
   await page.goto('/pilotage');

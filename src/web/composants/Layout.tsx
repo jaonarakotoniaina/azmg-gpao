@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, PenLine, TrendingUp, Table, FileSpreadsheet, Inbox, Mails } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, Settings, Menu, LogOut, PenLine, TrendingUp, ArrowDownUp } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -14,10 +14,18 @@ interface Lien {
   roles?: Role[];
   /** Nombre affiche a droite du lien : ce qui attend une action. */
   compteur?: number;
+  /**
+   * Autres adresses que ce lien couvre : les pages du meme groupe.
+   *
+   * Sans elles, ouvrir « Suivi des demandes » eteindrait le lien « Dossiers » dans la barre, et
+   * on ne saurait plus ou l'on se trouve.
+   */
+  aussi?: string[];
 }
 
 export function Layout() {
   const { utilisateur, deconnecter } = useAuth();
+  const { pathname } = useLocation();
   const [menuOuvert, setMenuOuvert] = useState(false);
   const { data: aClasser } = useQuery({
     queryKey: ['a-classer'],
@@ -31,21 +39,28 @@ export function Layout() {
     staleTime: 120_000,
   });
 
+  // Sept entrees, une par moment de la journee de travail. Les pages n'ont pas disparu : elles
+  // sont devenues les onglets de ces groupes, et gardent chacune son adresse (voir GROUPES dans
+  // App.tsx). Quinze entrees, c'etait une par fonction livree, pas une par question posee.
   const liens: Lien[] = [
-    { vers: '/', libelle: 'File du jour', icone: <ListTodo className="h-4 w-4" aria-hidden /> },
-    { vers: '/tableau-de-bord', libelle: 'Tableau de bord', icone: <LayoutDashboard className="h-4 w-4" aria-hidden /> },
+    {
+      vers: '/',
+      libelle: 'File du jour',
+      icone: <ListTodo className="h-4 w-4" aria-hidden />,
+      compteur: aClasser?.length,
+      aussi: ['/a-classer', '/echeancier'],
+    },
     { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
-    { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden /> },
-    { vers: '/suivi', libelle: 'Suivi des demandes', icone: <Table className="h-4 w-4" aria-hidden /> },
-    { vers: '/a-classer', libelle: 'A classer', icone: <Inbox className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'], compteur: aClasser?.length },
-    { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
-    { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },
-    { vers: '/brouillons', libelle: 'Brouillons', icone: <PenLine className="h-4 w-4" aria-hidden /> },
-    { vers: '/qualite', libelle: 'Qualite', icone: <ClipboardCheck className="h-4 w-4" aria-hidden /> },
-    { vers: '/pilotage', libelle: 'Pilotage', icone: <TrendingUp className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
-    { vers: '/export', libelle: 'Export du reporting', icone: <FileSpreadsheet className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
-    { vers: '/import-mails', libelle: 'Import des mails', icone: <Mails className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
-    { vers: '/import', libelle: 'Import du classeur', icone: <Upload className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager'] },
+    { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden />, aussi: ['/suivi'] },
+    { vers: '/brouillons', libelle: 'Brouillons', icone: <PenLine className="h-4 w-4" aria-hidden />, aussi: ['/digest'] },
+    { vers: '/tableau-de-bord', libelle: 'Pilotage', icone: <TrendingUp className="h-4 w-4" aria-hidden />, aussi: ['/pilotage', '/qualite'] },
+    {
+      vers: '/import-mails',
+      libelle: 'Imports et exports',
+      icone: <ArrowDownUp className="h-4 w-4" aria-hidden />,
+      roles: ['admin', 'manager'],
+      aussi: ['/import', '/export'],
+    },
     { vers: '/parametres', libelle: 'Parametres', icone: <Settings className="h-4 w-4" aria-hidden /> },
   ];
   const visibles = liens.filter((l) => !l.roles || (utilisateur && l.roles.includes(utilisateur.role)));
@@ -111,7 +126,7 @@ export function Layout() {
                   className={({ isActive }) =>
                     cx(
                       'flex items-center gap-2 rounded-bouton px-3 py-2 text-sm no-underline',
-                      isActive ? 'bg-violet-pale font-semibold text-violet' : 'text-texte hover:bg-entete',
+                      isActive || l.aussi?.includes(pathname) ? 'bg-violet-pale font-semibold text-violet' : 'text-texte hover:bg-entete',
                     )
                   }
                 >
