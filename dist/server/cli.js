@@ -1459,6 +1459,13 @@ function estUneDe(brut, liste) {
 function normaliserTypage(texte) {
   return texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").replace(/\.(?![a-z0-9])/g, " ").replace(/(?<![a-z0-9])\./g, " ").replace(/\s+/g, " ").trim();
 }
+function estExpediteurAutomatique(adresse) {
+  if (!adresse) return false;
+  const partieLocale = adresse.trim().toLowerCase().split("@")[0];
+  if (!partieLocale) return false;
+  const nue = partieLocale.replace(/[._-]/g, "");
+  return PARTIES_AUTOMATIQUES.some((p) => nue === p.replace(/[._-]/g, "") || nue.startsWith(`${p.replace(/[._-]/g, "")}`));
+}
 function domaineDe(adresse) {
   if (!adresse) return null;
   const m = /@([a-z0-9.-]+\.[a-z]{2,})/i.exec(adresse.trim());
@@ -1480,11 +1487,29 @@ function texteDuMessage(message) {
   const corps = normaliserTypage(message.corps ?? "");
   return `${objet} ${objet} ${corps}`.trim();
 }
-var DOMAINES_INTERNES_PAR_DEFAUT;
+var DOMAINES_INTERNES_PAR_DEFAUT, PARTIES_AUTOMATIQUES;
 var init_typage = __esm({
   "src/shared/typage.ts"() {
     "use strict";
     DOMAINES_INTERNES_PAR_DEFAUT = ["azmg-solutions.com"];
+    PARTIES_AUTOMATIQUES = [
+      "no-reply",
+      "noreply",
+      "no_reply",
+      "noreplay",
+      "noresponder",
+      "no-responder",
+      "donotreply",
+      "do-not-reply",
+      "do_not_reply",
+      "nepasrepondre",
+      "ne-pas-repondre",
+      "mailer-daemon",
+      "maildaemon",
+      "postmaster",
+      "bounce",
+      "bounces"
+    ];
   }
 });
 
@@ -1617,6 +1642,17 @@ var init_regles = __esm({
         famille: "T00",
         nature: "information",
         priorite: 11
+      },
+      {
+        // Le CRM du compte envoie une notification par contact modifie, plusieurs dizaines par jour.
+        // Ce sont des avis sur un travail qui se fait dans le CRM, pas des demandes adressees au
+        // poste. Sans cette regle, elles remplissent la file « A classer » et y noient les vrais
+        // messages. Si le poste doit agir sur ces avis, la regle se bascule en T08 dans Parametres.
+        libelle: "Notification du CRM (Clientify)",
+        domaine: "clientifymail.com",
+        famille: "T00",
+        nature: "information",
+        priorite: 12
       },
       // --- Familles du poste de designer (D01 a D03) -----------------------------
       // Ce travail etait classe T00 tant qu'un seul poste etait pilote : il etait hors du perimetre
@@ -1933,6 +1969,22 @@ async function initialiserRegles() {
 async function typerMessage(message, opts = {}) {
   const parametres2 = await lireParametres();
   const seuil = parametres2.seuilConfianceTypage;
+  if (estExpediteurAutomatique(message.expediteur)) {
+    return {
+      typage: {
+        famille: FAMILLE_HORS_PERIMETRE,
+        nature: "information",
+        interlocuteur: null,
+        sens: message.sens ?? null,
+        confiance: 0.95,
+        justificatifs: [`expediteur automatique : ${message.expediteur}`],
+        origine: "regle",
+        regleId: null
+      },
+      applicable: true,
+      tacheIaId: null
+    };
+  }
   const parRegles = appliquerRegles(message, await reglesActives(opts.compteId));
   if (parRegles && (parRegles.typage.confiance >= seuil || estHorsPerimetre(parRegles.typage.famille))) {
     return { typage: parRegles.typage, applicable: true, tacheIaId: null };
