@@ -3691,19 +3691,40 @@ function verifierSignature(corps, signature, secret) {
   const b = Buffer.from(attendue);
   return a.length === b.length && import_node_crypto3.default.timingSafeEqual(a, b);
 }
+var ETIQUETTE_ENTETE = /^(de|from|envoye|envoyee|sent|a|to|cc|cci|bcc|copie|objet|subject|date|reply-to|repondre a|importance|priorite)\s*:/i;
+var DEBUT_CITATION = [
+  /^>/,
+  /^-{2,}\s*(message|forwarded|original)/i,
+  /^_{5,}$/,
+  /^le .{5,80}a ecrit\s*:?$/i,
+  /^on .{5,80}wrote\s*:?$/i,
+  /^el .{5,80}escribio\s*:?$/i
+];
+function estLigneEntete(ligne) {
+  if (ETIQUETTE_ENTETE.test(ligne)) return true;
+  const etiquettes = ligne.match(/(?:^|\s)(?:de|from|envoye|envoyee|sent|a|to|cc|cci|objet|subject|date)\s*:/gi);
+  return (etiquettes?.length ?? 0) >= 2;
+}
 function partieUtile(corps) {
   const lignes = corps.replace(/\r\n/g, "\n").split("\n");
   const utiles = [];
+  let commence = false;
   for (const brute of lignes) {
     const ligne = brute.trim();
-    if (/^>/.test(ligne) || /^(de|from|envoye|sent|a|to|cc|objet|subject)\s*:/i.test(ligne) || /^-{2,}\s*(message|forwarded|original)/i.test(ligne) || /^le .{5,60}a ecrit\s*:?$/i.test(ligne) || /^on .{5,60}wrote\s*:?$/i.test(ligne)) {
-      break;
+    if (DEBUT_CITATION.some((motif) => motif.test(ligne))) break;
+    if (/^--\s*$/.test(ligne)) {
+      if (commence) break;
+      continue;
     }
-    if (/^--\s*$/.test(ligne)) break;
+    if (estLigneEntete(ligne)) {
+      if (commence) break;
+      continue;
+    }
+    if (!ligne && !commence) continue;
+    commence = commence || Boolean(ligne);
     utiles.push(ligne);
   }
-  const texte3 = utiles.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  return texte3 || corps.trim().slice(0, 500);
+  return utiles.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // src/server/modules/dossiers/service.ts
@@ -3843,6 +3864,14 @@ async function chronologieDossier(dossierId) {
   const transitions = await db.select({ t: schema_exports.transitionsStatut, objet: schema_exports.demandes.objet }).from(schema_exports.transitionsStatut).innerJoin(schema_exports.demandes, (0, import_drizzle_orm11.eq)(schema_exports.demandes.id, schema_exports.transitionsStatut.demandeId)).where((0, import_drizzle_orm11.and)((0, import_drizzle_orm11.eq)(schema_exports.demandes.dossierId, dossierId), import_drizzle_orm11.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm11.desc)(schema_exports.transitionsStatut.survenuLe)).limit(500);
   const echeances2 = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm11.eq)(schema_exports.echeances.dossierId, dossierId)).limit(200);
   const pieces2 = await db.select().from(schema_exports.pieces).where((0, import_drizzle_orm11.eq)(schema_exports.pieces.dossierId, dossierId)).limit(200);
+  const demandes2 = await db.select({ id: schema_exports.demandes.id, objet: schema_exports.demandes.objet, suivi: schema_exports.demandes.suivi }).from(schema_exports.demandes).where((0, import_drizzle_orm11.eq)(schema_exports.demandes.dossierId, dossierId)).limit(500);
+  const actions = new Map(demandes2.map((d) => [d.id, d.objet]));
+  const briefs = new Map(
+    demandes2.map((d) => {
+      const suivi = d.suivi ?? {};
+      return [d.id, typeof suivi.demande === "string" ? suivi.demande : ""];
+    })
+  );
   const lignes = [
     ...evenements2.map((e) => ({
       type: "evenement",
@@ -3851,9 +3880,13 @@ async function chronologieDossier(dossierId) {
       // `partieUtile` est appliquee a la lecture, et pas seulement a la collecte : les evenements
       // deja enregistres portent le debut brut du mail, chaine citee comprise, et la chronologie
       // doit rester lisible pour eux aussi.
-      detail: e.resume ? partieUtile(e.resume) : null,
+      // Le brief : le texte du message debarrasse des en-tetes de transfert et de la chaine
+      // citee. Quand il ne reste rien de lisible, celui de la demande prend le relais plutot que
+      // d'afficher une liste d'adresses.
+      detail: (e.resume ? partieUtile(e.resume) : "") || (e.demandeId ? briefs.get(e.demandeId) || null : null),
       demandeId: e.demandeId,
       meta: {
+        action: e.demandeId ? actions.get(e.demandeId) ?? null : null,
         sens: e.sens,
         nature: e.nature,
         interlocuteur: e.interlocuteur,
@@ -8638,7 +8671,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "eed1d645831ea2b7e902cbb86440c49c59a44b81",
+        version: "968b44c1aa999cec96774d05b4d92f2db6b79a89",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
