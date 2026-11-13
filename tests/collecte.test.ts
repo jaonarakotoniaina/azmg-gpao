@@ -14,6 +14,8 @@ import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
 import { AUTEUR_SYSTEME } from '../src/server/modules/demandes/service';
 import { analyserMessage, decouperMbox, identifiantFil, partieUtile, signerCharge, verifierSignature } from '../src/server/adapters/collecte-mail';
 import {
+  journalDeCollecte,
+  passagesDeCollecte,
   configDuCompte,
   demandeDuFil,
   enregistrerLot,
@@ -809,6 +811,51 @@ describe('brief lisible d’un mail', () => {
     // message ne renseignent personne.
     expect(partieUtile('> Tout le message est une citation.')).toBe('');
     expect(partieUtile('De : a@exemple-fictif.test\nA : b@exemple-fictif.test')).toBe('');
+  });
+});
+
+describe('journal de collecte', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+  });
+
+  async function recevoir(messageId: string, de: string, objet: string, corps: string) {
+    const message = await analyserMessage(
+      mailBrut({ messageId, de, a: 'info@client-fictif.test', objet, corps, date: 'Mon, 02 Mar 2026 09:00:00 +0100' }),
+    );
+    return enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+  }
+
+  it('dit ce qui a ete fait de chaque message, y compris du hors perimetre', async () => {
+    await recevoir('<j1@exemple-fictif.test>', 'client@alpha-fictif.test', 'Cotation aerien a demander', 'Pourriez vous demander une cotation aerienne pour 180 kg ?');
+    await recevoir('<j2@exemple-fictif.test>', 'no-reply@outil-fictif.test', 'Votre rapport est disponible', 'Consultez votre rapport en ligne.');
+
+    const journal = await journalDeCollecte(compteId);
+    const demande = journal.find((l) => l.objet === 'Cotation aerien a demander');
+    const automate = journal.find((l) => l.objet === 'Votre rapport est disponible');
+
+    // Le message de travail a ouvert une demande, et le journal le dit.
+    expect(demande?.sort).toBe('demande');
+    expect(demande?.demandeId).not.toBeNull();
+
+    // Le message d'un automate est hors perimetre : absent partout ailleurs, present ici. C'est
+    // tout l'interet de cet ecran, pouvoir expliquer une absence.
+    expect(automate?.sort).toBe('hors_perimetre');
+    expect(automate?.famille).toBe('T00');
+  });
+
+  it('garde les passages de la boite, pour dire si elle pousse encore', async () => {
+    await recevoir('<j3@exemple-fictif.test>', 'client@alpha-fictif.test', 'Documents', 'Pourriez vous renvoyer le BL signe ?');
+    const passages = await passagesDeCollecte(10);
+    expect(passages.length).toBeGreaterThan(0);
+    expect(passages[0].le).toBeInstanceOf(Date);
+  });
+
+  it('ne melange pas les comptes : chaque journal ne montre que ses propres messages', async () => {
+    await recevoir('<j4@exemple-fictif.test>', 'client@alpha-fictif.test', 'Pour ce compte', 'Pourriez vous confirmer la reception ?');
+    const autre = await creerCompteDeTest('Second compte fictif', 'test2');
+    expect(await journalDeCollecte(autre.id)).toHaveLength(0);
+    expect((await journalDeCollecte(compteId)).some((l) => l.objet === 'Pour ce compte')).toBe(true);
   });
 });
 

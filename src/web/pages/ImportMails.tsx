@@ -3,8 +3,36 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, messageErreur } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { dateHeure } from '../lib/format';
+import { dateHeure, libelleFamilleCourt } from '../lib/format';
 import { Alerte, Badge, Bouton, Carte, ChampSelect, Chargement, EntetePage, Indicateur, Vide, useNotifier } from '../composants/ui';
+import { ExternalLink } from 'lucide-react';
+
+interface LigneJournal {
+  evenementId: number;
+  collecteLe: string;
+  survenuLe: string;
+  expediteur: string | null;
+  objet: string | null;
+  famille: string | null;
+  demandeId: number | null;
+  dossierId: number | null;
+  lienExterne: string | null;
+  sort: 'demande' | 'rattache' | 'hors_perimetre' | 'a_classer' | 'trace';
+}
+
+interface Passage {
+  le: string;
+  bilan: { lus?: number; crees?: number; doublons?: number; ignores?: number } | null;
+}
+
+/** Ce que la GPAO a fait du message, dit en clair, avec la couleur qui va avec. */
+const SORTS: Record<LigneJournal['sort'], { libelle: string; ton: 'vert' | 'violet' | 'ambre' | 'neutre' }> = {
+  demande: { libelle: 'Demande ouverte', ton: 'vert' },
+  rattache: { libelle: 'Rattache a une demande', ton: 'violet' },
+  a_classer: { libelle: 'A classer', ton: 'ambre' },
+  hors_perimetre: { libelle: 'Hors perimetre', ton: 'neutre' },
+  trace: { libelle: 'Trace sans demande', ton: 'neutre' },
+};
 
 interface Compte {
   id: number;
@@ -53,6 +81,12 @@ export default function ImportMails() {
 
   const { data: comptes } = useQuery({ queryKey: ['comptes'], queryFn: () => api.get<Compte[]>('/api/comptes') });
   const { data: etat } = useQuery({ queryKey: ['collecte', 'etat'], queryFn: () => api.get<Etat>('/api/collecte/etat') });
+  // Le journal se relit apres chaque import : c'est la que l'on verifie ou sont passes les mails.
+  const journalReq = useQuery({
+    queryKey: ['collecte', 'journal', compteId],
+    queryFn: () => api.get<{ messages: LigneJournal[]; passages: Passage[] }>(`/api/collecte/journal?compteId=${compteId}`),
+    enabled: Boolean(compteId),
+  });
   const { data: dossiers } = useQuery({
     queryKey: ['dossiers', 'import-mails', compteId],
     queryFn: () => api.get<DossierTrouve[]>(`/api/dossiers?compteId=${compteId}&limite=50`),
@@ -217,13 +251,90 @@ export default function ImportMails() {
         </Carte>
       </div>
 
-      {etat?.dernierePasse && (
-        <Carte titre="Dernier passage de la collecte" id="derniere-passe" className="mt-6">
-          <p className="text-sm text-texte-doux">
-            {dateHeure(etat.dernierePasse.le)} : {etat.dernierePasse.bilan?.crees ?? 0} message(s) enregistre(s),{' '}
-            {etat.dernierePasse.bilan?.doublons ?? 0} deja connu(s), {etat.dernierePasse.bilan?.ignores ?? 0} ecarte(s) par les
-            adresses a ne pas suivre.
+      {compteId && (
+        <Carte titre="Ce que la collecte a fait" id="journal" className="mt-6">
+          <p className="aide">
+            La reponse a « j&rsquo;ai un mail que je ne retrouve pas ». Les messages hors perimetre y figurent, alors
+            qu&rsquo;ils sont absents de toutes les autres vues : c&rsquo;est leur absence ailleurs qu&rsquo;il faut pouvoir
+            expliquer. Un message qui n&rsquo;apparait pas ici n&rsquo;est jamais arrive, et ce sont les passages ci-dessous
+            qui le disent.
           </p>
+
+          {!journalReq.data ? (
+            <Chargement texte="Lecture du journal" />
+          ) : (
+            <div className="mt-4 space-y-6">
+              <div>
+                <h3 className="font-display text-base font-semibold">Derniers passages de la boite</h3>
+                {!journalReq.data.passages.length ? (
+                  <Vide>
+                    Aucun passage enregistre. Si le script Google est installe, il n&rsquo;a encore rien pousse : verifiez son
+                    declencheur et son journal d&rsquo;execution.
+                  </Vide>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-sm text-texte-doux">
+                    {journalReq.data.passages.slice(0, 8).map((p) => (
+                      <li key={p.le}>
+                        {dateHeure(p.le)} : {p.bilan?.lus ?? 0} lu(s), {p.bilan?.crees ?? 0} enregistre(s),{' '}
+                        {p.bilan?.doublons ?? 0} deja connu(s), {p.bilan?.ignores ?? 0} ecarte(s).
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h3 className="font-display text-base font-semibold">Derniers messages recus</h3>
+                {!journalReq.data.messages.length ? (
+                  <Vide>Aucun message collecte pour ce compte.</Vide>
+                ) : (
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="tableau">
+                      <caption className="sr-only">Derniers messages collectes et leur sort</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Recu le</th>
+                          <th scope="col">De</th>
+                          <th scope="col">Objet</th>
+                          <th scope="col">Famille</th>
+                          <th scope="col">Ce qui en a ete fait</th>
+                          <th scope="col">Mail</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {journalReq.data.messages.map((m) => (
+                          <tr key={m.evenementId}>
+                            <td className="whitespace-nowrap">{dateHeure(m.survenuLe)}</td>
+                            <td className="max-w-[16rem] break-words text-sm">{m.expediteur ?? ''}</td>
+                            <td className="max-w-[24rem]">
+                              {m.dossierId ? <Link to={`/dossiers/${m.dossierId}`}>{m.objet || 'Sans objet'}</Link> : m.objet}
+                            </td>
+                            <td className="whitespace-nowrap text-sm">{m.famille ? libelleFamilleCourt(m.famille) : ''}</td>
+                            <td className="whitespace-nowrap">
+                              {m.demandeId ? (
+                                <Link to={`/demandes/${m.demandeId}`}>
+                                  <Badge ton={SORTS[m.sort].ton}>{SORTS[m.sort].libelle}</Badge>
+                                </Link>
+                              ) : (
+                                <Badge ton={SORTS[m.sort].ton}>{SORTS[m.sort].libelle}</Badge>
+                              )}
+                            </td>
+                            <td>
+                              {m.lienExterne && (
+                                <a href={m.lienExterne} target="_blank" rel="noreferrer" aria-label="Ouvrir le mail d’origine">
+                                  <ExternalLink className="h-4 w-4" aria-hidden />
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </Carte>
       )}
 

@@ -15,7 +15,7 @@ import { cheminAbsolu, fichierExiste } from '../../lib/stockage';
 import { exigerCompte, perimetreDe } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { adaptateurCollecte, analyserMessage, decouperMbox, verifierSignature, type MessageCollecte } from '../../adapters/collecte-mail';
-import { enregistrerLot, exigerCompteCollecte } from './service';
+import { enregistrerLot, exigerCompteCollecte, journalDeCollecte, passagesDeCollecte } from './service';
 import { AUTEUR_SYSTEME } from '../demandes/service';
 
 /** Taille maximale d'un fichier importe (.eml ou .mbox d'historique). */
@@ -46,6 +46,23 @@ routesCollecte.get('/etat', async (_req, res) => {
     webhookConfigure: Boolean(config.collecte.secretAppsScript),
     dernierePasse: dernier ? { le: dernier.creeLe, bilan: dernier.details } : null,
   });
+});
+
+/**
+ * Journal de collecte : les derniers passages et les derniers messages recus, avec leur sort.
+ *
+ * C'est l'ecran qui repond a « j'ai un mail que je ne retrouve pas ». Il montre les messages
+ * hors perimetre, qui sont absents de toutes les autres vues : leur absence ailleurs est
+ * justement ce qu'il faut pouvoir expliquer.
+ */
+routesCollecte.get('/journal', async (req, res) => {
+  const q = valider(
+    z.object({ compteId: z.coerce.number().int().positive(), limite: z.coerce.number().int().min(1).max(200).optional() }),
+    req.query,
+  );
+  exigerCompte(await perimetreDe(req.utilisateur!), q.compteId);
+  const [messages, passages] = await Promise.all([journalDeCollecte(q.compteId, q.limite ?? 50), passagesDeCollecte(20)]);
+  res.json({ messages, passages });
 });
 
 /** Import ponctuel de fichiers `.eml` ou `.mbox`, pour reprendre l'historique. */

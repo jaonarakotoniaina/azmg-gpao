@@ -1132,3 +1132,45 @@ maintenant les deux, et l'action renvoie vers la demande.
 4 tests de plus (407 au total) : le bloc d'en-tetes saute dans ses deux formes, le transfert
 imbrique ferme toujours le message, un mail entierement cite ne rend rien, et la chronologie porte
 bien le brief et l'action.
+
+---
+
+## 2026-11-13 (soir) : deux fois le meme defaut, et de quoi arreter de supposer
+
+**« Je ne retrouve plus le tableau de suivi. »** Deuxieme fois dans la journee que le
+commanditaire cherche un ecran livre et ne le trouve pas. Ce matin « Pilotage », parce que je
+l'avais appele « Accompagnement ». Cet apres-midi « Suivi des demandes », parce que je venais de
+le ranger sous une tete de groupe nommee « Dossiers », qui ne le nomme pas.
+
+Le regroupement etait demande et il est juste. Ce qui etait faux, c'est de croire qu'une tete de
+groupe suffit a designer ce qu'elle contient. La barre liste desormais **toutes les pages**, sous
+la tete de leur groupe, et deux regles sont inscrites dans `navigation.tsx` :
+
+- une page garde le nom sous lequel elle a ete demandee, jamais un synonyme (« File du jour » et
+  non « Ma file », « Echeancier » et non « Echeances », « Pilotage » et non « Par collaborateur ») ;
+- un groupe n'est jamais nomme comme une de ses pages, sinon la tete masque la page.
+
+`navigation.tsx` devient la seule source, lue par les routes **et** par la barre. Les separer
+avait produit l'erreur previsible : des pages joignables mais introuvables.
+
+**« J'ai des mails de cet apres-midi que je ne retrouve pas dans le suivi. »** Troisieme fois que
+cette question revient, et les deux premieres fois j'ai repondu en lisant le code et en faisant
+tourner le moteur de regles. C'est une reponse d'ingenieur, pas un outil : elle n'est pas
+disponible quand la question se pose, et elle ne porte que sur les cas que j'imagine.
+
+L'ecran « Import des mails » porte donc maintenant une carte « Ce que la collecte a fait » :
+
+- les derniers passages de la boite, avec leurs compteurs, qui disent si le script pousse encore ;
+- les derniers messages recus, avec pour chacun ce qui en a ete fait, et le lien vers le mail.
+
+Les messages hors perimetre y figurent, alors qu'ils sont exclus de toutes les vues de pilotage :
+c'est justement leur absence ailleurs qu'il faut pouvoir expliquer. La regle de lecture tient en
+deux lignes : un message present est arrive, la colonne dit ou il est parti ; un message absent
+n'est jamais arrive, et le probleme est alors dans la copie vers la boite de suivi, pas dans la
+GPAO.
+
+**Verifications**
+
+3 tests de plus (410 au total) et un parcours de plus (29) : le journal dit « Demande ouverte »
+pour un message de travail et « Hors perimetre » pour un automate, les passages sont conserves,
+et deux comptes ne se melangent pas.

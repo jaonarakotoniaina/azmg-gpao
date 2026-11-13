@@ -24,6 +24,7 @@ import { partieUtile } from '../../adapters/collecte-mail';
 import type { MessageCollecte } from '../../adapters/collecte-mail';
 import { domaineDe, estUneDe } from '@shared/typage';
 import { estHorsPerimetre, type Nature, type Sens } from '@shared/constantes';
+import { lireParametres } from '../../lib/parametres';
 import type { Auteur } from '../demandes/service';
 
 /** Taille maximale d'une piece jointe conservee. Au-dela, seule sa reference est gardee. */
@@ -456,3 +457,81 @@ export async function enregistrerLot(messages: MessageCollecte[], opts: OptionsC
 }
 
 export { inArray, sql };
+
+// ---------------------------------------------------------------------------
+// Journal de collecte : ce que la boite a envoye, et ce qui en a ete fait
+// ---------------------------------------------------------------------------
+
+export interface MessageCollecte_Journal {
+  evenementId: number;
+  collecteLe: Date;
+  survenuLe: Date;
+  expediteur: string | null;
+  destinataires: string[];
+  objet: string | null;
+  famille: string | null;
+  confiance: number | null;
+  demandeId: number | null;
+  dossierId: number | null;
+  posteId: number | null;
+  lienExterne: string | null;
+  /** Ce que la GPAO a decide de ce message, en un mot. */
+  sort: 'demande' | 'rattache' | 'hors_perimetre' | 'a_classer' | 'trace';
+}
+
+/**
+ * Les derniers messages collectes, avec le sort reserve a chacun.
+ *
+ * C'est la reponse a la seule question qu'on pose quand un mail ne se retrouve pas : est-il
+ * arrive, et qu'en a-t-on fait ? Sans cet ecran, la seule facon de repondre etait de lire la
+ * base, ce que le commanditaire ne peut pas faire.
+ *
+ * Les messages hors perimetre y figurent **exprès**, alors qu'ils sont exclus de toutes les vues
+ * de pilotage : leur absence ailleurs est justement ce qu'il faut pouvoir expliquer.
+ */
+export async function journalDeCollecte(compteId: number, limite = 50): Promise<MessageCollecte_Journal[]> {
+  const parametres = await lireParametres();
+  const lignes = await db
+    .select()
+    .from(schema.evenements)
+    .where(and(eq(schema.evenements.compteId, compteId), inArray(schema.evenements.source, ['mail', 'import'])))
+    .orderBy(desc(schema.evenements.creeLe))
+    .limit(Math.min(limite, 200));
+
+  return lignes.map((e) => {
+    const horsPerimetre = estHorsPerimetre(e.famille);
+    const sousLeSeuil = e.confianceTypage !== null && Number(e.confianceTypage) < parametres.seuilConfianceTypage;
+    let sort: MessageCollecte_Journal['sort'];
+    if (horsPerimetre) sort = 'hors_perimetre';
+    else if (!e.famille || sousLeSeuil) sort = 'a_classer';
+    else if (e.demandeId) sort = 'demande';
+    else sort = 'trace';
+
+    return {
+      evenementId: e.id,
+      collecteLe: e.creeLe,
+      survenuLe: e.survenuLe,
+      expediteur: e.expediteur,
+      destinataires: (e.destinataires ?? []) as string[],
+      objet: e.objet,
+      famille: e.famille,
+      confiance: e.confianceTypage === null ? null : Number(e.confianceTypage),
+      demandeId: e.demandeId,
+      dossierId: e.dossierId,
+      posteId: null,
+      lienExterne: e.lienExterne,
+      sort,
+    };
+  });
+}
+
+/** Les derniers passages de la collecte, avec leur bilan : dit si la boite pousse encore. */
+export async function passagesDeCollecte(limite = 20) {
+  const lignes = await db
+    .select({ le: schema.journalActions.creeLe, bilan: schema.journalActions.details })
+    .from(schema.journalActions)
+    .where(eq(schema.journalActions.action, 'mails_collectes'))
+    .orderBy(desc(schema.journalActions.creeLe))
+    .limit(Math.min(limite, 100));
+  return lignes;
+}

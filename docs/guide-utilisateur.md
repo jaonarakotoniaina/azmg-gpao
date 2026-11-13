@@ -17,22 +17,22 @@ Deux idees a retenir avant de commencer :
 
 ## Se reperer dans la GPAO
 
-Sept entrees dans la barre de gauche, une par moment de la journee. Chacune regroupe plusieurs
-pages, en onglets :
+Sept tetes de groupe dans la barre de gauche, une par moment de la journee. **Toutes les pages
+sont listees sous leur groupe** : aucune ne se cache derriere un nom.
 
-| Entree | Onglets |
+| Groupe | Pages |
 |---|---|
-| File du jour | Ma file, A classer, Echeances |
+| Travail du jour | File du jour, A classer, Echeancier |
 | Saisie rapide | (une seule page) |
-| Dossiers | Dossiers, Suivi des demandes |
-| Brouillons | Brouillons, Digest de validation |
-| Pilotage | Tableau de bord, Par collaborateur, Qualite |
+| Dossiers et demandes | Dossiers, Suivi des demandes |
+| Envois a preparer | Brouillons, Digest de validation |
+| Indicateurs | Tableau de bord, Pilotage, Qualite |
 | Imports et exports | Import des mails, Import du classeur, Export du reporting |
 | Parametres | (une seule page) |
 
-Le chiffre a droite de « File du jour » compte les messages qui attendent d'etre classes. Chaque
-page garde son adresse propre : un lien vers le suivi des demandes ouvre le groupe « Dossiers »
-sur le bon onglet.
+Le chiffre a droite de « A classer » compte les messages qui attendent d'etre classes. Chaque page
+garde son adresse propre : un lien vers `/suivi` ouvre le groupe « Dossiers et demandes » sur le
+bon onglet.
 
 ---
 
@@ -90,7 +90,7 @@ tient en une page, y compris sur telephone, et l'enregistrement prend moins de 3
 
 ### La file « A classer »
 
-Elle se trouve dans « File du jour », onglet « A classer ».
+Elle se trouve dans « Travail du jour », onglet « A classer ».
 
 Quand un message arrive, l'application essaie de le classer toute seule : famille, nature,
 interlocuteur. Elle y arrive dans la grande majorite des cas. Quand elle n'est pas assez sure,
@@ -236,6 +236,25 @@ La fiche demande donne le delai total, le delai de premiere reponse compare a la
 famille, et surtout le **temps par acteur** : combien de temps le dossier a attendu chez le poste,
 chez la donneuse d'ordre, chez le client, chez un tiers. C'est ce tableau qui permet de dire, avec
 des chiffres, ou se perd reellement le temps.
+
+### « J'ai un mail que je ne retrouve pas »
+
+C'est la question que l'ecran **Import des mails** repond, dans sa carte « Ce que la collecte a
+fait ». Deux listes :
+
+- **Les derniers passages de la boite** : date et compteurs de chaque envoi du script Google. Si
+  cette liste est vide ou s'arrete il y a plusieurs heures, le script ne pousse plus, et c'est de
+  son cote qu'il faut regarder (son declencheur, son journal d'execution).
+- **Les derniers messages recus**, avec pour chacun ce qui en a ete fait : « Demande ouverte »,
+  « Rattache a une demande », « A classer », « Hors perimetre », « Trace sans demande ». La fleche
+  en fin de ligne ouvre le mail d'origine.
+
+Les messages hors perimetre y figurent, alors qu'ils sont absents de toutes les autres vues :
+c'est justement leur absence ailleurs qu'il faut pouvoir expliquer.
+
+La regle de lecture est simple. **Un message present dans cette liste est arrive** : la colonne
+dit ou il est parti. **Un message absent n'est jamais arrive** : ce n'est alors pas un probleme de
+la GPAO mais de la copie vers la boite de suivi.
 
 ### L'ecran « Suivi des demandes »
 

@@ -537,6 +537,21 @@ test('l’import d’un fil de mails ne cree aucun doublon au second passage', a
   await expect(page.locator('article', { hasText: action }).getByText('En attente DO')).toBeVisible();
 });
 
+test('le journal de collecte dit ce qui est arrive et ce qui en a ete fait', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/import-mails');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  const journal = page.locator('section#journal');
+  await expect(journal).toBeVisible({ timeout: 20_000 });
+  await expect(journal.getByRole('heading', { name: 'Derniers passages de la boite' })).toBeVisible();
+  await expect(journal.getByRole('heading', { name: 'Derniers messages recus' })).toBeVisible();
+
+  // Le fil importe plus tot dans le parcours s'y retrouve, avec le sort qui lui a ete reserve.
+  await expect(journal.getByRole('columnheader', { name: 'Ce qui en a ete fait' })).toBeVisible();
+  await expect(journal.getByText('Demande ouverte').first()).toBeVisible();
+});
+
 test('le webhook de collecte refuse une charge non signee', async ({ page }) => {
   const reponse = await page.request.post('/api/collecte/apps-script', {
     headers: { 'content-type': 'application/json' },
