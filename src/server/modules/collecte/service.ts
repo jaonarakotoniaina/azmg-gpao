@@ -23,7 +23,7 @@ import { synthetiserDemande, type Synthese } from '../typage/synthese';
 import { partieUtile } from '../../adapters/collecte-mail';
 import type { MessageCollecte } from '../../adapters/collecte-mail';
 import { domaineDe, estUneDe } from '@shared/typage';
-import { estHorsPerimetre, type Nature, type Sens } from '@shared/constantes';
+import { estHorsPerimetre, FAMILLE_A_CLASSER, FAMILLE_HORS_PERIMETRE, type Nature, type Sens } from '@shared/constantes';
 import { lireParametres } from '../../lib/parametres';
 import type { Auteur } from '../demandes/service';
 
@@ -267,7 +267,16 @@ export async function enregistrerMessage(
     },
     { compteId: opts.compteId },
   );
-  const horsPerimetre = estHorsPerimetre(typage.typage.famille);
+  // Le hors perimetre exige un typage **applicable**. Un T00 devine sous le seuil de confiance
+  // ne suffit pas a faire disparaitre un message de toutes les vues : la mise a l'ecart est la
+  // decision la plus lourde du typage, elle ne se prend pas sur un doute. Un doute va dans
+  // « A classer », ou un humain tranche.
+  const horsPerimetre = typage.applicable && estHorsPerimetre(typage.typage.famille);
+  const familleRetenue = horsPerimetre
+    ? FAMILLE_HORS_PERIMETRE
+    : typage.typage.famille && !estHorsPerimetre(typage.typage.famille)
+      ? typage.typage.famille
+      : FAMILLE_A_CLASSER;
 
   // 3. Poste concerne : un compte peut porter plusieurs postes (assistante export, designer).
   const posteId = opts.posteId ?? posteDuMessage(message, config.postes, typage.applicable ? typage.typage.famille : null);
@@ -277,11 +286,22 @@ export async function enregistrerMessage(
   let dossierId = parFil?.dossierId ?? opts.dossierParDefautId ?? null;
 
   if (!dossierId) {
-    // Sans fil connu ni dossier indique, on ouvre un dossier de rattachement par interlocuteur.
-    // Il sera reclasse a la main : mieux vaut un dossier a corriger qu'un message perdu.
-    const client = message.expediteur ? message.expediteur.split('@')[0] : 'Expediteur inconnu';
+    // Sans fil connu ni dossier indique, le dossier est ouvert **sur le sujet du message**, et
+    // non sur le seul expediteur.
+    //
+    // La version precedente nommait le dossier d'apres la partie locale de l'adresse : tous les
+    // messages d'une meme boite tombaient dans un seul dossier nomme « export », et il fallait
+    // l'ouvrir pour voir quoi que ce soit. Un dossier par sujet correspond a ce qu'est un
+    // dossier dans le referentiel, et se reconnait dans une liste.
     const { dossier } = await trouverOuCreerDossier(
-      { compteId: opts.compteId, posteId, client, produit: null, operation: null, notes: 'Dossier ouvert automatiquement par la collecte des mails, a reclasser.' },
+      {
+        compteId: opts.compteId,
+        posteId,
+        client: interlocuteurLisible(message, sens),
+        produit: null,
+        operation: objetNormalise(message.objet ?? '').slice(0, 120) || null,
+        notes: 'Dossier ouvert automatiquement par la collecte des mails, a reclasser.',
+      },
       auteur,
     );
     dossierId = dossier.id;
@@ -305,9 +325,17 @@ export async function enregistrerMessage(
       demandeId: parFil?.demandeId ?? null,
       dossierId,
       sens,
-      nature: (typage.applicable ? typage.typage.nature : null) ?? ('information' as Nature),
-      famille: typage.applicable ? typage.typage.famille : null,
-      interlocuteur: typage.applicable ? typage.typage.interlocuteur : null,
+      // Ce que les regles ont trouve est retenu **meme sous le seuil de confiance**, et complete
+      // par un repli quand elles n'ont rien trouve.
+      //
+      // La version precedente jetait un typage incertain et retombait sur « information », une
+      // nature qui n'ouvre aucune demande : le message etait enregistre, le travail perdu. Il
+      // n'apparaissait ni dans la file, ni dans le suivi, ni dans les indicateurs, et il fallait
+      // ouvrir la chronologie de son dossier pour le voir. La confiance reste basse, donc
+      // l'evenement reste dans « A classer » : on signale le doute sans effacer le travail.
+      nature: (horsPerimetre ? 'information' : typage.typage.nature) ?? natureParDefaut(sens),
+      famille: familleRetenue,
+      interlocuteur: typage.typage.interlocuteur,
       source: opts.source ?? 'mail',
       filId: message.filId,
       messageId: message.messageId,
@@ -413,6 +441,35 @@ export function lienGmail(messageId: string): string {
  */
 export function lienDuMessage(message: Pick<MessageCollecte, 'messageId' | 'lienExterne'>): string {
   return message.lienExterne || lienGmail(message.messageId);
+}
+
+
+
+/**
+ * Nom lisible de l'interlocuteur d'un message, pour nommer un dossier ouvert automatiquement.
+ *
+ * On prend le correspondant, pas le poste : sur un message recu c'est l'expediteur, sur un
+ * message envoye c'est le premier destinataire. Le domaine suffit, sans son extension : il dit
+ * de qui il s'agit sans encombrer la liste des dossiers d'adresses completes.
+ */
+export function interlocuteurLisible(message: MessageCollecte, sens: Sens): string {
+  const adresse = sens === 'sortant' ? (message.destinataires?.[0] ?? '') : message.expediteur;
+  const domaine = domaineDe(adresse);
+  if (domaine) return domaine.replace(/\.[a-z]{2,}$/i, '');
+  return adresse?.split('@')[0] || 'Interlocuteur inconnu';
+}
+
+/**
+ * Nature d'un message dont les regles n'ont rien dit, deduite du seul sens.
+ *
+ * Un message recu par le poste est un travail a faire jusqu'a preuve du contraire ; un message
+ * qu'il envoie est un livrable, dont on attend une suite. C'est l'hypothese standard d'une GPAO,
+ * et elle est bien moins fausse que « information », qui faisait disparaitre le travail.
+ */
+export function natureParDefaut(sens: Sens): Nature {
+  if (sens === 'entrant') return 'demande_entrante';
+  if (sens === 'sortant') return 'envoi_livrable';
+  return 'information';
 }
 
 /** Enregistre un lot de messages et rend le bilan. */

@@ -17,7 +17,7 @@ import { demanderIa, enregistrerSimulateur } from '../../ai/service';
 import { promptTyperEvenement, SCHEMA_TYPER_EVENEMENT, VERSION_TYPER_EVENEMENT } from '../../ai/prompts/typer-evenement';
 import { appliquerRegles, REGLES_INITIALES, type RegleTypage } from './regles';
 import { domaineDe, estExpediteurAutomatique, normaliserTypage, type MessageAClasser, type Typage } from '@shared/typage';
-import { CODES_FAMILLES, estHorsPerimetre, FAMILLE_HORS_PERIMETRE, INTERLOCUTEURS, NATURES, SENS, type Interlocuteur, type Nature, type Sens } from '@shared/constantes';
+import { CODES_FAMILLES, estHorsPerimetre, FAMILLE_A_CLASSER, FAMILLE_HORS_PERIMETRE, INTERLOCUTEURS, NATURES, SENS, type Interlocuteur, type Nature, type Sens } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
 // ---------------------------------------------------------------------------
@@ -187,7 +187,9 @@ enregistrerSimulateur('typer_evenement', (entree) => {
   const message = entree as unknown as MessageAClasser;
   const parRegles = appliquerRegles(message, REGLES_INITIALES);
   if (!parRegles?.typage.famille || !parRegles.typage.nature) {
-    return { famille: 'T00', nature: 'information', confiance: 0.1, justificatifs: ['aucune regle ne tranche'] };
+    // Ne pas repondre T00 ici : ce serait mettre hors perimetre ce qu'on ne sait pas classer, et
+    // les tests ne refleteraient plus la production, ou l'IA ne repond simplement pas.
+    return { famille: FAMILLE_A_CLASSER, nature: 'demande_entrante', confiance: 0.1, justificatifs: ['aucune regle ne tranche'] };
   }
   return {
     famille: parRegles.typage.famille,

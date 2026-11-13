@@ -30,6 +30,7 @@ import {
   definitionNature,
   definitionStatut,
   estHorsPerimetre,
+  FAMILLE_A_CLASSER,
 } from '../src/shared/constantes';
 import { entreesInitiales, CHECKLISTS_INITIALES, GRILLES_INITIALES } from '../src/server/db/referentiel';
 import { parametresParDefaut } from '../src/shared/parametres';
@@ -140,11 +141,15 @@ describe('coherence du referentiel', () => {
     expect([...STATUTS_REPORTING]).toEqual(['Termine', 'En attente client', 'En cours', 'Bloque', 'Annule']);
   });
 
-  it('definit les quinze familles de l’audit, de T00 a T14', () => {
+  it('definit les quinze familles de l’audit, de T00 a T14, plus la famille de repli', () => {
     const t = CODES_FAMILLES.filter((c) => c.startsWith('T'));
-    expect(t).toHaveLength(15);
+    // Quinze familles de l'audit, et T99 qui n'en fait pas partie : c'est le repli d'un message
+    // de travail dont la famille reste a etablir, pas une famille metier.
+    expect(t).toHaveLength(16);
     expect(t[0]).toBe('T00');
     expect(t[14]).toBe('T14');
+    expect(t[15]).toBe(FAMILLE_A_CLASSER);
+    expect(FAMILLE_A_CLASSER).toBe('T99');
     expect(FAMILLES_PILOTAGE.some((f) => estHorsPerimetre(f.code))).toBe(false);
     // T00 est le seul hors perimetre : le travail de la designer a ses propres familles.
     expect(FAMILLES.filter((f) => f.horsPerimetre).map((f) => f.code)).toEqual(['T00']);

@@ -258,7 +258,7 @@ describe('poste et donneuse d’ordre sur le domaine du client', () => {
     expect(demande.acteurAttendu).toBe('poste');
   });
 
-  it('n’ouvre aucune demande sur un simple envoi du poste', async () => {
+  it('ouvre une demande en attente du tiers sur un envoi du poste', async () => {
     const message = await analyserMessage(
       mailBrut({
         messageId: '<f9@exemple-fictif.test>',
@@ -273,7 +273,12 @@ describe('poste et donneuse d’ordre sur le domaine du client', () => {
     const [evenement] = await db.select().from(schema.evenements);
     // Lu comme sortant grace a l'adresse du poste, et non comme une demande du client.
     expect(evenement.sens).toBe('sortant');
-    expect(await db.select().from(schema.demandes)).toHaveLength(0);
+    // Un envoi qui n'appartient a aucun fil connu ouvre sa demande, en attente du destinataire :
+    // c'est un travail fait dont on attend la suite, et c'est ce que le pilotage doit montrer.
+    // Sans elle, le travail n'existait que dans la chronologie du dossier.
+    const [demande] = await db.select().from(schema.demandes);
+    expect(demande).toBeDefined();
+    expect(demande.statut).toBe('attente_tiers');
   });
 });
 
@@ -464,10 +469,12 @@ describe('adresses du compte a ne pas suivre', () => {
     // Un interne qui ecrit au poste, c'est un message qui arrive, pas un message qui part : le
     // domaine AZMG ne doit pas l'emporter sur l'adresse du poste parmi les destinataires.
     expect(evenement.sens).toBe('entrant');
-    // La nature n'etant que deduite du sens, la confiance reste sous le seuil et le message part
-    // en « A classer » plutot que d'etre applique d'office. Le typage s'y lit dans les
-    // justificatifs, sans etre pose sur l'evenement.
-    expect(evenement.famille).toBeNull();
+    // La nature n'etant que deduite du sens, la confiance reste sous le seuil : l'evenement part
+    // en « A classer ». Mais ce que les regles ont trouve est conserve (ici le tableau de
+    // situation, T06) et la demande est ouverte : le doute est signale, le travail n'est pas
+    // perdu. Avant, ce typage incertain etait jete et le message n'existait nulle part.
+    expect(evenement.famille).toBe('T06');
+    expect(evenement.demandeId).not.toBeNull();
     expect(evenement.justificatifs).toContain('expediteur sur un domaine interne AZMG');
   });
 
@@ -811,6 +818,107 @@ describe('brief lisible d’un mail', () => {
     // message ne renseignent personne.
     expect(partieUtile('> Tout le message est une citation.')).toBe('');
     expect(partieUtile('De : a@exemple-fictif.test\nA : b@exemple-fictif.test')).toBe('');
+  });
+});
+
+describe('le tableau de suivi se remplit depuis les mails', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    await db
+      .update(schema.comptesClients)
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  it('ouvre une demande pour chaque message de travail, meme mal type', async () => {
+    // Le flot d'une matinee ordinaire : une consigne de la DO, un message dont les regles ne
+    // disent rien, un envoi du poste, et une notification d'automate.
+    const messages = await Promise.all([
+      analyserMessage(
+        mailBrut({
+          messageId: '<v1@exemple-fictif.test>',
+          de: 'export@client-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Proforma a etablir',
+          corps: 'Pourriez vous etablir la proforma en dollars ?',
+          date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+        }),
+      ),
+      analyserMessage(
+        mailBrut({
+          messageId: '<v2@exemple-fictif.test>',
+          de: 'inconnu@tiers-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Point divers',
+          corps: 'Quelques elements sur un sujet que rien ne permet de classer.',
+          date: 'Mon, 02 Mar 2026 09:10:00 +0100',
+        }),
+      ),
+      analyserMessage(
+        mailBrut({
+          messageId: '<v3@exemple-fictif.test>',
+          de: 'info@client-fictif.test',
+          a: 'client@alpha-fictif.test',
+          objet: 'Documents envoyes',
+          corps: 'Veuillez trouver ci-joint le BL.',
+          date: 'Mon, 02 Mar 2026 09:20:00 +0100',
+        }),
+      ),
+      analyserMessage(
+        mailBrut({
+          messageId: '<v4@exemple-fictif.test>',
+          de: 'no-reply@outil-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Votre rapport est disponible',
+          corps: 'Consultez votre rapport en ligne.',
+          date: 'Mon, 02 Mar 2026 09:30:00 +0100',
+        }),
+      ),
+    ]);
+
+    await enregistrerLot(messages, { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+
+    const lignes = await suiviDesDemandes({ compteId });
+    const objets = lignes.map((l) => l.sujet + ' | ' + l.action);
+
+    // Trois messages de travail, trois lignes dans le tableau. C'est la difference entre un
+    // tableau vide et un outil : avant, seul le premier ouvrait une demande, les deux autres
+    // n'existaient que dans la chronologie de leur dossier.
+    expect(lignes.length, objets.join('\n')).toBe(3);
+
+    // L'automate n'y est pas : hors perimetre, et c'est la seule exclusion voulue.
+    expect(lignes.some((l) => l.action.includes('rapport est disponible'))).toBe(false);
+
+    // Chaque ligne porte un statut lisible dans le reporting client.
+    for (const ligne of lignes) expect(['nouveau', 'en_cours', 'attente_tiers', 'attente_do']).toContain(ligne.statut);
+  });
+
+  it('ne cree qu’une demande pour un fil, quel que soit le nombre de messages', async () => {
+    const premier = await analyserMessage(
+      mailBrut({
+        messageId: '<w1@exemple-fictif.test>',
+        de: 'export@client-fictif.test',
+        a: 'info@client-fictif.test',
+        objet: 'Cotation aerien',
+        corps: 'Pourriez vous demander une cotation aerienne ?',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    const reponse = await analyserMessage(
+      mailBrut({
+        messageId: '<w2@exemple-fictif.test>',
+        de: 'info@client-fictif.test',
+        a: 'export@client-fictif.test',
+        objet: 'RE: Cotation aerien',
+        corps: 'C’est en cours, je reviens vers toi.',
+        date: 'Mon, 02 Mar 2026 10:00:00 +0100',
+        references: '<w1@exemple-fictif.test>',
+      }),
+    );
+
+    await enregistrerLot([premier, reponse], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    const lignes = await suiviDesDemandes({ compteId });
+    expect(lignes).toHaveLength(1);
   });
 });
 
@@ -1166,8 +1274,26 @@ describe('dossier de rattachement', () => {
       }),
     );
     await enregistrerMessage(message, { compteId, posteId }, AUTEUR);
-    const dossiers = await db.select().from(schema.dossiers).where(eq(schema.dossiers.client, 'inconnu'));
+    // Le dossier porte le correspondant et le sujet du message, pas la partie locale de
+    // l'adresse : sans cela, tous les messages d'une meme boite tombaient dans un seul dossier
+    // qu'il fallait ouvrir pour voir quoi que ce soit.
+    const dossiers = await db.select().from(schema.dossiers).where(eq(schema.dossiers.client, 'societe-fictive'));
     expect(dossiers).toHaveLength(1);
+    expect(dossiers[0].operation).toBe('Cotation fret aerien pour un nouveau client');
     expect(dossiers[0].notes).toMatch(/a reclasser/i);
+  });
+
+  it('separe deux sujets differents du meme expediteur', async () => {
+    for (const [id, objet] of [
+      ['<i2@exemple-fictif.test>', 'Cotation Alger'],
+      ['<i3@exemple-fictif.test>', 'Facture a corriger'],
+    ]) {
+      const message = await analyserMessage(
+        mailBrut({ messageId: id, de: 'inconnu@societe-fictive.test', a: 'elysa@azmg-solutions.com', objet, corps: 'Pourriez vous regarder ?' }),
+      );
+      await enregistrerMessage(message, { compteId, posteId }, AUTEUR);
+    }
+    const dossiers = await db.select().from(schema.dossiers).where(eq(schema.dossiers.client, 'societe-fictive'));
+    expect(dossiers.map((d) => d.operation).sort()).toEqual(['Cotation Alger', 'Facture a corriger']);
   });
 });

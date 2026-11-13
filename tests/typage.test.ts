@@ -18,7 +18,7 @@ import { appliquerRegles, REGLES_INITIALES } from '../src/server/modules/typage/
 import { accepterRegle, initialiserRegles, reglesActives, reglesProposees, typerMessage } from '../src/server/modules/typage/service';
 import { evaluer } from '../src/server/ai/evals/run';
 import { MAILS_ANNOTES } from '../src/server/ai/evals/mails-annotes';
-import { CODES_FAMILLES } from '../src/shared/constantes';
+import { CODES_FAMILLES, FAMILLE_A_CLASSER } from '../src/shared/constantes';
 import { MAILS_TEMOINS } from '../src/server/ai/evals/mails-temoins';
 import { contientExpression, estExpediteurAutomatique, normaliserTypage } from '../src/shared/typage';
 import { lireParametres, modifierParametres } from '../src/server/lib/parametres';
@@ -81,9 +81,14 @@ describe('normalisation', () => {
 describe('jeu d’evaluation', () => {
   it('contient 60 mails fictifs au moins, couvrant toutes les familles et les 10 natures', () => {
     expect(MAILS_ANNOTES.length).toBeGreaterThanOrEqual(60);
-    // Chaque famille du referentiel est representee, celles de la designer comprises.
+    // Chaque famille du referentiel est representee, celles de la designer comprises. La famille
+    // de repli en est exclue : elle n'est jamais un resultat de typage attendu, seulement ce qui
+    // reste quand rien n'a pu etre etabli.
     const couvertes = new Set(MAILS_ANNOTES.map((m) => m.attendu.famille));
-    for (const code of CODES_FAMILLES) expect([...couvertes], `famille ${code}`).toContain(code);
+    for (const code of CODES_FAMILLES.filter((c) => c !== FAMILLE_A_CLASSER)) {
+      expect([...couvertes], `famille ${code}`).toContain(code);
+    }
+    expect([...couvertes]).not.toContain(FAMILLE_A_CLASSER);
     expect(new Set(MAILS_ANNOTES.map((m) => m.attendu.nature)).size).toBe(10);
   });
 
@@ -148,7 +153,9 @@ describe('moteur de regles', () => {
     // confiance baisse pour que le cas puisse passer sous le seuil.
     const r = appliquerRegles({ objet: 'Dossier de cotation Alger', corps: 'Quelques elements sur le dossier.', sens: 'entrant' });
     expect(r?.typage.famille).toBe('T01');
-    expect(r?.typage.nature).toBe('information');
+    // Un message recu est une demande a traiter jusqu'a preuve du contraire, et non une
+    // information : c'est cette deduction qui fait exister le travail dans le pilotage.
+    expect(r?.typage.nature).toBe('demande_entrante');
     expect(r?.typage.confiance).toBeLessThan(0.8);
   });
 
