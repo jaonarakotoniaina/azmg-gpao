@@ -9,7 +9,7 @@ import { enregistrerParametres, lireParametres } from '../../lib/parametres';
 import { perimetreDe, exigerCompte } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { creerCompte, creerPoste, listerComptes, listerPostes, modifierCompte, modifierPoste } from '../comptes/service';
-import { accompagnement } from './accompagnement';
+import { accompagnement, ecartsPriorite } from './accompagnement';
 import { compteSchema, modificationCompteSchema, modificationPosteSchema, posteSchema } from '@shared/validation';
 import { parametresSchema } from '@shared/parametres';
 import { auteurDe } from '../../lib/auteur';
@@ -79,7 +79,8 @@ routesPostes.get('/:id/accompagnement', async (req, res) => {
   );
   const fin = q.fin ? new Date(`${q.fin}T23:59:59.999Z`) : new Date();
   const debut = q.debut ? new Date(`${q.debut}T00:00:00.000Z`) : new Date(fin.getTime() - 28 * 86_400_000);
-  res.json(await accompagnement(id, { debut, fin }));
+  const [bilan, ecarts] = await Promise.all([accompagnement(id, { debut, fin }), ecartsPriorite(id)]);
+  res.json({ ...bilan, ecartsPriorite: ecarts });
 });
 
 export const routesParametres = Router();

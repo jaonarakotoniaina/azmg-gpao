@@ -220,3 +220,99 @@ async function debutsDeStatut(demandes: Demande[]): Promise<Map<number, Date>> {
     .groupBy(schema.transitionsStatut.demandeId);
   return new Map(lignes.map((l) => [l.demandeId, new Date(l.debut)]));
 }
+
+// ---------------------------------------------------------------------------
+// Calibrage des priorites
+// ---------------------------------------------------------------------------
+
+/**
+ * Familles ou un tiers reste bloque tant que le poste n'a pas agi : cut-off, documents
+ * d'expedition, factures, paiements, reglementaire, surestaries.
+ */
+const FAMILLES_BLOQUANTES = new Set(['T01', 'T02', 'T03', 'T04', 'T05', 'T14']);
+
+/** Familles de forme et de procedure : utiles, mais rien ne s'arrete si elles attendent un jour. */
+const FAMILLES_DE_FORME = new Set(['T06', 'T09', 'T10', 'T11', 'T12']);
+
+export interface EcartPriorite {
+  demandeId: number;
+  objet: string;
+  dossier: string;
+  declaree: string;
+  conseillee: string;
+  raison: string;
+}
+
+/**
+ * Priorite conseillee par la regle du commanditaire :
+ *   haute  : echeance sous 24 heures ouvrees, ou un tiers reste bloque ;
+ *   basse  : forme et procedure, sans echeance proche ;
+ *   normale: le reste, le travail de la semaine.
+ *
+ * Elle est **conseillee**, jamais appliquee : quand tout est prioritaire, plus rien ne l'est, mais
+ * c'est a un humain de trancher ligne par ligne. La fonction sert a montrer les ecarts.
+ */
+export function prioriteConseillee(
+  demande: Pick<Demande, 'famille' | 'echeanceLe' | 'acteurAttendu' | 'statut'>,
+  horaires: HorairesOuvres,
+  maintenant = new Date(),
+): { priorite: 'haute' | 'normale' | 'basse'; raison: string } {
+  // L'echeance metier seulement, jamais la cible SLA : celle-ci est a quelques heures des la
+  // creation, et s'en servir rendrait prioritaire tout ce qui vient d'arriver. C'est precisement
+  // l'inflation qu'on cherche a corriger.
+  const echeance = demande.echeanceLe;
+  if (echeance) {
+    const restant = minutesOuvrees(horaires, maintenant, echeance) / 60;
+    if (echeance <= maintenant) return { priorite: 'haute', raison: 'echeance depassee' };
+    if (restant <= 24) return { priorite: 'haute', raison: 'echeance sous 24 heures ouvrees' };
+  }
+  if (FAMILLES_BLOQUANTES.has(demande.famille) && (demande.acteurAttendu === 'client' || demande.acteurAttendu === 'tiers')) {
+    return { priorite: 'haute', raison: 'un tiers reste bloque' };
+  }
+  if (FAMILLES_DE_FORME.has(demande.famille) && !echeance) {
+    return { priorite: 'basse', raison: 'forme ou procedure, sans echeance' };
+  }
+  return { priorite: 'normale', raison: 'travail de la semaine' };
+}
+
+/**
+ * Demandes ouvertes dont la priorite declaree s'ecarte de la regle.
+ *
+ * Quand 31 lignes sur 63 sont marquees P1, la priorite ne trie plus rien. Cette liste donne de
+ * quoi recalibrer, sans rien changer dans le dos de personne.
+ */
+export async function ecartsPriorite(posteId: number, maintenant = new Date()): Promise<EcartPriorite[]> {
+  const [poste] = await db.select({ compteId: schema.postes.compteId }).from(schema.postes).where(eq(schema.postes.id, posteId));
+  if (!poste) return [];
+  const horaires = await horairesDuCompte(poste.compteId);
+
+  const lignes = await db
+    .select({ demande: schema.demandes, dossier: schema.dossiers.libelle })
+    .from(schema.demandes)
+    .innerJoin(schema.dossiers, eq(schema.dossiers.id, schema.demandes.dossierId))
+    .where(
+      and(
+        eq(schema.demandes.posteId, posteId),
+        sql`${schema.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
+        sql`${schema.demandes.statut} NOT IN ('termine', 'annule')`,
+      ),
+    );
+
+  const ecarts: EcartPriorite[] = [];
+  for (const { demande, dossier } of lignes) {
+    const conseil = prioriteConseillee(demande, horaires, maintenant);
+    if (conseil.priorite === demande.priorite) continue;
+    // Une priorite « critique » posee a la main est un choix assume : on ne la discute pas.
+    if (demande.priorite === 'critique') continue;
+    ecarts.push({
+      demandeId: demande.id,
+      objet: demande.objet,
+      dossier,
+      declaree: demande.priorite,
+      conseillee: conseil.priorite,
+      raison: conseil.raison,
+    });
+  }
+  // Les surclassements d'abord : ce sont eux qui noient la file.
+  return ecarts.sort((a, b) => Number(b.declaree === 'haute') - Number(a.declaree === 'haute'));
+}

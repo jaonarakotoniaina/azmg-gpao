@@ -543,3 +543,30 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   de la GPAO. Un dossier ouvert vendredi 9 h et clos lundi 9 h compte 9 heures, pas 72.
 - Raison : la mesure servira a un bilan avec le client sur le maintien de deux collaboratrices.
   Elle doit etre defendable des deux cotes de la table.
+
+## 2026-11-13 : la priorite conseillee ignore l'echeance SLA
+
+- Sujet : recalibrer les priorites selon la regle du commanditaire (sous 24 heures ou tiers
+  bloque, travail de la semaine, forme et procedure).
+- Premiere version, fausse : elle prenait l'echeance metier **ou**, a defaut, la cible SLA. Or la
+  cible SLA est a quelques heures des la creation d'une demande. Toute demande neuve devenait donc
+  prioritaire, c'est-a-dire exactement l'inflation qu'on cherchait a corriger. Un test l'a montre.
+- Choix : l'echeance **metier** seulement. La cible SLA reste mesuree ailleurs, dans le compteur
+  des prioritaires en retard.
+- La regle conseille, elle n'applique pas : la priorite declaree n'est jamais modifiee, les ecarts
+  sont listes, et un humain tranche ligne par ligne. Une priorite « critique » posee a la main
+  n'est pas discutee.
+- Retour arriere : `prioriteConseillee` dans `pilotage/accompagnement.ts`.
+
+## 2026-11-13 : le limiteur de connexion ne compte que les echecs
+
+- Sujet : le jeu de parcours s'est mis a echouer sur « Trop de tentatives » apres l'ajout de deux
+  parcours. Le limiteur acceptait 20 connexions par quart d'heure et par adresse.
+- Ce que le test a revele, au-dela de lui-meme : AZMG travaille depuis un bureau a Antananarivo,
+  derriere une seule adresse publique. Vingt connexions par quart d'heure pour toute l'equipe,
+  c'est une matinee de travail normale, et le blocage serait tombe sur des gens qui travaillent.
+- Choix : `skipSuccessfulRequests`. Le quota ne compte que les echecs, ce qui est le signal d'une
+  attaque par force brute. Une connexion reussie ne dit rien d'une attaque.
+- Ce qui ne change pas : vingt echecs par quart d'heure restent refuses, et la reponse ne revele
+  toujours pas si l'adresse existe.
+- Retour arriere : l'option se retire dans `modules/auth/routes.ts`.

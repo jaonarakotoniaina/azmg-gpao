@@ -306,6 +306,25 @@ test('l’export montre les colonnes du classeur et prepare le telechargement', 
   await expect(page.getByText(/structure du classeur n.est pas modifiee/i)).toBeVisible();
 });
 
+test('l’accompagnement met les causes avant la courbe', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/accompagnement');
+  await page.getByRole('combobox', { name: 'Poste suivi', exact: true }).selectOption({ index: 1 });
+
+  // Les causes passent avant la semaine par semaine : avec peu de semaines observees, c'est le
+  // chiffre le plus solide de l'ecran.
+  const causes = page.locator('section#causes');
+  const semaines = page.locator('section#semaines');
+  await expect(causes).toBeVisible({ timeout: 20_000 });
+  await expect(semaines).toBeVisible();
+  const yCauses = (await causes.boundingBox())!.y;
+  const ySemaines = (await semaines.boundingBox())!.y;
+  expect(yCauses).toBeLessThan(ySemaines);
+
+  // Le delai est annonce en heures ouvrees, pas en jours calendaires.
+  await expect(page.getByText('en heures ouvrees').first()).toBeVisible();
+});
+
 test('la qualite tire un echantillon et le propose a la notation', async ({ page }) => {
   await seConnecter(page, COMPTES.ceo);
   await page.goto('/qualite');

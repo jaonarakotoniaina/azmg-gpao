@@ -7,13 +7,13 @@
  */
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DateTime } from 'luxon';
-import { sql } from 'drizzle-orm';
-import { baseVierge, creerCompteDeTest, creerPosteDeTest, creerUtilisateurDeTest, db } from './aide';
+import { eq, sql } from 'drizzle-orm';
+import { baseVierge, creerCompteDeTest, creerPosteDeTest, creerUtilisateurDeTest, db, schema } from './aide';
 import { changerStatut, creerDemande, AUTEUR_SYSTEME } from '../src/server/modules/demandes/service';
 import { ajouterEvenement } from '../src/server/modules/evenements/service';
 import { trouverOuCreerDossier } from '../src/server/modules/dossiers/service';
-import { accompagnement } from '../src/server/modules/pilotage/accompagnement';
-import { modifierParametres } from '../src/server/lib/parametres';
+import { accompagnement, ecartsPriorite, prioriteConseillee } from '../src/server/modules/pilotage/accompagnement';
+import { horairesDuCompte, modifierParametres } from '../src/server/lib/parametres';
 import { FUSEAU_CLIENT_DEFAUT } from '../src/shared/heures-ouvrees';
 
 const AUTEUR = AUTEUR_SYSTEME;
@@ -151,6 +151,70 @@ describe('causes et dossiers repetes', () => {
     expect(bilan.dossiersRepetes).toHaveLength(1);
     expect(bilan.dossiersRepetes[0].dossierId).toBe(dossierA);
     expect(bilan.dossiersRepetes[0].reprises).toBe(2);
+  });
+});
+
+describe('calibrage des priorites', () => {
+  let horaires: Awaited<ReturnType<typeof horairesDuCompte>>;
+  beforeEach(async () => {
+    horaires = await horairesDuCompte(compteId);
+  });
+
+  const base = { famille: 'T08', echeanceLe: null, acteurAttendu: 'poste', statut: 'en_cours' } as never;
+
+  it('met en haute une echeance sous 24 heures ouvrees', () => {
+    const demande = { ...(base as object), echeanceLe: t('2026-11-04T15:00') } as never;
+    const conseil = prioriteConseillee(demande, horaires, t('2026-11-04T09:00'));
+    expect(conseil.priorite).toBe('haute');
+    expect(conseil.raison).toBe('echeance sous 24 heures ouvrees');
+  });
+
+  it('met en haute une echeance deja depassee', () => {
+    const demande = { ...(base as object), echeanceLe: t('2026-11-03T15:00') } as never;
+    expect(prioriteConseillee(demande, horaires, t('2026-11-04T09:00')).priorite).toBe('haute');
+  });
+
+  it('met en haute une famille ou un tiers reste bloque', () => {
+    const demande = { ...(base as object), famille: 'T02', acteurAttendu: 'client' } as never;
+    expect(prioriteConseillee(demande, horaires, t('2026-11-04T09:00')).raison).toBe('un tiers reste bloque');
+  });
+
+  it('met en basse la forme et la procedure sans echeance', () => {
+    const demande = { ...(base as object), famille: 'T09' } as never;
+    expect(prioriteConseillee(demande, horaires, t('2026-11-04T09:00')).priorite).toBe('basse');
+  });
+
+  it('laisse en normale le travail de la semaine', () => {
+    expect(prioriteConseillee(base, horaires, t('2026-11-04T09:00')).priorite).toBe('normale');
+  });
+
+  it('liste les ecarts, surclassements en tete, sans rien changer', async () => {
+    // Un reporting quotidien marque prioritaire : c'est ce qui noie la file.
+    const surclassee = await creerDemande(
+      { dossierId: dossierA, famille: 'T09', objet: 'Envoyer le daily', ouverteLe: t('2026-11-03T09:00'), priorite: 'haute' },
+      AUTEUR,
+    );
+    await creerDemande(
+      { dossierId: dossierB, famille: 'T08', objet: 'Completer une fiche', ouverteLe: t('2026-11-03T09:00'), priorite: 'normale' },
+      AUTEUR,
+    );
+
+    const ecarts = await ecartsPriorite(posteId, t('2026-11-04T09:00'));
+    expect(ecarts[0].demandeId).toBe(surclassee.id);
+    expect(ecarts[0].declaree).toBe('haute');
+    expect(ecarts[0].conseillee).toBe('basse');
+    // Rien n'a ete modifie : la regle conseille, elle n'applique pas.
+    const [apres] = await db.select().from(schema.demandes).where(eq(schema.demandes.id, surclassee.id));
+    expect(apres.priorite).toBe('haute');
+  });
+
+  it('ne discute pas une priorite critique posee a la main', async () => {
+    await creerDemande(
+      { dossierId: dossierA, famille: 'T09', objet: 'Daily critique', ouverteLe: t('2026-11-03T09:00'), priorite: 'critique' },
+      AUTEUR,
+    );
+    const ecarts = await ecartsPriorite(posteId, t('2026-11-04T09:00'));
+    expect(ecarts.some((e) => e.declaree === 'critique')).toBe(false);
   });
 });
 
