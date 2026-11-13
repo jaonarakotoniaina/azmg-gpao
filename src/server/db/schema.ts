@@ -23,7 +23,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import type { Acteur, Interlocuteur, Nature, Priorite, Role, Sens, Source, Statut, StatutDossier, TypeEcheance } from '@shared/constantes';
+import type { Acteur, Cause, Interlocuteur, Nature, Priorite, Role, Sens, Source, Statut, StatutDossier, TypeEcheance } from '@shared/constantes';
 
 const id = () => bigserial('id', { mode: 'number' }).primaryKey();
 const ref = (nom: string) => bigint(nom, { mode: 'number' });
@@ -201,6 +201,13 @@ export const demandes = pgTable(
     /** Cible SLA en heures ouvrees du client, et instant correspondant. */
     slaHeures: doublePrecision('sla_heures'),
     slaEcheanceLe: horodatage('sla_echeance_le'),
+    /**
+     * Cause d'une reprise, quand la demande en est une. Vide pour un travail ordinaire : seule
+     * une demande qui revient a cause d'un manquement porte une cause.
+     */
+    cause: text('cause').$type<Cause>(),
+    /** Vrai quand le suivi du manager a classe cette demande comme une reclamation. */
+    reprise: boolean('reprise').notNull().default(false),
     niveauRelance: integer('niveau_relance').notNull().default(0),
     derniereRelanceLe: horodatage('derniere_relance_le'),
     /** Horodatages de cycle de vie, en instants UTC. */

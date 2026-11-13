@@ -504,3 +504,42 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   classer » plutot que d'etre rangee au hasard.
 - Retour arriere : `src/server/modules/import/suivi-demandes.ts`, et le format reste au choix dans
   l'ecran d'import.
+
+## 2026-11-13 : on ne regroupe les dossiers que sur une reference
+
+- Sujet : le suivi du manager separe en plusieurs lignes ce qui est une seule operation. Sans
+  regroupement, la recidive reste invisible, alors que c'est le vrai motif d'exasperation.
+- Tentation : rapprocher les sujets qui partagent un mot. « Irak » apparait dans une legalisation
+  consulaire, un courrier de 300 g et un lead commercial : ce ne sont pas les memes operations.
+- Choix : regrouper sur la **reference d'operation** (BL, AWB, numero de booking, code
+  alphanumerique), qui ne designe qu'une operation. Sur du texte libre, chaque sujet reste son
+  propre dossier.
+- Ce qui remplace le regroupement automatique : `rapprochementsProposes` liste les dossiers qui
+  partagent un mot porteur, sans rien fusionner. La machine propose, un humain tranche.
+- Raison du refus de la fusion automatique : le compteur de recidive sert a decider du maintien
+  d'un collaborateur. Un rapprochement a tort gonfle ce compteur, et le dommage porte sur une
+  personne. Un faux negatif se corrige a la lecture, un faux positif se transmet en silence.
+- Retour arriere : `cleDossierSuivi` et `referenceDuSujet` concentrent la regle.
+
+## 2026-11-13 : la cause reste vide quand rien ne tranche
+
+- Sujet : la cause d'une reprise, en liste fermee, demandee par le commanditaire pour transformer
+  le releve en plan d'accompagnement.
+- Choix : la deduction par mots-cles est deliberement conservatrice. Sans indice clair, la cause
+  reste vide et se renseigne a la main.
+- Raison : une cause fausse vaut moins que pas de cause. C'est elle qui dit sur quoi travailler, et
+  une cause mal posee envoie l'accompagnement dans la mauvaise direction, avec l'autorite d'un
+  chiffre.
+- La recidive se compte sur le dossier **ou** la cause. Le commanditaire a releve, a juste titre,
+  que la seconde est la plus utile : « six fois un classement non fait » se corrige, « quatre fois
+  Tripoli » se constate.
+- Retour arriere : `INDICES_CAUSE` dans `suivi-demandes.ts`, et la cause reste modifiable.
+
+## 2026-11-13 : les delais d'accompagnement sont en heures ouvrees
+
+- Sujet : le reproche qui revient le plus est la lenteur. Le mesurer en jours calendaires melerait
+  les week-ends et les feries espagnols au temps de travail reel.
+- Choix : le delai de cloture est compte en heures ouvrees du client, comme tous les autres delais
+  de la GPAO. Un dossier ouvert vendredi 9 h et clos lundi 9 h compte 9 heures, pas 72.
+- Raison : la mesure servira a un bilan avec le client sur le maintien de deux collaboratrices.
+  Elle doit etre defendable des deux cotes de la table.

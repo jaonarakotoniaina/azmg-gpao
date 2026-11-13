@@ -21,6 +21,10 @@ import {
   lireHeureCellule,
   lireOngletSuivi,
   nomPosteDeLigne,
+  cleDossierSuivi,
+  motsPorteurs,
+  rapprochementsProposes,
+  referenceDuSujet,
   type LigneSuiviDemande,
 } from '../src/server/modules/import/suivi-demandes';
 import { lireClasseur } from '../src/server/lib/xlsx/lecture';
@@ -36,22 +40,25 @@ function buffer(): Buffer {
   return fs.readFileSync(CLASSEUR);
 }
 
+let elysaId: number;
+let miangalyId: number;
+
 beforeAll(async () => {
   await baseVierge();
+  // Hors du beforeEach : vider `utilisateurs` couperait les sessions des suites qui tournent
+  // en parallele sur la meme base.
+  elysaId = (await creerUtilisateurDeTest('assistante-suivi@azmg-solutions.com', 'collaborateur', 'Elysa')).id;
+  miangalyId = (await creerUtilisateurDeTest('designer-suivi@azmg-solutions.com', 'collaborateur', 'Miangaly')).id;
 });
 
 beforeEach(async () => {
   await db.execute(
-    sql`TRUNCATE comptes_clients, utilisateurs, dossiers, demandes, evenements, transitions_statut, journal_actions, regles_typage RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE comptes_clients, dossiers, demandes, evenements, transitions_statut, journal_actions, regles_typage RESTART IDENTITY CASCADE`,
   );
   await initialiserRegles();
   compteId = (await creerCompteDeTest()).id;
-  const elysa = await creerUtilisateurDeTest('assistante@azmg-solutions.com', 'collaborateur', 'Elysa');
-  const miangaly = await creerUtilisateurDeTest('designer@azmg-solutions.com', 'collaborateur', 'Miangaly');
-  posteAssistanteId = (await creerPosteDeTest(compteId, elysa.id)).id;
-  posteDesignerId = (
-    await creerPoste({ compteId, intitule: 'Designer', metier: 'designer', collaborateurId: miangaly.id }, AUTEUR)
-  ).id;
+  posteAssistanteId = (await creerPosteDeTest(compteId, elysaId)).id;
+  posteDesignerId = (await creerPoste({ compteId, intitule: 'Designer', metier: 'designer', collaborateurId: miangalyId }, AUTEUR)).id;
 });
 
 describe('lecture du format', () => {
@@ -103,6 +110,44 @@ describe('lecture du format', () => {
     expect(cleLigne(avecRef, 1)).toBe('<abc123@mail.gmail.com>');
     const sansRef = { refMail: '', onglet: 'Elysa', jour: '2026-03-02', sujet: 'Cotation fret' } as LigneSuiviDemande;
     expect(cleLigne(sansRef, 1)).toBe('<suivi-1-elysa-2026-03-02-cotation-fret@azmg-gpao>');
+  });
+});
+
+describe('rapprochement des dossiers', () => {
+  it('lit la reference d’operation d’un sujet', () => {
+    expect(referenceDuSujet('Ivy 100 ml, Nutripharm (BL 26-038)')).toBe('bl26038');
+    expect(referenceDuSujet('Expedition gelules, BL 26.039 (plis)')).toBe('bl26039');
+    expect(referenceDuSujet('Fret gelules vers Alger (#887887)')).toBe('ref887887');
+    expect(referenceDuSujet('Fret maritime LCL, S02233271')).toBe('refs02233271');
+    expect(referenceDuSujet('Tableau poids')).toBeNull();
+  });
+
+  it('regroupe deux lignes qui portent la meme reference', () => {
+    expect(cleDossierSuivi('Documents BL 26.039 a envoyer')).toBe(cleDossierSuivi('Expedition gelules R/W, BL 26.039 (plis)'));
+  });
+
+  it('ne regroupe pas deux sujets qui partagent un simple mot', () => {
+    // « Irak » se retrouve dans une legalisation, un courrier et un lead : ce ne sont pas les
+    // memes operations, et les fusionner gonflerait le compteur de recidive.
+    const cles = ['Dossier Irak et legalisation consulaire', 'Courrier Irak (300 g)', 'Lead Irak (Jovan)'].map(cleDossierSuivi);
+    expect(new Set(cles).size).toBe(3);
+  });
+
+  it('propose un rapprochement sans l’appliquer', async () => {
+    await importerSuiviDemandes(buffer(), { compteId, nomFichier: 'fictif.xlsx' }, AUTEUR);
+    const propositions = await rapprochementsProposes(compteId);
+    // Le mot « fictif » est dans tous les sujets du classeur de test : il les rapproche tous.
+    expect(propositions.length).toBeGreaterThan(0);
+    expect(propositions[0].dossiers.length).toBeGreaterThan(1);
+    // Rien n'a ete fusionne : les dossiers sont toujours distincts.
+    const dossiers = await db.select().from(schema.dossiers);
+    expect(dossiers.length).toBeGreaterThan(propositions[0].dossiers.length - 1);
+  });
+
+  it('ecarte les mots trop courants des propositions', () => {
+    expect(motsPorteurs('Dossier Tripoli, Libye')).toContain('tripoli');
+    expect(motsPorteurs('Dossier Tripoli, Libye')).not.toContain('dossier');
+    expect(motsPorteurs('Devis envoi Barcelone')).not.toContain('devis');
   });
 });
 
