@@ -19,7 +19,8 @@ import { extensionAcceptee, rangerFichier } from '../../lib/stockage';
 import { ajouterEvenement } from '../evenements/service';
 import { trouverOuCreerDossier } from '../dossiers/service';
 import { typerMessage } from '../typage/service';
-import { synthetiserDemande } from '../typage/synthese';
+import { synthetiserDemande, type Synthese } from '../typage/synthese';
+import { partieUtile } from '../../adapters/collecte-mail';
 import type { MessageCollecte } from '../../adapters/collecte-mail';
 import { domaineDe, estUneDe } from '@shared/typage';
 import { estHorsPerimetre, type Nature, type Sens } from '@shared/constantes';
@@ -285,19 +286,7 @@ export async function enregistrerMessage(
     dossierId = dossier.id;
   }
 
-  // 5. Synthese manageriale : l'action qui debloque, le type, la priorite, la cause.
-  //
-  // C'est ce qui rend le classeur de suivi inutile. Elle n'est demandee que pour un message
-  // entrant qui appelle un travail : ni pour ce que le poste envoie, ni pour une information.
-  const synthese =
-    sens === 'entrant' && typage.applicable && NATURES_A_SYNTHETISER.has(typage.typage.nature ?? '')
-      ? await synthetiserDemande(
-          { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: typage.typage.famille },
-          { compteId: opts.compteId },
-        )
-      : null;
-
-  // 6. Pieces jointes : rangees hors du dossier public, referencees dans le dossier.
+  // 5. Pieces jointes : rangees hors du dossier public, referencees dans le dossier.
   const piecesRangees: { chemin: string; nomFichier: string; taille: number; empreinte: string }[] = [];
   for (const piece of message.pieces) {
     if (!extensionAcceptee(piece.nomFichier) || piece.contenu.length > TAILLE_MAX_PIECE) continue;
@@ -309,7 +298,7 @@ export async function enregistrerMessage(
     }
   }
 
-  // 7. Enregistrement. La nature vient du typage ; sans elle, le message est une information.
+  // 6. Enregistrement. La nature vient du typage ; sans elle, le message est une information.
   const resultat = await ajouterEvenement(
     {
       demandeId: parFil?.demandeId ?? null,
@@ -321,11 +310,12 @@ export async function enregistrerMessage(
       source: opts.source ?? 'mail',
       filId: message.filId,
       messageId: message.messageId,
+      lienExterne: lienDuMessage(message),
       expediteur: message.expediteur,
       destinataires: message.destinataires,
       survenuLe: message.survenuLe,
       objet: message.objet,
-      resume: message.corps.slice(0, 500),
+      resume: partieUtile(message.corps).slice(0, 500),
       contenu: message.corps.slice(0, 50_000),
       confianceTypage: typage.typage.confiance,
       justificatifs: typage.typage.justificatifs,
@@ -346,29 +336,49 @@ export async function enregistrerMessage(
     });
   }
 
-  // La synthese ne s'applique qu'a une demande neuve, et seulement si elle est assez sure.
-  // Elle ne touche jamais a ce qu'un humain a pose : l'objet n'est remplace que sur une demande
-  // que ce message vient de creer.
-  if (synthese?.applicable && resultat.demande && resultat.demandeCreee) {
-    await db
-      .update(schema.demandes)
-      .set({
-        objet: synthese.action,
-        priorite: synthese.priorite,
-        reprise: synthese.reprise,
-        cause: synthese.cause,
-        suivi: {
-          action: synthese.action,
-          type: synthese.type,
-          demande: (message.corps ?? '').slice(0, 2000),
-          lienMail: lienGmail(message.messageId),
-          origine: 'synthese_ia',
-          confiance: synthese.confiance,
-          justificatifs: synthese.justificatifs,
-        },
-        majLe: new Date(),
-      })
-      .where(eq(schema.demandes.id, resultat.demande.id));
+  // 7. Synthese manageriale : l'action qui debloque, le type, la priorite, la cause.
+  //
+  // C'est ce qui rend le classeur de suivi inutile. Elle vient apres l'enregistrement, parce
+  // qu'elle a besoin de l'identifiant de la demande : c'est par lui que la routine IA retrouvera
+  // la ligne a corriger quand elle repondra, plus tard, en remplacement des regles.
+  //
+  // Elle n'est demandee que pour un message entrant qui appelle un travail, et seulement pour une
+  // demande que ce message vient de creer : elle ne touche jamais a ce qu'un humain a pose.
+  let synthese: Synthese | null = null;
+  if (
+    sens === 'entrant' &&
+    typage.applicable &&
+    NATURES_A_SYNTHETISER.has(typage.typage.nature ?? '') &&
+    resultat.demande &&
+    resultat.demandeCreee
+  ) {
+    synthese = await synthetiserDemande(
+      { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: typage.typage.famille },
+      { compteId: opts.compteId, demandeId: resultat.demande.id },
+    );
+    if (synthese?.applicable) {
+      await db
+        .update(schema.demandes)
+        .set({
+          objet: synthese.action,
+          priorite: synthese.priorite,
+          reprise: synthese.reprise,
+          cause: synthese.cause,
+          suivi: {
+            action: synthese.action,
+            type: synthese.type,
+            demande: partieUtile(message.corps).slice(0, 2000),
+            lienMail: lienDuMessage(message),
+            // `regles` dit que la routine n'a pas encore repondu : elle pourra remplacer ces
+            // colonnes. `synthese_ia` dit qu'elle l'a fait, et rien ne les remplacera plus.
+            origine: synthese.origine === 'ia' ? 'synthese_ia' : 'regles',
+            confiance: synthese.confiance,
+            justificatifs: synthese.justificatifs,
+          },
+          majLe: new Date(),
+        })
+        .where(eq(schema.demandes.id, resultat.demande.id));
+    }
   }
 
   return {
@@ -376,7 +386,7 @@ export async function enregistrerMessage(
     demandeId: resultat.demande?.id ?? null,
     horsPerimetre,
     aClasser: !typage.applicable,
-    synthetisee: Boolean(synthese?.applicable && resultat.demandeCreee),
+    synthetisee: Boolean(synthese?.applicable),
     pieces: piecesRangees.length,
   };
 }
@@ -390,6 +400,18 @@ export async function enregistrerMessage(
 export function lienGmail(messageId: string): string {
   const nu = messageId.replace(/^<|>$/g, '').split('@')[0];
   return /^[a-f0-9]{8,}$/i.test(nu) ? `https://mail.google.com/mail/u/0/#all/${nu}` : '';
+}
+
+/**
+ * Lien de retour vers le mail d'origine.
+ *
+ * Le lien donne par la source fait foi : seul le script installe sur la boite connait
+ * l'identifiant interne de Gmail. A defaut, on tente de le deduire de l'identifiant RFC 5322,
+ * ce qui ne marche que pour un message compose dans Gmail. Sinon, pas de lien : une adresse
+ * fausse coute plus cher qu'une absence de lien.
+ */
+export function lienDuMessage(message: Pick<MessageCollecte, 'messageId' | 'lienExterne'>): string {
+  return message.lienExterne || lienGmail(message.messageId);
 }
 
 /** Enregistre un lot de messages et rend le bilan. */

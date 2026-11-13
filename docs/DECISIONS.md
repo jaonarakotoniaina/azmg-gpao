@@ -556,7 +556,7 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - La regle conseille, elle n'applique pas : la priorite declaree n'est jamais modifiee, les ecarts
   sont listes, et un humain tranche ligne par ligne. Une priorite « critique » posee a la main
   n'est pas discutee.
-- Retour arriere : `prioriteConseillee` dans `pilotage/accompagnement.ts`.
+- Retour arriere : `prioriteConseillee` dans `pilotage/poste.ts`.
 
 ## 2026-11-13 : le limiteur de connexion ne compte que les echecs
 
@@ -611,3 +611,52 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   le message ne dit pas reste vide ; la priorite ne doit pas etre haute partout.
 - Retour arriere : l'interrupteur « Synthese des demandes recues » dans Parametres, et le prompt
   versionne `synthetiser_demande@1`.
+
+---
+
+## 2026-11-13 : remplir les colonnes de synthese par regles quand la routine IA n'a pas repondu
+
+- Sujet : les colonnes « action attendue », « type », « priorite » et « cause » d'une demande nee
+  de la collecte, en mode `agent` (defaut en production), ou la reponse de l'IA peut n'arriver que
+  des heures plus tard, ou jamais si la routine n'est pas installee.
+- Options envisagees :
+  1. laisser les colonnes vides en attendant la routine, comme c'etait le cas ;
+  2. les remplir par regles deterministes des l'arrivee du message, et laisser la routine les
+     remplacer quand elle repond ;
+  3. basculer le fournisseur sur `api` pour obtenir une reponse immediate.
+- Choix : l'option 2.
+- Raison : l'option 1 rendait le classeur du manager a nouveau necessaire, ce qu'on cherchait
+  precisement a supprimer, et elle le faisait silencieusement : un ecran de suivi dont deux
+  colonnes sont vides ne dit pas pourquoi. L'option 3 cree un cout API recurrent que le
+  commanditaire refuse (CLAUDE.md section 6). Les regles ne devinent rien : l'action est une
+  phrase du message citee telle quelle, ou le travail que la famille designe dans le referentiel ;
+  le type, la priorite et la cause viennent de mots presents dans le texte, rendus en
+  justificatifs. L'origine est portee dans `demandes.suivi` (`regles` ou `synthese_ia`) et affichee
+  (« deduite, a relire ») : le lecteur sait ce qu'il lit. La regle de CLAUDE.md, « une colonne vide
+  se voit, une colonne inventee ne se voit pas », interdit d'inventer, pas de deduire et de le dire.
+- Retour arriere : retirer l'appel a `syntheseParRegles` dans le repli de `synthetiserDemande`
+  (`src/server/modules/typage/synthese.ts`) et rendre `null` comme avant. `appliquerSynthese` et
+  la colonne `origine` restent utiles et sans effet de bord.
+
+## 2026-11-13 : « Pilotage » et non « Accompagnement »
+
+- Sujet : le nom de l'ecran hebdomadaire des indicateurs par collaborateur.
+- Options envisagees : garder « Accompagnement », qui decrit l'usage ; reprendre « Pilotage »,
+  le mot demande.
+- Choix : « Pilotage », partout, y compris la route, le module serveur, les types et les tests.
+- Raison : le commanditaire avait nomme l'onglet, et il ne l'a pas trouve. Un ecran qu'on ne
+  trouve pas n'est pas livre. Un nom interne different du nom affiche est par ailleurs la source
+  exacte de cette erreur, d'ou le renommage complet et non seulement celui du libelle.
+- Retour arriere : un renommage symetrique, sans effet fonctionnel.
+
+## 2026-11-13 : le lien vers le mail vient de la boite, jamais d'une deduction
+
+- Sujet : renvoyer de la GPAO vers le mail d'origine.
+- Options envisagees : deduire l'adresse Gmail de l'identifiant RFC 5322 du message ; la faire
+  fournir par le script installe sur la boite ; ne pas proposer de lien.
+- Choix : le script la fournit (`lienExterne`, colonne `evenements.lien_externe`), avec la
+  deduction en dernier recours et aucun lien quand elle est impossible.
+- Raison : l'identifiant RFC 5322 ne permet pas de construire une adresse Gmail dans le cas
+  general ; seul l'identifiant interne de la boite le permet, et seul le script le connait. Un lien
+  deduit a tort ouvre la boite sur rien, ce qui coute plus cher qu'une absence de lien.
+- Retour arriere : la colonne peut rester vide, l'interface n'affiche alors aucun lien.

@@ -34,6 +34,8 @@ export interface EntreeEvenement {
   contenu?: string | null;
   filId?: string | null;
   messageId?: string | null;
+  /** Lien vers le message dans sa boite d'origine, quand la source le fournit. */
+  lienExterne?: string | null;
   /** Adresse de l'expediteur : sert au typage par domaine et aux propositions de regle. */
   expediteur?: string | null;
   destinataires?: string[];
@@ -182,6 +184,7 @@ export async function ajouterEvenement(entree: EntreeEvenement, auteur: Auteur, 
       source: entree.source,
       filId: entree.filId ?? null,
       messageId: entree.messageId ?? null,
+      lienExterne: entree.lienExterne || null,
       expediteur: entree.expediteur ?? null,
       destinataires: entree.destinataires ?? [],
       survenuLe,

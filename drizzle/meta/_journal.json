@@ -57,6 +57,13 @@
       "when": 1794540210559,
       "tag": "0007_ligne_de_suivi",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794570364836,
+      "tag": "0008_lien_externe",
+      "breakpoints": true
     }
   ]
 }

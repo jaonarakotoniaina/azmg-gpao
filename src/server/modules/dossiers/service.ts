@@ -7,6 +7,7 @@
  */
 import { and, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { db, schema } from '../../db/client';
+import { partieUtile } from '../../adapters/collecte-mail';
 import { ErreurHttp } from '../../lib/http';
 import { journaliser } from '../../lib/evenements';
 import { cleDossier, normaliser } from '@shared/texte';
@@ -246,9 +247,20 @@ export async function chronologieDossier(dossierId: number): Promise<LigneChrono
       type: 'evenement' as const,
       survenuLe: e.survenuLe,
       titre: e.objet ?? e.resume ?? 'Evenement',
-      detail: e.resume,
+      // `partieUtile` est appliquee a la lecture, et pas seulement a la collecte : les evenements
+      // deja enregistres portent le debut brut du mail, chaine citee comprise, et la chronologie
+      // doit rester lisible pour eux aussi.
+      detail: e.resume ? partieUtile(e.resume) : null,
       demandeId: e.demandeId,
-      meta: { sens: e.sens, nature: e.nature, interlocuteur: e.interlocuteur, source: e.source, famille: e.famille, confiance: e.confianceTypage },
+      meta: {
+        sens: e.sens,
+        nature: e.nature,
+        interlocuteur: e.interlocuteur,
+        source: e.source,
+        famille: e.famille,
+        confiance: e.confianceTypage,
+        lienExterne: e.lienExterne,
+      },
     })),
     ...transitions.map((l) => ({
       type: 'transition' as const,

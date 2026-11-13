@@ -28,6 +28,13 @@ export interface MessageCollecte {
   corps: string;
   /** Horodatage d'origine du message, conserve tel quel. */
   survenuLe: Date;
+  /**
+   * Lien vers le message dans sa boite d'origine, quand la source le connait.
+   *
+   * Seul le script installe sur la boite peut le construire : l'identifiant RFC 5322 ne suffit
+   * pas. Un message importe depuis un fichier `.eml` n'en a pas, et c'est normal.
+   */
+  lienExterne?: string;
   pieces: { nomFichier: string; contenu: Buffer; typeMime: string }[];
 }
 
@@ -240,4 +247,37 @@ export function verifierSignature(corps: string, signature: string, secret: stri
   const a = Buffer.from(signature);
   const b = Buffer.from(attendue);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/**
+ * Premier message utile d'un mail, sans la chaine citee.
+ *
+ * Un mail d'un fil ancien porte souvent dix reponses empilees, les en-tetes de transfert et les
+ * signatures. Les afficher tels quels rend la chronologie illisible, alors que ce qui compte tient
+ * dans les premieres lignes. Le corps complet reste enregistre a part : seul le resume est coupe.
+ */
+export function partieUtile(corps: string): string {
+  const lignes = corps.replace(/\r\n/g, '\n').split('\n');
+  const utiles: string[] = [];
+
+  for (const brute of lignes) {
+    const ligne = brute.trim();
+    // Debut d'une reponse citee ou d'un transfert : tout ce qui suit appartient au passe.
+    if (
+      /^>/.test(ligne) ||
+      /^(de|from|envoye|sent|a|to|cc|objet|subject)\s*:/i.test(ligne) ||
+      /^-{2,}\s*(message|forwarded|original)/i.test(ligne) ||
+      /^le .{5,60}a ecrit\s*:?$/i.test(ligne) ||
+      /^on .{5,60}wrote\s*:?$/i.test(ligne)
+    ) {
+      break;
+    }
+    // Debut d'une signature.
+    if (/^--\s*$/.test(ligne)) break;
+    utiles.push(ligne);
+  }
+
+  const texte = utiles.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  // Un mail entierement cite ne doit pas rendre un resume vide : on reprend alors le debut brut.
+  return texte || corps.trim().slice(0, 500);
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CalendarClock, FileText, MessageSquare, Repeat } from 'lucide-react';
+import { ArrowRight, CalendarClock, ExternalLink, FileText, MessageSquare, Repeat } from 'lucide-react';
 import { api, messageErreur } from '../lib/api';
 import {
   dateHeure,
@@ -194,7 +194,14 @@ export default function FicheDossier() {
             <ol className="space-y-4">
               {chronologie.map((l, i) => {
                 const Icone = ICONES[l.type];
-                const meta = (l.meta ?? {}) as { nature?: string; interlocuteur?: string; source?: string; minutesOuvrees?: number; auteurType?: string };
+                const meta = (l.meta ?? {}) as {
+                  nature?: string;
+                  interlocuteur?: string;
+                  source?: string;
+                  minutesOuvrees?: number;
+                  auteurType?: string;
+                  lienExterne?: string | null;
+                };
                 return (
                   <li key={`${l.type}-${i}`} className="flex gap-3">
                     <span className="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-full bg-entete text-texte-doux">
@@ -202,7 +209,14 @@ export default function FicheDossier() {
                     </span>
                     <div className="min-w-0 flex-1 border-b border-ligne pb-3">
                       <p className="text-sm font-medium">{l.titre}</p>
-                      {l.detail && <p className="mt-0.5 text-sm text-texte-doux">{l.detail}</p>}
+                      {l.detail && (
+                        // Trois lignes au plus : un mail de fil ancien remplirait sinon tout
+                        // l'ecran, et la chronologie ne se lirait plus. Le mail complet est a un
+                        // clic, dans la demande ou dans la boite d'origine.
+                        <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-sm text-texte-doux" title={l.detail}>
+                          {l.detail}
+                        </p>
+                      )}
                       <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texte-discret">
                         <span title={dateHeure(l.survenuLe)}>{dateHeure(l.survenuLe)}</span>
                         {l.type === 'evenement' && meta.nature && <span>{libelleNature(meta.nature)}</span>}
@@ -216,6 +230,12 @@ export default function FicheDossier() {
                           <Link to={`/demandes/${l.demandeId}`} className="text-xs">
                             voir la demande
                           </Link>
+                        )}
+                        {meta.lienExterne && (
+                          <a href={meta.lienExterne} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs">
+                            <ExternalLink className="h-3 w-3" aria-hidden />
+                            ouvrir le mail
+                          </a>
                         )}
                       </p>
                     </div>

@@ -197,7 +197,9 @@ function collecter() {
           return;
         }
       }
-      lot.push({ fil: i, brut: brut });
+      // Le lien de retour : seule la boite connait l'identifiant interne de Gmail. Sans lui, la
+      // GPAO affiche la chronologie sans pouvoir renvoyer vers le mail d'origine.
+      lot.push({ fil: i, brut: brut, lien: 'https://mail.google.com/mail/u/0/#all/' + message.getId() });
       tailleLot += brut.length;
     }
   }
@@ -213,7 +215,7 @@ function envoyer_(lot, fils, restants, etiquette) {
   const charge = JSON.stringify({
     compteId: COMPTE_ID,
     messages: lot.map(function (u) {
-      return { brut: u.brut };
+      return { brut: u.brut, lienExterne: u.lien };
     }),
   });
   const reponse = appeler_(charge);

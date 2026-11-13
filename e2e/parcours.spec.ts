@@ -314,17 +314,19 @@ test('le suivi rend le tableau du classeur, colonnes comprises', async ({ page }
   const tableau = page.locator('section#tableau table');
   await expect(tableau).toBeVisible({ timeout: 20_000 });
   // Les colonnes du classeur, et celles qui lui manquaient.
-  for (const colonne of ['Date', 'Priorite', 'Statut', 'Sujet ou dossier', 'Demande', 'Action attendue', 'Cause', 'Delai']) {
+  for (const colonne of ['Date et heure', 'Priorite', 'Statut', 'Sujet ou dossier', 'Demande', 'Action attendue', 'Cause', 'Delai']) {
     await expect(tableau.getByRole('columnheader', { name: colonne, exact: true })).toBeVisible();
   }
+  // L'heure est affichee, pas seulement le jour : deux demandes du meme jour se distinguent.
+  await expect(tableau.locator('tbody tr').first().locator('td').first()).toHaveText(/\d{1,2}h\d{2}/);
   // La ligne importee porte la demande telle qu'elle a ete ecrite, a cote de l'action attendue.
   await expect(tableau.getByText('Le client attend la cotation depuis deux jours')).toBeVisible();
   await expect(tableau.getByRole('link', { name: 'Relancer le transitaire et transmettre la cotation' })).toBeVisible();
 });
 
-test('l’accompagnement met les causes avant la courbe', async ({ page }) => {
+test('le pilotage met les causes avant la courbe', async ({ page }) => {
   await seConnecter(page, COMPTES.ceo);
-  await page.goto('/accompagnement');
+  await page.goto('/pilotage');
   await page.getByRole('combobox', { name: 'Poste suivi', exact: true }).selectOption({ index: 1 });
 
   // Les causes passent avant la semaine par semaine : avec peu de semaines observees, c'est le
@@ -339,6 +341,25 @@ test('l’accompagnement met les causes avant la courbe', async ({ page }) => {
 
   // Le delai est annonce en heures ouvrees, pas en jours calendaires.
   await expect(page.getByText('en heures ouvrees').first()).toBeVisible();
+
+  // L'onglet se trouve sous le nom demande, dans la navigation : c'est par la qu'on y arrive.
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Pilotage' })).toBeVisible();
+
+  // Les quatre indicateurs du bilan sont nommes, chacun avec sa courbe.
+  const indicateurs = page.locator('#indicateurs');
+  for (const libelle of ['Reclamations', 'Taux de recidive', 'Delai moyen de cloture', 'P1 en retard']) {
+    await expect(indicateurs.getByText(libelle, { exact: true })).toBeVisible();
+  }
+  // La courbe est la des qu'il y a deux semaines a comparer : c'est elle qui sert a decider au
+  // bilan de fin de mois. Avec une seule semaine observee, l'ecran le dit au lieu de tracer une
+  // pente qui n'existe pas.
+  const semainesObservees = await semaines.locator('tbody tr').count();
+  if (semainesObservees >= 2) {
+    await expect(indicateurs.locator('svg[role="img"]').first()).toBeVisible();
+  } else {
+    await expect(indicateurs.locator('svg[role="img"]')).toHaveCount(0);
+    await expect(page.getByText(/semaine\(s\) observee\(s\)/)).toBeVisible();
+  }
 });
 
 test('la qualite tire un echantillon et le propose a la notation', async ({ page }) => {
@@ -467,10 +488,13 @@ test('l’import d’un fil de mails ne cree aucun doublon au second passage', a
   await expect(bilan.locator('div', { hasText: /^Enregistres0$/ })).toBeVisible({ timeout: 20_000 });
   await expect(bilan.locator('div', { hasText: /^Deja connus2/ })).toBeVisible();
 
-  // La demande du fil est passee en attente DO, sans aucune saisie.
+  // La demande du fil est passee en attente DO, sans aucune saisie. Elle est titree par l'action
+  // qui debloque, pas par l'objet du mail : « Proforma a modifier » ne dit pas quoi faire, la
+  // phrase de demande du client le dit.
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Proforma a modifier' })).toHaveCount(1);
-  await expect(page.locator('article', { hasText: 'Proforma a modifier' }).getByText('En attente DO')).toBeVisible();
+  const action = 'Pourriez vous nous etablir la proforma en dollars ?';
+  await expect(page.getByRole('link', { name: action })).toHaveCount(1);
+  await expect(page.locator('article', { hasText: action }).getByText('En attente DO')).toBeVisible();
 });
 
 test('le webhook de collecte refuse une charge non signee', async ({ page }) => {

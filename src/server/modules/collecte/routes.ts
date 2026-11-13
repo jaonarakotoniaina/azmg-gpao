@@ -148,6 +148,8 @@ const chargeSchema = z.object({
         objet: z.string().optional(),
         corps: z.string().optional(),
         survenuLe: z.string().optional(),
+        /** Lien vers le message dans sa boite d'origine, construit par le script. */
+        lienExterne: z.string().url().max(2000).optional(),
       }),
     )
     .max(100),
@@ -188,7 +190,8 @@ routesWebhookCollecte.post('/', async (req, res) => {
   const messages: MessageCollecte[] = [];
   for (const m of charge.messages) {
     if (m.brut) {
-      messages.push(await analyserMessage(Buffer.from(m.brut, 'utf8')));
+      const analyse = await analyserMessage(Buffer.from(m.brut, 'utf8'));
+      messages.push(m.lienExterne ? { ...analyse, lienExterne: m.lienExterne } : analyse);
       continue;
     }
     if (!m.messageId) continue;
@@ -200,6 +203,7 @@ routesWebhookCollecte.post('/', async (req, res) => {
       objet: m.objet ?? '',
       corps: m.corps ?? '',
       survenuLe: m.survenuLe ? new Date(m.survenuLe) : new Date(),
+      lienExterne: m.lienExterne,
       pieces: [],
     });
   }

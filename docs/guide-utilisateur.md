@@ -214,6 +214,45 @@ famille, et surtout le **temps par acteur** : combien de temps le dossier a atte
 chez la donneuse d'ordre, chez le client, chez un tiers. C'est ce tableau qui permet de dire, avec
 des chiffres, ou se perd reellement le temps.
 
+### L'ecran « Suivi des demandes »
+
+C'est le tableau que vous teniez dans le classeur, rendu par la GPAO. Une ligne par demande, avec
+la date **et l'heure**, la priorite, le statut, le type, le sujet, la demande telle qu'elle a ete
+ecrite, l'action attendue, la cause d'une reprise, et le delai compte en heures ouvrees du client.
+
+Deux reperes a connaitre :
+
+- **La fleche au bout de la ligne** ouvre le mail d'origine dans la boite de suivi. Elle n'apparait
+  que si la GPAO connait l'adresse du message ; sinon il n'y a pas de lien, plutot qu'un lien qui
+  ouvrirait sur rien.
+- **« deduite, a relire »** sous une action veut dire que la GPAO l'a deduite du message et du
+  referentiel, parce que la routine IA n'a pas encore relu ce message. L'action est utilisable,
+  elle merite un coup d'oeil. La mention disparait quand la routine passe.
+
+### L'ecran « Pilotage »
+
+La question a laquelle il repond : **est-ce que ca s'ameliore ?** Choisissez un poste, et vous
+avez quatre indicateurs, chacun avec sa courbe semaine apres semaine :
+
+| Indicateur | Ce qu'il dit |
+|---|---|
+| Reclamations | combien de fois il a fallu revenir sur un travail, par semaine |
+| Taux de recidive | la part de ces reprises qui tombent sur un dossier ou une cause deja vus |
+| Delai moyen de cloture | le temps pour clore une demande, en heures ouvrees du client (la mediane est a cote : un ecart entre les deux signale une demande oubliee qui tire la moyenne) |
+| P1 en retard | les demandes de priorite haute encore ouvertes au-dela de leur delai cible |
+
+Sur la courbe, le trace gris est le passe, le point violet la semaine en cours. Les valeurs
+exactes s'affichent au survol et dans le tableau en dessous. Avec une seule semaine observee, il
+n'y a pas de courbe : l'ecran le dit, plutot que de tracer une pente qui n'existe pas.
+
+Lisez les **causes** avant la courbe : avec peu de semaines, c'est le chiffre le plus solide de
+l'ecran, et c'est lui qui dit sur quoi travailler. La section « Priorites a recalibrer » ne modifie
+rien : elle signale les demandes marquees haute sans echeance proche, parce qu'une priorite portee
+par tout le monde ne trie plus rien.
+
+C'est cet ecran qui sert au point de fin de periode : la pente entre deux semaines vaut mieux
+qu'une impression.
+
 ### Importer le classeur de suivi
 
 L'ecran **Import du classeur** lit l'onglet « Suivi Quotidien » d'un classeur `SUIVI_MENSUEL` et

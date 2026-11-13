@@ -261,6 +261,13 @@ export const evenements = pgTable(
     filId: text('fil_id'),
     messageId: text('message_id'),
     /**
+     * Lien vers le message dans sa boite d'origine, quand la source le fournit.
+     *
+     * L'identifiant RFC 5322 ne permet pas de construire une adresse Gmail : seul l'identifiant
+     * interne de la boite le permet, et c'est le script de collecte qui le connait.
+     */
+    lienExterne: text('lien_externe'),
+    /**
      * Adresse de l'expediteur. Sert au typage par domaine (une regle peut viser un transitaire
      * connu) et a la proposition de regle apres une correction manuelle.
      */
