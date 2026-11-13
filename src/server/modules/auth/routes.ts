@@ -27,9 +27,18 @@ function poserCookies(res: Response, jeton: string, csrf: string) {
   res.cookie(COOKIE_CSRF, csrf, { ...commun, httpOnly: false });
 }
 
+/**
+ * Limiteur des tentatives de connexion.
+ *
+ * Il ne compte que les **echecs**. Une connexion reussie ne dit rien d'une attaque, alors qu'un
+ * bureau entier derriere une seule adresse publique, ce qui est le cas d'AZMG a Antananarivo,
+ * epuiserait le quota en une matinee de travail normale. Compter les succes ne protegerait rien
+ * et bloquerait l'equipe.
+ */
 const limiteConnexion = rateLimit({
   windowMs: 15 * 60_000,
   limit: config.test ? 1000 : 20,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: { erreur: 'Trop de tentatives, reessayez dans 15 minutes' },

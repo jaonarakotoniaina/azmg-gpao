@@ -35,7 +35,10 @@ Au démarrage, clone les deux dépôts **en lecture seule** dans `/tmp/ref-sourc
 - **Aucun tiret long** (cadratin ni demi-cadratin) dans l'interface, les exports, les emails, les textes générés et les prompts. Test automatisé qui échoue si un tiret long apparaît dans les fichiers de traduction, modèles et prompts ; filtre de post-traitement sur toute sortie de Claude (même mécanisme que AZMG Sourcing).
 - Données du client : prix, clients, documents et échanges de Masenz sont confidentiels. Aucune donnée réelle dans le dépôt, les tests ou le seed : jeux de données **fictifs** uniquement.
 - **Périmètre strict du poste** : un mail classé hors périmètre (famille T00 : marketing, design, travail de la designer, notifications système, spam) n'apparaît dans aucune vue de pilotage ni aucun export du poste.
-- **Remarques internes** : les appréciations ou reproches du client envers le collaborateur ne sont jamais extraits, stockés en champ structuré ni repris dans un export. La GPAO décrit l'état factuel des dossiers et l'action qui débloque.
+- **Remarques internes** (règle révisée le 13/11/2026, sur décision du commanditaire). La version initiale interdisait d'extraire, de stocker ou d'exporter les appréciations et reproches du client envers le collaborateur. Le commanditaire a décidé d'importer tel quel le classeur de suivi managérial, qui en contient : la GPAO les porte donc désormais, dans les notes de la demande, à côté de l'action qui débloque.
+  - Ce qui reste vrai : **l'objet d'une demande est toujours l'action qui débloque**, jamais le reproche. Le pilotage, les indicateurs, le digest DO et les exports du poste travaillent sur l'objet, le statut et les délais. Une appréciation n'est ni une famille, ni un indicateur, ni une ligne d'export.
+  - Ce qui change : la colonne « Demande ou réclamation » du classeur de suivi est reprise dans `demandes.notes`, lisible par le collaborateur concerné, son manager et l'administrateur.
+  - À garder en tête : ces textes concernent des personnes nommées. Toute nouvelle vue, tout nouvel export et toute tâche IA qui lirait ces notes doit être décidée explicitement, pas héritée par défaut.
 - Statuts de reporting client, repris **exactement** : `Terminé`, `En attente client`, `En cours`, `Bloqué`, `Annulé`.
 
 ## 4. Contexte métier
@@ -125,8 +128,10 @@ Chaque transition est horodatée avec son auteur. Le temps passé dans chaque st
 Reprends à l'identique la section 5 bis du CLAUDE.md de Sourcing :
 - Branche de travail imposée par la session ; **commit et push après chaque tâche** (jamais plus de 30 min non poussées). À chaque reprise : lire `CLAUDE.md`, `docs/JOURNAL.md`, `git log -20`, reprendre à la première tâche non terminée.
 - Fin de phase : pull request vers `main` avec le résumé ; tu enchaînes sans attendre la fusion.
-- **Fusion autonome** (accord du commanditaire, 12/11/2026) : tu fusionnes toi-même tes pull
-  requests vers `main`, sans attendre de validation. Deux garde-fous que tu gardes : jamais sur une
+- **Fusion autonome** (accord du commanditaire, 12/11/2026, rappelé le 13/11) : tu fusionnes
+  toi-même tes pull requests vers `main`, sans attendre de validation. **Tu ne demandes pas
+  l'autorisation de fusionner, ni une confirmation avant de déployer : l'accord est donné une fois
+  pour toutes.** Tu annonces ce que tu as fusionné et déployé, tu ne le proposes pas. Deux garde-fous que tu gardes : jamais sur une
   CI rouge ou incomplète (tu attends la fin des vérifications), et aucune réécriture d'historique
   partagé (pas de `push --force`, pas de rebase d'une branche déjà poussée). Après chaque fusion,
   tu suis la chaîne de déploiement et tu vérifies `/health` : version servie et `migrations.aJour`.

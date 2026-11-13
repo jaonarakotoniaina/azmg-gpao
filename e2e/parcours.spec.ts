@@ -12,6 +12,7 @@ import path from 'node:path';
 import { COMPTES, seConnecter } from './outils';
 
 const CLASSEUR = path.resolve(__dirname, '..', 'tests', 'fixtures', 'SUIVI_MENSUEL_FICTIF_07-11.xlsx');
+const SUIVI_DEMANDES = path.resolve(__dirname, '..', 'tests', 'fixtures', 'SUIVI_DEMANDES_FICTIF.xlsx');
 
 test.describe.configure({ mode: 'serial' });
 
@@ -227,6 +228,27 @@ test('l’administrateur importe le classeur fictif, deux fois, sans doublon', a
   await expect(page.getByRole('link', { name: /Zeta Import/ })).toHaveCount(1);
 });
 
+test('l’import du suivi des demandes cree les demandes, deux fois sans doublon', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/import');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+  await page.getByRole('combobox', { name: 'Format du classeur', exact: true }).selectOption('demandes');
+
+  const resultat = page.locator('section#resultat');
+  await page.getByLabel('Classeur .xlsx').setInputFiles(SUIVI_DEMANDES);
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(resultat.locator('div', { hasText: /^Demandes creees6$/ })).toBeVisible({ timeout: 20_000 });
+
+  // Le classeur est tenu a jour chaque jour : le rejouer ne doit rien recreer.
+  await page.getByLabel('Classeur .xlsx').setInputFiles(SUIVI_DEMANDES);
+  await page.getByRole('button', { name: 'Importer', exact: true }).click();
+  await expect(resultat.locator('div', { hasText: /^Demandes creees0$/ })).toBeVisible({ timeout: 20_000 });
+
+  // Les demandes portent l'action qui debloque, et non le sujet.
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Relancer le transitaire et transmettre la cotation' })).toBeVisible();
+});
+
 test('la fiche dossier montre la chronologie et les temps en heures ouvrees', async ({ page }) => {
   await seConnecter(page, COMPTES.collaboratrice);
   await page.goto('/dossiers');
@@ -282,6 +304,25 @@ test('l’export montre les colonnes du classeur et prepare le telechargement', 
   await expect(page.getByRole('columnheader', { name: 'Description (G)' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('columnheader', { name: 'Client ou pays (C)' })).toBeVisible();
   await expect(page.getByText(/structure du classeur n.est pas modifiee/i)).toBeVisible();
+});
+
+test('l’accompagnement met les causes avant la courbe', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/accompagnement');
+  await page.getByRole('combobox', { name: 'Poste suivi', exact: true }).selectOption({ index: 1 });
+
+  // Les causes passent avant la semaine par semaine : avec peu de semaines observees, c'est le
+  // chiffre le plus solide de l'ecran.
+  const causes = page.locator('section#causes');
+  const semaines = page.locator('section#semaines');
+  await expect(causes).toBeVisible({ timeout: 20_000 });
+  await expect(semaines).toBeVisible();
+  const yCauses = (await causes.boundingBox())!.y;
+  const ySemaines = (await semaines.boundingBox())!.y;
+  expect(yCauses).toBeLessThan(ySemaines);
+
+  // Le delai est annonce en heures ouvrees, pas en jours calendaires.
+  await expect(page.getByText('en heures ouvrees').first()).toBeVisible();
 });
 
 test('la qualite tire un echantillon et le propose a la notation', async ({ page }) => {

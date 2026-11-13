@@ -9,6 +9,7 @@ import { enregistrerParametres, lireParametres } from '../../lib/parametres';
 import { perimetreDe, exigerCompte } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { creerCompte, creerPoste, listerComptes, listerPostes, modifierCompte, modifierPoste } from '../comptes/service';
+import { accompagnement, ecartsPriorite } from './accompagnement';
 import { compteSchema, modificationCompteSchema, modificationPosteSchema, posteSchema } from '@shared/validation';
 import { parametresSchema } from '@shared/parametres';
 import { auteurDe } from '../../lib/auteur';
@@ -58,6 +59,28 @@ routesPostes.patch('/:id', exigerRole('admin', 'manager'), async (req, res) => {
   const p = await perimetreDe(req.utilisateur!);
   exigerCompte(p, poste.compteId);
   res.json(await modifierPoste(id, valider(modificationPosteSchema, req.body), auteurDe(req)));
+});
+
+/**
+ * Accompagnement d'un collaborateur : la pente entre deux semaines, pas une photographie.
+ */
+routesPostes.get('/:id/accompagnement', async (req, res) => {
+  const id = idParam(req);
+  const [poste] = await db.select({ compteId: schema.postes.compteId }).from(schema.postes).where(eq(schema.postes.id, id));
+  if (!poste) throw new ErreurHttp(404, 'Poste introuvable');
+  exigerCompte(await perimetreDe(req.utilisateur!), poste.compteId);
+
+  const q = valider(
+    z.object({
+      debut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      fin: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }),
+    req.query,
+  );
+  const fin = q.fin ? new Date(`${q.fin}T23:59:59.999Z`) : new Date();
+  const debut = q.debut ? new Date(`${q.debut}T00:00:00.000Z`) : new Date(fin.getTime() - 28 * 86_400_000);
+  const [bilan, ecarts] = await Promise.all([accompagnement(id, { debut, fin }), ecartsPriorite(id)]);
+  res.json({ ...bilan, ecartsPriorite: ecarts });
 });
 
 export const routesParametres = Router();

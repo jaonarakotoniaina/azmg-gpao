@@ -470,3 +470,103 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   d'effacer sa source d'apres notre reponse, notre reponse doit etre exacte.
 - Retour arriere : `exigerCompteCollecte` dans le service de collecte, appelee par la seule route
   du webhook.
+
+## 2026-11-13 : les remarques du suivi managerial entrent dans la GPAO
+
+- Sujet : le commanditaire veut importer le classeur « Suivi des demandes » tenu par le manager. Il
+  contient des reproches nominatifs envers deux collaboratrices, ce que la regle initiale de la
+  section 3 de CLAUDE.md interdisait de stocker en champ structure.
+- La regle a ete rappelee avant toute ecriture de code, avec trois options : garder les faits et
+  ecarter les jugements, ecarter toute la colonne, ou tout importer.
+- Choix du commanditaire : tout importer tel quel, et ajouter la famille metier que le classeur ne
+  porte pas. CLAUDE.md a ete mis a jour en consequence : le depot doit dire ce que l'application
+  fait reellement, pas ce qu'on aurait prefere.
+- Ce qui a ete conserve de l'esprit de la regle : **l'objet d'une demande est l'action qui
+  debloque**, jamais le reproche. Les indicateurs, le digest et les exports travaillent sur l'objet,
+  le statut et les delais. Le texte du manager va dans `demandes.notes`, pas dans un champ que le
+  pilotage agrege.
+- Garde-fou inscrit dans CLAUDE.md : toute nouvelle vue, tout export et toute tache IA qui lirait
+  ces notes doit etre decidee explicitement, pas heritee par defaut.
+
+## 2026-11-13 : l'import du suivi est rejouable, et la famille est deduite
+
+- Sujet : le classeur de suivi est tenu a jour chaque jour. Un import qui recreerait tout a chaque
+  passage serait inutilisable.
+- Choix : chaque ligne porte une cle stable, enregistree comme `messageId` de l'evenement
+  d'ouverture. La reference Gmail de la ligne est preferee quand elle existe, a defaut une cle
+  construite sur le compte, l'onglet, le jour et le sujet.
+- Effet recherche : la reference Gmail est la meme que celle de la collecte automatique. Une ligne
+  du classeur et le mail qui l'a provoquee ne font donc qu'un seul evenement, et non deux.
+- Au second passage, une ligne connue n'est pas recreee : seuls son statut et sa priorite sont
+  repris du classeur, avec une transition horodatee. Le manager fait foi sur l'avancement.
+- La famille metier n'est pas dans le classeur : elle est deduite par le moteur de regles a partir
+  du sujet, de la demande et de l'action. Sous le seuil de confiance, la demande part dans « A
+  classer » plutot que d'etre rangee au hasard.
+- Retour arriere : `src/server/modules/import/suivi-demandes.ts`, et le format reste au choix dans
+  l'ecran d'import.
+
+## 2026-11-13 : on ne regroupe les dossiers que sur une reference
+
+- Sujet : le suivi du manager separe en plusieurs lignes ce qui est une seule operation. Sans
+  regroupement, la recidive reste invisible, alors que c'est le vrai motif d'exasperation.
+- Tentation : rapprocher les sujets qui partagent un mot. « Irak » apparait dans une legalisation
+  consulaire, un courrier de 300 g et un lead commercial : ce ne sont pas les memes operations.
+- Choix : regrouper sur la **reference d'operation** (BL, AWB, numero de booking, code
+  alphanumerique), qui ne designe qu'une operation. Sur du texte libre, chaque sujet reste son
+  propre dossier.
+- Ce qui remplace le regroupement automatique : `rapprochementsProposes` liste les dossiers qui
+  partagent un mot porteur, sans rien fusionner. La machine propose, un humain tranche.
+- Raison du refus de la fusion automatique : le compteur de recidive sert a decider du maintien
+  d'un collaborateur. Un rapprochement a tort gonfle ce compteur, et le dommage porte sur une
+  personne. Un faux negatif se corrige a la lecture, un faux positif se transmet en silence.
+- Retour arriere : `cleDossierSuivi` et `referenceDuSujet` concentrent la regle.
+
+## 2026-11-13 : la cause reste vide quand rien ne tranche
+
+- Sujet : la cause d'une reprise, en liste fermee, demandee par le commanditaire pour transformer
+  le releve en plan d'accompagnement.
+- Choix : la deduction par mots-cles est deliberement conservatrice. Sans indice clair, la cause
+  reste vide et se renseigne a la main.
+- Raison : une cause fausse vaut moins que pas de cause. C'est elle qui dit sur quoi travailler, et
+  une cause mal posee envoie l'accompagnement dans la mauvaise direction, avec l'autorite d'un
+  chiffre.
+- La recidive se compte sur le dossier **ou** la cause. Le commanditaire a releve, a juste titre,
+  que la seconde est la plus utile : « six fois un classement non fait » se corrige, « quatre fois
+  Tripoli » se constate.
+- Retour arriere : `INDICES_CAUSE` dans `suivi-demandes.ts`, et la cause reste modifiable.
+
+## 2026-11-13 : les delais d'accompagnement sont en heures ouvrees
+
+- Sujet : le reproche qui revient le plus est la lenteur. Le mesurer en jours calendaires melerait
+  les week-ends et les feries espagnols au temps de travail reel.
+- Choix : le delai de cloture est compte en heures ouvrees du client, comme tous les autres delais
+  de la GPAO. Un dossier ouvert vendredi 9 h et clos lundi 9 h compte 9 heures, pas 72.
+- Raison : la mesure servira a un bilan avec le client sur le maintien de deux collaboratrices.
+  Elle doit etre defendable des deux cotes de la table.
+
+## 2026-11-13 : la priorite conseillee ignore l'echeance SLA
+
+- Sujet : recalibrer les priorites selon la regle du commanditaire (sous 24 heures ou tiers
+  bloque, travail de la semaine, forme et procedure).
+- Premiere version, fausse : elle prenait l'echeance metier **ou**, a defaut, la cible SLA. Or la
+  cible SLA est a quelques heures des la creation d'une demande. Toute demande neuve devenait donc
+  prioritaire, c'est-a-dire exactement l'inflation qu'on cherchait a corriger. Un test l'a montre.
+- Choix : l'echeance **metier** seulement. La cible SLA reste mesuree ailleurs, dans le compteur
+  des prioritaires en retard.
+- La regle conseille, elle n'applique pas : la priorite declaree n'est jamais modifiee, les ecarts
+  sont listes, et un humain tranche ligne par ligne. Une priorite « critique » posee a la main
+  n'est pas discutee.
+- Retour arriere : `prioriteConseillee` dans `pilotage/accompagnement.ts`.
+
+## 2026-11-13 : le limiteur de connexion ne compte que les echecs
+
+- Sujet : le jeu de parcours s'est mis a echouer sur « Trop de tentatives » apres l'ajout de deux
+  parcours. Le limiteur acceptait 20 connexions par quart d'heure et par adresse.
+- Ce que le test a revele, au-dela de lui-meme : AZMG travaille depuis un bureau a Antananarivo,
+  derriere une seule adresse publique. Vingt connexions par quart d'heure pour toute l'equipe,
+  c'est une matinee de travail normale, et le blocage serait tombe sur des gens qui travaillent.
+- Choix : `skipSuccessfulRequests`. Le quota ne compte que les echecs, ce qui est le signal d'une
+  attaque par force brute. Une connexion reussie ne dit rien d'une attaque.
+- Ce qui ne change pas : vingt echecs par quart d'heure restent refuses, et la reponse ne revele
+  toujours pas si l'adresse existe.
+- Retour arriere : l'option se retire dans `modules/auth/routes.ts`.

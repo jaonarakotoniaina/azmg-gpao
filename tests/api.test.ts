@@ -71,6 +71,15 @@ describe('authentification', () => {
     await request(app).get('/api/auth/moi').set('Cookie', session.cookies).expect(401);
   });
 
+  it('ne compte pas les connexions reussies dans la limite de tentatives', async () => {
+    // Un bureau entier derriere une seule adresse publique epuiserait le quota en une matinee.
+    // Le limiteur protege contre la force brute, qui se lit dans les echecs, pas dans les succes.
+    for (let i = 0; i < 3; i++) {
+      const r = await request(app).post('/api/auth/connexion').send({ email: 'ceo@azmg-solutions.com', motDePasse: MOT_DE_PASSE }).expect(200);
+      expect(r.body.utilisateur.email).toBe('ceo@azmg-solutions.com');
+    }
+  });
+
   it('ne revele pas si une adresse existe lors d’une demande de reinitialisation', async () => {
     const a = await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: 'ceo@azmg-solutions.com' }).expect(200);
     const b = await request(app).post('/api/auth/mot-de-passe-oublie').send({ email: 'personne@exemple.test' }).expect(200);

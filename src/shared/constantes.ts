@@ -229,6 +229,32 @@ export const LIBELLES_SOURCES: Record<Source, string> = {
   import: 'import',
 };
 
+/**
+ * Causes d'une reprise, en liste fermee.
+ *
+ * C'est ce qui transforme un releve en plan d'accompagnement : le compte des reclamations dit
+ * combien, la cause dit sur quoi travailler. La liste est fermee pour que le compte ait un sens,
+ * et volontairement courte pour rester renseignable en deux secondes.
+ */
+export const CAUSES = [
+  'delai_reponse',
+  'procedure_non_suivie',
+  'erreur_document',
+  'classement_tracabilite',
+  'qualite_livrable',
+  'manque_autonomie',
+] as const;
+export type Cause = (typeof CAUSES)[number];
+
+export const LIBELLES_CAUSES: Record<Cause, string> = {
+  delai_reponse: 'Delai de reponse',
+  procedure_non_suivie: 'Procedure non suivie',
+  erreur_document: 'Erreur de document',
+  classement_tracabilite: 'Classement et tracabilite',
+  qualite_livrable: 'Qualite du livrable',
+  manque_autonomie: 'Manque d’autonomie',
+};
+
 export const PRIORITES = ['basse', 'normale', 'haute', 'critique'] as const;
 export type Priorite = (typeof PRIORITES)[number];
 

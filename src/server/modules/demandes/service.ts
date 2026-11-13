@@ -23,6 +23,7 @@ import {
   POIDS_PRIORITES,
   STATUTS_OUVERTS,
   type Acteur,
+  type Cause,
   type Priorite,
   type Source,
   type Statut,
@@ -51,6 +52,10 @@ export interface EntreeCreationDemande {
   statut?: Statut;
   echeanceLe?: Date | null;
   notes?: string | null;
+  /** Vrai quand la demande vient d'un manquement et non d'un travail ordinaire. */
+  reprise?: boolean;
+  /** Cause de la reprise, en liste fermee. Vide tant que personne ne l'a tranchee. */
+  cause?: Cause | null;
   /** Instant d'ouverture : la date du message d'origine, pas celle de la saisie. */
   ouverteLe?: Date;
 }
@@ -92,6 +97,8 @@ export async function creerDemande(entree: EntreeCreationDemande, auteur: Auteur
       statut,
       acteurAttendu: def.acteur,
       priorite: entree.priorite ?? 'normale',
+      reprise: entree.reprise ?? false,
+      cause: entree.cause ?? null,
       echeanceLe: entree.echeanceLe ?? null,
       slaHeures: sla.heures,
       slaEcheanceLe: sla.echeance,
