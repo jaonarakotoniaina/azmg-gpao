@@ -35,7 +35,10 @@ Au démarrage, clone les deux dépôts **en lecture seule** dans `/tmp/ref-sourc
 - **Aucun tiret long** (cadratin ni demi-cadratin) dans l'interface, les exports, les emails, les textes générés et les prompts. Test automatisé qui échoue si un tiret long apparaît dans les fichiers de traduction, modèles et prompts ; filtre de post-traitement sur toute sortie de Claude (même mécanisme que AZMG Sourcing).
 - Données du client : prix, clients, documents et échanges de Masenz sont confidentiels. Aucune donnée réelle dans le dépôt, les tests ou le seed : jeux de données **fictifs** uniquement.
 - **Périmètre strict du poste** : un mail classé hors périmètre (famille T00 : marketing, design, travail de la designer, notifications système, spam) n'apparaît dans aucune vue de pilotage ni aucun export du poste.
-- **Remarques internes** : les appréciations ou reproches du client envers le collaborateur ne sont jamais extraits, stockés en champ structuré ni repris dans un export. La GPAO décrit l'état factuel des dossiers et l'action qui débloque.
+- **Remarques internes** (règle révisée le 13/11/2026, sur décision du commanditaire). La version initiale interdisait d'extraire, de stocker ou d'exporter les appréciations et reproches du client envers le collaborateur. Le commanditaire a décidé d'importer tel quel le classeur de suivi managérial, qui en contient : la GPAO les porte donc désormais, dans les notes de la demande, à côté de l'action qui débloque.
+  - Ce qui reste vrai : **l'objet d'une demande est toujours l'action qui débloque**, jamais le reproche. Le pilotage, les indicateurs, le digest DO et les exports du poste travaillent sur l'objet, le statut et les délais. Une appréciation n'est ni une famille, ni un indicateur, ni une ligne d'export.
+  - Ce qui change : la colonne « Demande ou réclamation » du classeur de suivi est reprise dans `demandes.notes`, lisible par le collaborateur concerné, son manager et l'administrateur.
+  - À garder en tête : ces textes concernent des personnes nommées. Toute nouvelle vue, tout nouvel export et toute tâche IA qui lirait ces notes doit être décidée explicitement, pas héritée par défaut.
 - Statuts de reporting client, repris **exactement** : `Terminé`, `En attente client`, `En cours`, `Bloqué`, `Annulé`.
 
 ## 4. Contexte métier

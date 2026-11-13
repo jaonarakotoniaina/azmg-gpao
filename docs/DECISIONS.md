@@ -470,3 +470,37 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   d'effacer sa source d'apres notre reponse, notre reponse doit etre exacte.
 - Retour arriere : `exigerCompteCollecte` dans le service de collecte, appelee par la seule route
   du webhook.
+
+## 2026-11-13 : les remarques du suivi managerial entrent dans la GPAO
+
+- Sujet : le commanditaire veut importer le classeur « Suivi des demandes » tenu par le manager. Il
+  contient des reproches nominatifs envers deux collaboratrices, ce que la regle initiale de la
+  section 3 de CLAUDE.md interdisait de stocker en champ structure.
+- La regle a ete rappelee avant toute ecriture de code, avec trois options : garder les faits et
+  ecarter les jugements, ecarter toute la colonne, ou tout importer.
+- Choix du commanditaire : tout importer tel quel, et ajouter la famille metier que le classeur ne
+  porte pas. CLAUDE.md a ete mis a jour en consequence : le depot doit dire ce que l'application
+  fait reellement, pas ce qu'on aurait prefere.
+- Ce qui a ete conserve de l'esprit de la regle : **l'objet d'une demande est l'action qui
+  debloque**, jamais le reproche. Les indicateurs, le digest et les exports travaillent sur l'objet,
+  le statut et les delais. Le texte du manager va dans `demandes.notes`, pas dans un champ que le
+  pilotage agrege.
+- Garde-fou inscrit dans CLAUDE.md : toute nouvelle vue, tout export et toute tache IA qui lirait
+  ces notes doit etre decidee explicitement, pas heritee par defaut.
+
+## 2026-11-13 : l'import du suivi est rejouable, et la famille est deduite
+
+- Sujet : le classeur de suivi est tenu a jour chaque jour. Un import qui recreerait tout a chaque
+  passage serait inutilisable.
+- Choix : chaque ligne porte une cle stable, enregistree comme `messageId` de l'evenement
+  d'ouverture. La reference Gmail de la ligne est preferee quand elle existe, a defaut une cle
+  construite sur le compte, l'onglet, le jour et le sujet.
+- Effet recherche : la reference Gmail est la meme que celle de la collecte automatique. Une ligne
+  du classeur et le mail qui l'a provoquee ne font donc qu'un seul evenement, et non deux.
+- Au second passage, une ligne connue n'est pas recreee : seuls son statut et sa priorite sont
+  repris du classeur, avec une transition horodatee. Le manager fait foi sur l'avancement.
+- La famille metier n'est pas dans le classeur : elle est deduite par le moteur de regles a partir
+  du sujet, de la demande et de l'action. Sous le seuil de confiance, la demande part dans « A
+  classer » plutot que d'etre rangee au hasard.
+- Retour arriere : `src/server/modules/import/suivi-demandes.ts`, et le format reste au choix dans
+  l'ecran d'import.

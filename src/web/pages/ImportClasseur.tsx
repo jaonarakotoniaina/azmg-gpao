@@ -20,6 +20,18 @@ interface Bilan {
   anomalies: { ligne: number; raison: string }[];
 }
 
+interface BilanSuivi {
+  lignesLues: number;
+  lignesIgnorees: number;
+  demandesCreees: number;
+  demandesMisesAJour: number;
+  dossiersCrees: number;
+  aClasser: number;
+  anomalies: { onglet: string; ligne: number; raison: string }[];
+}
+
+type Format = 'mensuel' | 'demandes';
+
 interface ImportPasse {
   id: number;
   nomFichier: string;
@@ -35,7 +47,9 @@ export default function ImportClasseur() {
   const champFichier = useRef<HTMLInputElement>(null);
   const [compteId, setCompteId] = useState('');
   const [fichier, setFichier] = useState<File | null>(null);
+  const [format, setFormat] = useState<Format>('mensuel');
   const [resultat, setResultat] = useState<{ bilan: Bilan; dossiers: { id: number; libelle: string; resume: string | null }[] } | null>(null);
+  const [resultatSuivi, setResultatSuivi] = useState<BilanSuivi | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
   const { data: comptes } = useQuery({ queryKey: ['comptes'], queryFn: () => api.get<Compte[]>('/api/comptes') });
@@ -50,6 +64,11 @@ export default function ImportClasseur() {
     enabled: Boolean(compteId),
   });
 
+  function viderChamp() {
+    setFichier(null);
+    if (champFichier.current) champFichier.current.value = '';
+  }
+
   const importer = useMutation({
     mutationFn: () => {
       const corps = new FormData();
@@ -59,8 +78,8 @@ export default function ImportClasseur() {
     },
     onSuccess: (r) => {
       setResultat(r);
-      setFichier(null);
-      if (champFichier.current) champFichier.current.value = '';
+      setResultatSuivi(null);
+      viderChamp();
       notifier(`${r.bilan.dossiersCrees} dossier(s) cree(s), ${r.bilan.dossiersMisAJour} mis a jour`);
       client.invalidateQueries({ queryKey: ['imports'] });
       client.invalidateQueries({ queryKey: ['dossiers'] });
@@ -68,11 +87,33 @@ export default function ImportClasseur() {
     onError: (e) => setErreur(messageErreur(e)),
   });
 
+  const importerSuivi = useMutation({
+    mutationFn: () => {
+      const corps = new FormData();
+      corps.append('fichier', fichier!);
+      corps.append('compteId', compteId);
+      return api.post<{ bilan: BilanSuivi }>('/api/import/suivi-demandes', corps);
+    },
+    onSuccess: (r) => {
+      setResultatSuivi(r.bilan);
+      setResultat(null);
+      viderChamp();
+      notifier(`${r.bilan.demandesCreees} demande(s) creee(s), ${r.bilan.demandesMisesAJour} mise(s) a jour`);
+      client.invalidateQueries({ queryKey: ['imports'] });
+      client.invalidateQueries({ queryKey: ['dossiers'] });
+      client.invalidateQueries({ queryKey: ['file-du-jour'] });
+      client.invalidateQueries({ queryKey: ['a-classer'] });
+    },
+    onError: (e) => setErreur(messageErreur(e)),
+  });
+
+  const enCours = importer.isPending || importerSuivi.isPending;
+
   return (
     <>
       <EntetePage
         titre="Import du classeur de suivi"
-        description="Lit l’onglet « Suivi Quotidien » d’un classeur SUIVI_MENSUEL : client (colonne C), produit (F) et dernier statut connu, extrait de la fin de la description (G). L’import ne cree pas de demandes et peut etre relance sans creer de doublon."
+        description="Deux formats de classeur, au choix. Les deux peuvent etre relances sans creer de doublon."
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -86,6 +127,22 @@ export default function ImportClasseur() {
                   {c.nom}
                 </option>
               ))}
+            </ChampSelect>
+            <ChampSelect
+              libelle="Format du classeur"
+              value={format}
+              onChange={(e) => {
+                setErreur(null);
+                setFormat(e.target.value as Format);
+              }}
+              aide={
+                format === 'mensuel'
+                  ? 'Onglet « Suivi Quotidien » : client, produit et dernier statut connu. Cree des dossiers, pas de demandes.'
+                  : 'Un onglet par poste, en-tete « Date » en colonne A et « Action attendue » en H. Cree une demande par ligne, avec sa priorite, son statut et sa famille deduite du contenu.'
+              }
+            >
+              <option value="mensuel">Suivi mensuel (SUIVI_MENSUEL)</option>
+              <option value="demandes">Suivi des demandes (un onglet par poste)</option>
             </ChampSelect>
             <div>
               <label htmlFor="fichier" className="etiquette">
@@ -104,14 +161,46 @@ export default function ImportClasseur() {
               />
               <span className="aide">Le classeur n&rsquo;est pas conserve : seul le bilan de l&rsquo;import est enregistre.</span>
             </div>
-            <Bouton variante="plein" disabled={!fichier || !compteId} chargement={importer.isPending} onClick={() => importer.mutate()}>
+            <Bouton
+              variante="plein"
+              disabled={!fichier || !compteId}
+              chargement={enCours}
+              onClick={() => (format === 'mensuel' ? importer.mutate() : importerSuivi.mutate())}
+            >
               Importer
             </Bouton>
           </div>
         </Carte>
 
         <Carte titre="Resultat du dernier import" id="resultat">
-          {!resultat ? (
+          {resultatSuivi ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Indicateur libelle="Lignes lues" valeur={resultatSuivi.lignesLues} />
+                <Indicateur libelle="Demandes creees" valeur={resultatSuivi.demandesCreees} />
+                <Indicateur libelle="Demandes mises a jour" valeur={resultatSuivi.demandesMisesAJour} />
+                <Indicateur libelle="Dossiers crees" valeur={resultatSuivi.dossiersCrees} />
+              </div>
+              {resultatSuivi.aClasser > 0 && (
+                <p className="text-sm text-texte-doux">
+                  {resultatSuivi.aClasser} demande(s) dont la famille n&rsquo;a pas pu etre deduite avec assez de certitude :{' '}
+                  <Link to="/a-classer">a classer a la main</Link>.
+                </p>
+              )}
+              {resultatSuivi.anomalies.length > 0 && (
+                <Alerte ton="ambre">
+                  <p className="font-medium">Lignes ecartees</p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {resultatSuivi.anomalies.map((a) => (
+                      <li key={`${a.onglet}-${a.ligne}`}>
+                        {a.onglet}, ligne {a.ligne} : {a.raison}
+                      </li>
+                    ))}
+                  </ul>
+                </Alerte>
+              )}
+            </div>
+          ) : !resultat ? (
             <Vide>Aucun import lance dans cette session.</Vide>
           ) : (
             <div className="space-y-4">

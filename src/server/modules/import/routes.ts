@@ -10,6 +10,7 @@ import { auteurDe } from '../../lib/auteur';
 import { exigerCompte, perimetreDe } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { importerClasseur } from './service';
+import { importerSuiviDemandes } from './suivi-demandes';
 
 const TYPES_ACCEPTES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -46,6 +47,24 @@ routesImport.post('/classeur', exigerRole('admin', 'manager'), envoi.single('fic
     auteurDe(req),
   );
   res.status(201).json({ bilan, dossiers: dossiers.map((x) => ({ id: x.id, libelle: x.libelle, statut: x.statut, resume: x.resume })) });
+});
+
+/**
+ * Import du classeur « Suivi des demandes » tenu par le manager.
+ *
+ * Rejouable : le classeur est tenu a jour chaque jour, et le rejouer ne recree rien. Les lignes
+ * deja connues voient seulement leur statut et leur priorite repris du classeur.
+ */
+routesImport.post('/suivi-demandes', exigerRole('admin', 'manager'), envoi.single('fichier'), async (req, res) => {
+  if (!req.file) throw new ErreurHttp(400, 'Aucun classeur recu (champ « fichier » attendu)');
+  const d = valider(z.object({ compteId: z.coerce.number().int().positive() }), req.body);
+  exigerCompte(await perimetreDe(req.utilisateur!), d.compteId);
+  const bilan = await importerSuiviDemandes(
+    req.file.buffer,
+    { compteId: d.compteId, nomFichier: req.file.originalname },
+    auteurDe(req),
+  );
+  res.status(201).json({ bilan });
 });
 
 /** Historique des imports d'un compte. */
