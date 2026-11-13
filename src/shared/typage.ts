@@ -77,6 +77,49 @@ export function normaliserTypage(texte: string): string {
     .trim();
 }
 
+/**
+ * Parties locales d'adresse qui disent qu'une machine a ecrit, et qu'on ne peut pas lui repondre.
+ *
+ * La liste est volontairement courte et sans ambiguite. Un expediteur comme `notification@` ou
+ * `tracking@` en est absent exprès : un avis de transporteur est un vrai signal sur un dossier
+ * reel, et le classer hors perimetre cacherait du travail. Mieux vaut laisser passer du bruit que
+ * faire disparaitre une demande.
+ */
+const PARTIES_AUTOMATIQUES = [
+  'no-reply',
+  'noreply',
+  'no_reply',
+  'noreplay',
+  'noresponder',
+  'no-responder',
+  'donotreply',
+  'do-not-reply',
+  'do_not_reply',
+  'nepasrepondre',
+  'ne-pas-repondre',
+  'mailer-daemon',
+  'maildaemon',
+  'postmaster',
+  'bounce',
+  'bounces',
+];
+
+/**
+ * Vrai quand l'adresse est celle d'un automate qui n'attend pas de reponse.
+ *
+ * Ce signal est structurel, pas metier : une boite a laquelle on ne peut pas repondre n'emet pas
+ * une demande de travail. Il vaut pour tous les comptes clients et ne se parametre pas, a la
+ * difference d'une regle de domaine, qui elle est propre a un compte et se saisit dans Parametres.
+ */
+export function estExpediteurAutomatique(adresse: string | null | undefined): boolean {
+  if (!adresse) return false;
+  const partieLocale = adresse.trim().toLowerCase().split('@')[0];
+  if (!partieLocale) return false;
+  // La comparaison ignore les separateurs : « no.reply » et « no-reply » sont la meme chose.
+  const nue = partieLocale.replace(/[._-]/g, '');
+  return PARTIES_AUTOMATIQUES.some((p) => nue === p.replace(/[._-]/g, '') || nue.startsWith(`${p.replace(/[._-]/g, '')}`));
+}
+
 /** Domaine d'une adresse email, en minuscules. Renvoie null si l'entree n'en contient pas. */
 export function domaineDe(adresse: string | null | undefined): string | null {
   if (!adresse) return null;
