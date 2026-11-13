@@ -59,6 +59,36 @@ export const FAMILLES: readonly Famille[] = [
   { code: 'D03', libelle: 'Catalogue, fiches produits et contenus marketing', validation: 'la DO pour les textes et les prix', tempsStandardMinutes: 40, slaHeures: 24 },
 ] as const;
 
+/**
+ * Action qui debloque, par famille : la formulation de repli quand le message ne porte aucune
+ * phrase de demande reconnaissable.
+ *
+ * Elle ne devine rien du cas particulier : elle dit le travail que la famille designe, au niveau
+ * ou le referentiel le connait. C'est la difference entre une colonne qui ne dit rien (« Re:
+ * facture LAM ») et une colonne qui dit quoi faire (« Etablir ou corriger la facture ou la
+ * proforma : Re: facture LAM »). L'IA, quand la routine tourne, remplace cette phrase par
+ * l'action reelle lue dans le message.
+ */
+export const ACTIONS_PAR_FAMILLE: Record<string, string> = {
+  T01: 'Obtenir ou relancer la cotation fret',
+  T02: "Preparer l'enlevement et les documents d'expedition",
+  T03: 'Etablir ou corriger la facture ou la proforma',
+  T04: 'Relancer le client sur le paiement ou les pieces manquantes',
+  T05: 'Avancer le dossier reglementaire',
+  T06: 'Mettre a jour le tableau de situation',
+  T07: 'Traiter le COA, le BAT ou les etiquettes',
+  T08: "Repondre au lead ou mettre a jour l'offre",
+  T09: 'Produire le reporting quotidien',
+  T10: 'Encadrer le stagiaire',
+  T11: 'Preparer le salon',
+  T12: 'Preparer le courrier a signer',
+  T13: "Transmettre a la donneuse d'ordre pour decision",
+  T14: 'Suivre le tracking ou les surestaries',
+  D01: 'Preparer la publication et la faire valider',
+  D02: 'Produire le visuel ou le support et le faire valider',
+  D03: 'Mettre a jour le catalogue ou la fiche produit',
+};
+
 /** Familles de chaque metier, pour pre-remplir le perimetre d'un poste a sa creation. */
 export const FAMILLES_PAR_METIER = {
   export: ['T01', 'T02', 'T03', 'T04', 'T05', 'T06', 'T07', 'T08', 'T09', 'T10', 'T11', 'T12', 'T13', 'T14'],
