@@ -16,7 +16,14 @@ import { journal, messageErreur } from '../lib/journal';
 import { sha256 } from '../lib/securite';
 import { nettoyerProfondement } from '@shared/tirets';
 
-export type TypeTacheIa = 'typer_evenement' | 'extraire_elements' | 'resumer_dossier' | 'rediger_relance' | 'rediger_digest_validation' | 'rediger_daily';
+export type TypeTacheIa =
+  | 'typer_evenement'
+  | 'synthetiser_demande'
+  | 'extraire_elements'
+  | 'resumer_dossier'
+  | 'rediger_relance'
+  | 'rediger_digest_validation'
+  | 'rediger_daily';
 
 export interface DemandeIa<E = Record<string, unknown>> {
   type: TypeTacheIa;

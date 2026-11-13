@@ -476,6 +476,86 @@ describe('adresses du compte a ne pas suivre', () => {
   });
 });
 
+/**
+ * Synthese manageriale : ce qui rend le classeur de suivi inutile.
+ *
+ * Les colonnes que le manager remplissait a la main (action attendue, type, priorite, cause) se
+ * deduisent du message lui-meme, au fil de la collecte.
+ */
+describe('synthese des demandes recues', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    await db
+      .update(schema.comptesClients)
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  async function recevoir(objet: string, corps: string) {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: `<s${objet.replace(/\W/g, '')}@exemple-fictif.test>`,
+        de: 'export@client-fictif.test',
+        a: 'info@client-fictif.test',
+        objet,
+        corps,
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    return enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+  }
+
+  it('remplit l’action attendue, le type et la priorite sans classeur', async () => {
+    const bilan = await recevoir(
+      'Proforma a etablir',
+      'Pourriez vous nous etablir la proforma en dollars pour cette commande ?',
+    );
+    expect(bilan.synthetisees).toBe(1);
+
+    const [demande] = await db.select().from(schema.demandes);
+    const suivi = demande.suivi as Record<string, unknown>;
+    expect(suivi.action).toBe(demande.objet);
+    expect(suivi.type).toBe('demande');
+    expect(suivi.origine).toBe('synthese_ia');
+  });
+
+  it('reconnait une reprise et lui donne une cause', async () => {
+    // Le message doit appeler un travail pour ouvrir une demande : une remarque seule n'en cree
+    // aucune, et il n'y a alors rien a synthetiser.
+    await recevoir(
+      'Proforma a refaire',
+      'Pourriez vous refaire la proforma ? Elle comporte une erreur, cela a deja ete signale plusieurs fois.',
+    );
+    const [demande] = await db.select().from(schema.demandes);
+    expect(demande.reprise).toBe(true);
+    expect(demande.cause).not.toBeNull();
+    expect((demande.suivi as Record<string, unknown>).type).toBe('reclamation');
+  });
+
+  it('ne synthetise pas ce que le poste envoie', async () => {
+    const message = await analyserMessage(
+      mailBrut({
+        messageId: '<sortant@exemple-fictif.test>',
+        de: 'info@client-fictif.test',
+        a: 'client@alpha-fictif.test',
+        objet: 'Documents d’expedition',
+        corps: 'Veuillez trouver ci-joint le BL et la packing list.',
+        date: 'Mon, 02 Mar 2026 09:00:00 +0100',
+      }),
+    );
+    const bilan = await enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+    expect(bilan.synthetisees).toBe(0);
+  });
+
+  it('garde la trace de ce qui a ete synthetise, pour qu’on puisse le relire', async () => {
+    await recevoir('Cotation aerien a demander', 'Pourriez vous demander une cotation aerienne pour 180 kg ?');
+    const [demande] = await db.select().from(schema.demandes);
+    const suivi = demande.suivi as Record<string, unknown>;
+    expect(typeof suivi.confiance).toBe('number');
+    expect(Array.isArray(suivi.justificatifs)).toBe(true);
+  });
+});
+
 describe('decoupage d’un fichier mbox', () => {
   it('separe les messages sur les lignes « From »', () => {
     const mbox = Buffer.from(
