@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, PenLine, TrendingUp, FileSpreadsheet, Inbox, Mails } from 'lucide-react';
+import { ListTodo, Zap, FolderOpen, CalendarClock, Upload, Settings, Menu, LogOut, LayoutDashboard, ClipboardCheck, MailCheck, PenLine, TrendingUp, Table, FileSpreadsheet, Inbox, Mails } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
@@ -36,6 +36,7 @@ export function Layout() {
     { vers: '/tableau-de-bord', libelle: 'Tableau de bord', icone: <LayoutDashboard className="h-4 w-4" aria-hidden /> },
     { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
     { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden /> },
+    { vers: '/suivi', libelle: 'Suivi des demandes', icone: <Table className="h-4 w-4" aria-hidden /> },
     { vers: '/a-classer', libelle: 'A classer', icone: <Inbox className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'], compteur: aClasser?.length },
     { vers: '/echeancier', libelle: 'Echeancier', icone: <CalendarClock className="h-4 w-4" aria-hidden /> },
     { vers: '/digest', libelle: 'Digest de validation', icone: <MailCheck className="h-4 w-4" aria-hidden /> },

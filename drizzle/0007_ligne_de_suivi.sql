@@ -1,0 +1,1 @@
+ALTER TABLE "demandes" ADD COLUMN "suivi" jsonb DEFAULT '{}'::jsonb NOT NULL;

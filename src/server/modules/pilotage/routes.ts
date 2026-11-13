@@ -10,10 +10,11 @@ import { perimetreDe, exigerCompte } from '../../lib/perimetre';
 import { exigerConnexion, exigerRole } from '../auth/middleware';
 import { creerCompte, creerPoste, listerComptes, listerPostes, modifierCompte, modifierPoste } from '../comptes/service';
 import { accompagnement, ecartsPriorite } from './accompagnement';
+import { suiviDesDemandes } from './suivi';
 import { compteSchema, modificationCompteSchema, modificationPosteSchema, posteSchema } from '@shared/validation';
 import { parametresSchema } from '@shared/parametres';
 import { auteurDe } from '../../lib/auteur';
-import { FAMILLES, DEFINITIONS_NATURES, DEFINITIONS_STATUTS, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS } from '@shared/constantes';
+import { FAMILLES, DEFINITIONS_NATURES, DEFINITIONS_STATUTS, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS } from '@shared/constantes';
 
 export const routesComptes = Router();
 routesComptes.use(exigerConnexion);
@@ -81,6 +82,24 @@ routesPostes.get('/:id/accompagnement', async (req, res) => {
   const debut = q.debut ? new Date(`${q.debut}T00:00:00.000Z`) : new Date(fin.getTime() - 28 * 86_400_000);
   const [bilan, ecarts] = await Promise.all([accompagnement(id, { debut, fin }), ecartsPriorite(id)]);
   res.json({ ...bilan, ecartsPriorite: ecarts });
+});
+
+/**
+ * Le tableau de suivi, rendu par la GPAO : une ligne par demande, les colonnes du classeur, et
+ * les colonnes calculees qui manquaient au classeur.
+ */
+routesComptes.get('/:id/suivi', async (req, res) => {
+  const compteId = idParam(req);
+  exigerCompte(await perimetreDe(req.utilisateur!), compteId);
+  const q = valider(
+    z.object({
+      posteId: z.coerce.number().int().positive().optional(),
+      statut: z.enum(STATUTS).optional(),
+      reprisesSeules: z.coerce.boolean().optional(),
+    }),
+    req.query,
+  );
+  res.json(await suiviDesDemandes({ compteId, ...q }));
 });
 
 export const routesParametres = Router();

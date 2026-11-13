@@ -291,6 +291,24 @@ export async function importerSuiviDemandes(
       if (connu?.demandeId) {
         // Ligne deja importee : seul l'avancement peut avoir bouge.
         const [demande] = await db.select().from(schema.demandes).where(eq(schema.demandes.id, connu.demandeId));
+        if (demande) {
+          await db
+            .update(schema.demandes)
+            .set({
+              suivi: {
+                type: ligne.type,
+                demande: ligne.demande,
+                commentaire: ligne.commentaire,
+                statutClasseur: ligne.statutClasseur,
+                lienMail: ligne.lienMail,
+                refMail: ligne.refMail,
+                responsable: ligne.responsable,
+                onglet: ligne.onglet,
+                heure: ligne.heure,
+              },
+            })
+            .where(eq(schema.demandes.id, demande.id));
+        }
         if (demande && (demande.statut !== ligne.statut || demande.priorite !== ligne.priorite)) {
           if (demande.priorite !== ligne.priorite) {
             await db.update(schema.demandes).set({ priorite: ligne.priorite, majLe: new Date() }).where(eq(schema.demandes.id, demande.id));
@@ -335,6 +353,19 @@ export async function importerSuiviDemandes(
           priorite: ligne.priorite,
           reprise: estReprise(ligne.type),
           cause: estReprise(ligne.type) ? causeDeLigne(ligne) : null,
+          // La ligne d'origine est conservee colonne par colonne : un tableau a besoin de champs
+          // separes, que relire les notes ne redonnerait pas de facon fiable.
+          suivi: {
+            type: ligne.type,
+            demande: ligne.demande,
+            commentaire: ligne.commentaire,
+            statutClasseur: ligne.statutClasseur,
+            lienMail: ligne.lienMail,
+            refMail: ligne.refMail,
+            responsable: ligne.responsable,
+            onglet: ligne.onglet,
+            heure: ligne.heure,
+          },
           ouverteLe: instantLigne(ligne),
           notes: [
             ligne.demande && `Demande de la donneuse d’ordre : ${ligne.demande}`,

@@ -56,6 +56,8 @@ export interface EntreeCreationDemande {
   reprise?: boolean;
   /** Cause de la reprise, en liste fermee. Vide tant que personne ne l'a tranchee. */
   cause?: Cause | null;
+  /** Ligne d'origine du classeur de suivi, conservee colonne par colonne. */
+  suivi?: Record<string, unknown>;
   /** Instant d'ouverture : la date du message d'origine, pas celle de la saisie. */
   ouverteLe?: Date;
 }
@@ -99,6 +101,7 @@ export async function creerDemande(entree: EntreeCreationDemande, auteur: Auteur
       priorite: entree.priorite ?? 'normale',
       reprise: entree.reprise ?? false,
       cause: entree.cause ?? null,
+      suivi: entree.suivi ?? {},
       echeanceLe: entree.echeanceLe ?? null,
       slaHeures: sla.heures,
       slaEcheanceLe: sla.echeance,
