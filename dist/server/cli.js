@@ -262,6 +262,13 @@ var init_schema = __esm({
         filId: (0, import_pg_core.text)("fil_id"),
         messageId: (0, import_pg_core.text)("message_id"),
         /**
+         * Lien vers le message dans sa boite d'origine, quand la source le fournit.
+         *
+         * L'identifiant RFC 5322 ne permet pas de construire une adresse Gmail : seul l'identifiant
+         * interne de la boite le permet, et c'est le script de collecte qui le connait.
+         */
+        lienExterne: (0, import_pg_core.text)("lien_externe"),
+        /**
          * Adresse de l'expediteur. Sert au typage par domaine (une regle peut viser un transitaire
          * connu) et a la proposition de regle apres une correction manuelle.
          */
@@ -2323,6 +2330,17 @@ var init_service4 = __esm({
   }
 });
 
+// src/server/adapters/collecte-mail.ts
+var import_mailparser;
+var init_collecte_mail = __esm({
+  "src/server/adapters/collecte-mail.ts"() {
+    "use strict";
+    import_mailparser = require("mailparser");
+    init_config();
+    init_journal();
+  }
+});
+
 // src/server/modules/dossiers/service.ts
 function libelleParDefaut(e) {
   const tete = e.pays ? `${e.client} (${e.pays})` : e.client;
@@ -2375,6 +2393,7 @@ var init_service5 = __esm({
     "use strict";
     import_drizzle_orm8 = require("drizzle-orm");
     init_client();
+    init_collecte_mail();
     init_http();
     init_evenements();
     init_texte();
@@ -2608,6 +2627,7 @@ async function ajouterEvenement(entree, auteur, opts = {}) {
     source: entree.source,
     filId: entree.filId ?? null,
     messageId: entree.messageId ?? null,
+    lienExterne: entree.lienExterne || null,
     expediteur: entree.expediteur ?? null,
     destinataires: entree.destinataires ?? [],
     survenuLe,
