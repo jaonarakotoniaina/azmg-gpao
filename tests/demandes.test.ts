@@ -277,6 +277,36 @@ describe('hors perimetre (T00)', () => {
     expect(chrono.some((l) => l.titre.includes('Spam'))).toBe(false);
     expect(chrono.some((l) => l.titre.includes('Cotation'))).toBe(true);
   });
+
+  it('porte sur chaque evenement l’action qui debloque, et un brief lisible', async () => {
+    const { chronologieDossier } = await import('../src/server/modules/dossiers/service');
+    await ajouterEvenement(
+      {
+        dossierId,
+        sens: 'entrant',
+        nature: 'demande_entrante',
+        famille: 'T01',
+        source: 'mail',
+        objet: 'TR: cotation aerien',
+        // Un mail transfere : le brief doit sauter le bloc d'en-tetes et garder le message.
+        resume: [
+          'De : client@exemple-fictif.test <client@exemple-fictif.test>',
+          "A : 'Poste' <poste@exemple-fictif.test>",
+          '',
+          'Merci de nous donner une cotation aerienne pour 180 kg.',
+        ].join('\n'),
+      },
+      AUTEUR,
+    );
+
+    const chrono = await chronologieDossier(dossierId);
+    const ligne = chrono.find((l) => l.titre === 'TR: cotation aerien');
+    expect(ligne).toBeDefined();
+    // Le brief : le message, pas la liste des destinataires.
+    expect(ligne?.detail).toBe('Merci de nous donner une cotation aerienne pour 180 kg.');
+    // L'action qui debloque, lisible sans ouvrir la demande.
+    expect((ligne?.meta as { action?: string }).action).toBe('TR: cotation aerien');
+  });
 });
 
 describe('file du jour', () => {

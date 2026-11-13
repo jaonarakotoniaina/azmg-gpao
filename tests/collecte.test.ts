@@ -750,7 +750,7 @@ describe('lien de retour vers le mail d’origine', () => {
   });
 });
 
-describe('resume lisible d’un mail de fil ancien', () => {
+describe('brief lisible d’un mail', () => {
   it('ne garde que le premier message, sans la chaine citee', () => {
     const corps = [
       'Pourriez vous renvoyer la facture avec le NIF ?',
@@ -762,13 +762,53 @@ describe('resume lisible d’un mail de fil ancien', () => {
       '-- ',
       'Signature automatique',
     ].join('\n');
-    const utile = partieUtile(corps);
-    expect(utile).toBe('Pourriez vous renvoyer la facture avec le NIF ?');
+    expect(partieUtile(corps)).toBe('Pourriez vous renvoyer la facture avec le NIF ?');
   });
 
-  it('rend le debut du texte plutot que rien quand tout est cite', () => {
-    const corps = '> Tout le message est une citation, il n’y a pas de texte neuf.';
-    expect(partieUtile(corps)).toContain('Tout le message est une citation');
+  it('saute le bloc d’en-tetes d’un transfert au lieu de s’y arreter', () => {
+    // C'est le cas qui remplissait la chronologie d'adresses : un mail transfere commence par ses
+    // en-tetes, et s'arreter au premier en-tete ne laissait rien a afficher.
+    const corps = [
+      'De : export@exemple-fictif.test <export@exemple-fictif.test>',
+      'Envoye : Thursday, November 12, 2026 5:25 PM',
+      "A : 'Prenom Nom' <a@exemple-fictif.test>; 'Autre Nom' <b@exemple-fictif.test>",
+      "Cc : 'Troisieme' <c@exemple-fictif.test>",
+      'Objet : Stock du premier trimestre',
+      '',
+      'Bonjour,',
+      '',
+      'Merci de nous confirmer les quantites avant le 30 novembre.',
+    ].join('\n');
+    expect(partieUtile(corps)).toBe('Bonjour,\n\nMerci de nous confirmer les quantites avant le 30 novembre.');
+  });
+
+  it('saute aussi un bloc d’en-tetes aplati sur une seule ligne', () => {
+    // Le HTML converti en texte met tous les champs bout a bout : c'est la forme la plus frequente.
+    const corps = [
+      "De : export@exemple-fictif.test <export@exemple-fictif.test> Envoye : Thursday, November 12, 2026 5:25 PM A : 'Prenom Nom' <a@exemple-fictif.test>; 'Autre' <b@exemple-fictif.test> Cc : 'Troisieme' <c@exemple-fictif.test>",
+      '',
+      'Merci de confirmer les quantites avant le 30 novembre.',
+    ].join('\n');
+    expect(partieUtile(corps)).toBe('Merci de confirmer les quantites avant le 30 novembre.');
+  });
+
+  it('s’arrete a un transfert imbrique, apres avoir pris le texte', () => {
+    const corps = [
+      'Je transmets pour information.',
+      '',
+      'De : client@exemple-fictif.test',
+      'Objet : Commande',
+      '',
+      'Bonjour, voici notre commande.',
+    ].join('\n');
+    expect(partieUtile(corps)).toBe('Je transmets pour information.');
+  });
+
+  it('ne rend rien plutot qu’une liste d’adresses', () => {
+    // Sans texte lisible, l'appelant affiche le brief de la demande. Des en-tetes a la place d'un
+    // message ne renseignent personne.
+    expect(partieUtile('> Tout le message est une citation.')).toBe('');
+    expect(partieUtile('De : a@exemple-fictif.test\nA : b@exemple-fictif.test')).toBe('');
   });
 });
 

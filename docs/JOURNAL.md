@@ -1098,3 +1098,37 @@ reste allumee dans la barre pour savoir ou l'on se trouve.
 qui verifient qu'une consigne de la donneuse d'ordre n'est pas prise pour une notification. Un
 parcours de plus (28) : sept entrees dans la barre, un lien direct qui ouvre le bon onglet, et le
 changement d'onglet qui change l'adresse.
+
+---
+
+## 2026-11-13 (apres livraison) : un evenement qui montrait des adresses, pas un message
+
+Capture a l'appui : la chronologie d'un dossier affichait, sous le titre d'un mail transfere, le
+bloc d'en-tetes du transfert. Une liste d'adresses, de noms et de dates, et rien du message.
+
+La cause est dans `partieUtile`, que j'avais ecrite le matin meme. Elle s'arretait a la premiere
+marque de citation ou d'en-tete, et retombait sur le debut brut du corps quand il ne restait rien.
+Or un mail **transfere commence par ses en-tetes** : la fonction s'arretait donc a la premiere
+ligne, ne gardait rien, et affichait le debut brut, c'est-a-dire exactement les en-tetes. Le
+garde-fou que j'avais mis pour ne jamais rendre un brief vide produisait le pire resultat
+possible.
+
+Elle **saute** desormais le bloc de tete au lieu de s'y arreter, sous ses deux formes : une ligne
+par champ, et tous les champs aplatis sur une seule ligne quand le HTML a ete converti, qui est la
+forme la plus frequente. Un bloc d'en-tetes qui arrive **apres** du texte annonce un transfert
+imbrique et ferme le message, comme avant. Et quand il ne reste rien de lisible, elle rend une
+chaine vide : l'appelant affiche alors le brief de la demande. Des en-tetes a la place d'un
+message ne renseignent personne.
+
+**L'action attendue sur l'evenement**
+
+Deuxieme demande du commanditaire, et elle va plus loin que l'affichage : il veut, sur chaque
+evenement, le brief du mail **et** l'action proposee, comme dans son classeur. La question du
+lecteur n'est pas « qu'est-il arrive » mais « que faut-il faire ». La chronologie porte donc
+maintenant les deux, et l'action renvoie vers la demande.
+
+**Verifications**
+
+4 tests de plus (407 au total) : le bloc d'en-tetes saute dans ses deux formes, le transfert
+imbrique ferme toujours le message, un mail entierement cite ne rend rien, et la chronologie porte
+bien le brief et l'action.
