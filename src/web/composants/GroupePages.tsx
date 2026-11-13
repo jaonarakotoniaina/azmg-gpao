@@ -9,20 +9,10 @@
  * simplement le groupe sur le bon onglet. Rien n'est supprime, rien n'est deplace dans le code
  * des pages elles-memes.
  */
-import { type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Onglets, Panneau } from './ui';
-import type { Role } from '@shared/constantes';
-
-export interface PageDuGroupe {
-  id: string;
-  libelle: string;
-  /** Adresse propre de la page, conservee pour les liens et les favoris. */
-  chemin: string;
-  element: ReactNode;
-  roles?: Role[];
-}
+import type { PageDuGroupe } from '../navigation';
 
 export function GroupePages({ libelle, pages }: { libelle: string; pages: PageDuGroupe[] }) {
   const navigate = useNavigate();

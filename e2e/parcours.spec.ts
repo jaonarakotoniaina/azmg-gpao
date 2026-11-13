@@ -327,20 +327,37 @@ test('le suivi rend le tableau du classeur, colonnes comprises', async ({ page }
 test('la navigation tient en sept entrees, et les pages gardent leur adresse', async ({ page }) => {
   await seConnecter(page, COMPTES.ceo);
   const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
-  await expect(navigation.getByRole('link')).toHaveCount(7);
-  for (const entree of ['File du jour', 'Saisie rapide', 'Dossiers', 'Brouillons', 'Pilotage', 'Imports et exports', 'Parametres']) {
-    await expect(navigation.getByRole('link', { name: new RegExp(`^${entree}`) })).toBeVisible();
+  // Toute page joignable est une page visible : aucune ne se cache derriere un nom de groupe.
+  // C'est la regle, apres « Pilotage » puis « Suivi des demandes », livres puis introuvables.
+  for (const page_ of [
+    'File du jour',
+    'A classer',
+    'Echeancier',
+    'Saisie rapide',
+    'Dossiers',
+    'Suivi des demandes',
+    'Brouillons',
+    'Digest de validation',
+    'Tableau de bord',
+    'Pilotage',
+    'Qualite',
+    'Import des mails',
+    'Import du classeur',
+    'Export du reporting',
+    'Parametres',
+  ]) {
+    await expect(navigation.getByRole('link', { name: page_, exact: true })).toBeVisible();
   }
 
   // Un lien direct vers une page de groupe ouvre le bon onglet : les favoris et les liens
   // envoyes par mail continuent de marcher.
   await page.goto('/suivi');
-  const onglets = page.getByRole('tablist', { name: 'Dossiers' });
+  const onglets = page.getByRole('tablist', { name: 'Dossiers et demandes' });
   await expect(onglets.getByRole('tab', { name: 'Suivi des demandes' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('heading', { name: 'Suivi des demandes' })).toBeVisible();
 
-  // Et l'entree du groupe reste allumee dans la barre, pour savoir ou l'on se trouve.
-  await expect(navigation.getByRole('link', { name: /^Dossiers/ })).toHaveClass(/text-violet/);
+  // Et c'est la page elle-meme qui est allumee dans la barre, pas seulement son groupe.
+  await expect(navigation.getByRole('link', { name: 'Suivi des demandes', exact: true })).toHaveClass(/text-violet/);
 
   // Changer d'onglet change l'adresse, donc le bouton « precedent » fonctionne.
   await onglets.getByRole('tab', { name: 'Dossiers' }).click();
@@ -366,7 +383,7 @@ test('le pilotage met les causes avant la courbe', async ({ page }) => {
   await expect(page.getByText('en heures ouvrees').first()).toBeVisible();
 
   // L'onglet se trouve sous le nom demande, dans la navigation : c'est par la qu'on y arrive.
-  await expect(page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Pilotage' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('link', { name: 'Pilotage', exact: true })).toBeVisible();
 
   // Les quatre indicateurs du bilan sont nommes, chacun avec sa courbe.
   const indicateurs = page.locator('#indicateurs');
