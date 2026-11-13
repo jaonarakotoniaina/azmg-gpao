@@ -1,31 +1,15 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ListTodo, Zap, FolderOpen, Settings, Menu, LogOut, PenLine, TrendingUp, ArrowDownUp } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { cx, Badge } from './ui';
-import { LIBELLES_ROLES, type Role } from '@shared/constantes';
-
-interface Lien {
-  vers: string;
-  libelle: string;
-  icone: ReactNode;
-  roles?: Role[];
-  /** Nombre affiche a droite du lien : ce qui attend une action. */
-  compteur?: number;
-  /**
-   * Autres adresses que ce lien couvre : les pages du meme groupe.
-   *
-   * Sans elles, ouvrir « Suivi des demandes » eteindrait le lien « Dossiers » dans la barre, et
-   * on ne saurait plus ou l'on se trouve.
-   */
-  aussi?: string[];
-}
+import { GROUPES } from '../navigation';
+import { LIBELLES_ROLES } from '@shared/constantes';
 
 export function Layout() {
   const { utilisateur, deconnecter } = useAuth();
-  const { pathname } = useLocation();
   const [menuOuvert, setMenuOuvert] = useState(false);
   const { data: aClasser } = useQuery({
     queryKey: ['a-classer'],
@@ -39,31 +23,15 @@ export function Layout() {
     staleTime: 120_000,
   });
 
-  // Sept entrees, une par moment de la journee de travail. Les pages n'ont pas disparu : elles
-  // sont devenues les onglets de ces groupes, et gardent chacune son adresse (voir GROUPES dans
-  // App.tsx). Quinze entrees, c'etait une par fonction livree, pas une par question posee.
-  const liens: Lien[] = [
-    {
-      vers: '/',
-      libelle: 'File du jour',
-      icone: <ListTodo className="h-4 w-4" aria-hidden />,
-      compteur: aClasser?.length,
-      aussi: ['/a-classer', '/echeancier'],
-    },
-    { vers: '/saisie', libelle: 'Saisie rapide', icone: <Zap className="h-4 w-4" aria-hidden />, roles: ['admin', 'manager', 'collaborateur'] },
-    { vers: '/dossiers', libelle: 'Dossiers', icone: <FolderOpen className="h-4 w-4" aria-hidden />, aussi: ['/suivi'] },
-    { vers: '/brouillons', libelle: 'Brouillons', icone: <PenLine className="h-4 w-4" aria-hidden />, aussi: ['/digest'] },
-    { vers: '/tableau-de-bord', libelle: 'Pilotage', icone: <TrendingUp className="h-4 w-4" aria-hidden />, aussi: ['/pilotage', '/qualite'] },
-    {
-      vers: '/import-mails',
-      libelle: 'Imports et exports',
-      icone: <ArrowDownUp className="h-4 w-4" aria-hidden />,
-      roles: ['admin', 'manager'],
-      aussi: ['/import', '/export'],
-    },
-    { vers: '/parametres', libelle: 'Parametres', icone: <Settings className="h-4 w-4" aria-hidden /> },
-  ];
-  const visibles = liens.filter((l) => !l.roles || (utilisateur && l.roles.includes(utilisateur.role)));
+  // La barre se construit depuis `GROUPES` : la meme liste que les routes, pour qu'une page
+  // joignable soit toujours une page visible. C'est la lecon de « Pilotage » puis de « Suivi des
+  // demandes », tous deux livres puis introuvables parce que leur nom n'etait ecrit nulle part.
+  //
+  // Les tetes de groupe hierarchisent, elles ne cachent rien : toutes les pages sont listees.
+  const autorise = (roles?: readonly string[]) => !roles || Boolean(utilisateur && roles.includes(utilisateur.role));
+  const groupes = GROUPES.filter((g) => autorise(g.roles))
+    .map((g) => ({ ...g, pages: g.pages.filter((p) => autorise(p.roles)) }))
+    .filter((g) => g.pages.length > 0);
 
   return (
     <div className="min-h-screen">
@@ -116,26 +84,58 @@ export function Layout() {
           aria-label="Navigation principale"
           className={cx('w-60 flex-none border-r border-ligne bg-carte p-3 lg:block', menuOuvert ? 'block' : 'hidden')}
         >
-          <ul className="space-y-1">
-            {visibles.map((l) => (
-              <li key={l.vers}>
-                <NavLink
-                  to={l.vers}
-                  end={l.vers === '/'}
-                  onClick={() => setMenuOuvert(false)}
-                  className={({ isActive }) =>
-                    cx(
-                      'flex items-center gap-2 rounded-bouton px-3 py-2 text-sm no-underline',
-                      isActive || l.aussi?.includes(pathname) ? 'bg-violet-pale font-semibold text-violet' : 'text-texte hover:bg-entete',
-                    )
-                  }
-                >
-                  {l.icone}
-                  <span className="flex-1">{l.libelle}</span>
-                  {l.compteur ? <Badge ton="ambre">{l.compteur}</Badge> : null}
-                </NavLink>
-              </li>
-            ))}
+          <ul className="space-y-3">
+            {groupes.map((groupe) => {
+              // Un groupe d'une seule page n'a pas besoin de tete : la page est son propre titre.
+              const seule = groupe.pages.length === 1 ? groupe.pages[0] : null;
+              return (
+                <li key={groupe.libelle}>
+                  {seule ? (
+                    <NavLink
+                      to={seule.chemin}
+                      end={seule.chemin === '/'}
+                      onClick={() => setMenuOuvert(false)}
+                      className={({ isActive }) =>
+                        cx(
+                          'flex items-center gap-2 rounded-bouton px-3 py-2 text-sm no-underline',
+                          isActive ? 'bg-violet-pale font-semibold text-violet' : 'text-texte hover:bg-entete',
+                        )
+                      }
+                    >
+                      {groupe.icone}
+                      <span className="flex-1">{seule.libelle}</span>
+                    </NavLink>
+                  ) : (
+                    <>
+                      <p className="flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-texte-discret">
+                        {groupe.icone}
+                        <span>{groupe.libelle}</span>
+                      </p>
+                      <ul>
+                        {groupe.pages.map((page) => (
+                          <li key={page.chemin}>
+                            <NavLink
+                              to={page.chemin}
+                              end={page.chemin === '/'}
+                              onClick={() => setMenuOuvert(false)}
+                              className={({ isActive }) =>
+                                cx(
+                                  'flex items-center gap-2 rounded-bouton py-1.5 pl-9 pr-3 text-sm no-underline',
+                                  isActive ? 'bg-violet-pale font-semibold text-violet' : 'text-texte hover:bg-entete',
+                                )
+                              }
+                            >
+                              <span className="flex-1">{page.libelle}</span>
+                              {page.compteurAClasser && aClasser?.length ? <Badge ton="ambre">{aClasser.length}</Badge> : null}
+                            </NavLink>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </nav>
         <main id="contenu" className="min-w-0 flex-1 p-4 md:p-8">
