@@ -219,6 +219,14 @@ var demandes = (0, import_pg_core.pgTable)(
     cause: (0, import_pg_core.text)("cause").$type(),
     /** Vrai quand le suivi du manager a classe cette demande comme une reclamation. */
     reprise: (0, import_pg_core.boolean)("reprise").notNull().default(false),
+    /**
+     * Ligne d'origine du classeur de suivi, colonne par colonne.
+     *
+     * Les notes gardent un texte lisible, mais un tableau a besoin de champs separes : le type du
+     * suivi, la demande telle qu'elle a ete ecrite, le commentaire et le lien vers le mail. On
+     * conserve donc la ligne source plutot que de la reconstituer en relisant les notes.
+     */
+    suivi: (0, import_pg_core.jsonb)("suivi").notNull().default({}),
     niveauRelance: (0, import_pg_core.integer)("niveau_relance").notNull().default(0),
     derniereRelanceLe: horodatage("derniere_relance_le"),
     /** Horodatages de cycle de vie, en instants UTC. */
