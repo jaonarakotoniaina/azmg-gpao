@@ -7725,6 +7725,7 @@ init_evenements();
 init_service2();
 init_typage();
 init_constantes();
+init_parametres2();
 var TAILLE_MAX_PIECE = 10 * 1024 * 1024;
 function bilanVide() {
   return { lus: 0, crees: 0, synthetisees: 0, doublons: 0, ignores: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
@@ -7945,6 +7946,38 @@ async function enregistrerLot(messages, opts, auteur) {
   });
   return bilan;
 }
+async function journalDeCollecte(compteId, limite = 50) {
+  const parametres2 = await lireParametres();
+  const lignes = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.eq)(schema_exports.evenements.compteId, compteId), (0, import_drizzle_orm30.inArray)(schema_exports.evenements.source, ["mail", "import"]))).orderBy((0, import_drizzle_orm30.desc)(schema_exports.evenements.creeLe)).limit(Math.min(limite, 200));
+  return lignes.map((e) => {
+    const horsPerimetre = estHorsPerimetre(e.famille);
+    const sousLeSeuil = e.confianceTypage !== null && Number(e.confianceTypage) < parametres2.seuilConfianceTypage;
+    let sort;
+    if (horsPerimetre) sort = "hors_perimetre";
+    else if (!e.famille || sousLeSeuil) sort = "a_classer";
+    else if (e.demandeId) sort = "demande";
+    else sort = "trace";
+    return {
+      evenementId: e.id,
+      collecteLe: e.creeLe,
+      survenuLe: e.survenuLe,
+      expediteur: e.expediteur,
+      destinataires: e.destinataires ?? [],
+      objet: e.objet,
+      famille: e.famille,
+      confiance: e.confianceTypage === null ? null : Number(e.confianceTypage),
+      demandeId: e.demandeId,
+      dossierId: e.dossierId,
+      posteId: null,
+      lienExterne: e.lienExterne,
+      sort
+    };
+  });
+}
+async function passagesDeCollecte(limite = 20) {
+  const lignes = await db.select({ le: schema_exports.journalActions.creeLe, bilan: schema_exports.journalActions.details }).from(schema_exports.journalActions).where((0, import_drizzle_orm30.eq)(schema_exports.journalActions.action, "mails_collectes")).orderBy((0, import_drizzle_orm30.desc)(schema_exports.journalActions.creeLe)).limit(Math.min(limite, 100));
+  return lignes;
+}
 
 // src/server/modules/collecte/routes.ts
 var envoi3 = (0, import_multer3.default)({
@@ -7966,6 +7999,15 @@ routesCollecte.get("/etat", async (_req, res) => {
     webhookConfigure: Boolean(config.collecte.secretAppsScript),
     dernierePasse: dernier ? { le: dernier.creeLe, bilan: dernier.details } : null
   });
+});
+routesCollecte.get("/journal", async (req, res) => {
+  const q = valider(
+    import_zod14.z.object({ compteId: import_zod14.z.coerce.number().int().positive(), limite: import_zod14.z.coerce.number().int().min(1).max(200).optional() }),
+    req.query
+  );
+  exigerCompte(await perimetreDe(req.utilisateur), q.compteId);
+  const [messages, passages] = await Promise.all([journalDeCollecte(q.compteId, q.limite ?? 50), passagesDeCollecte(20)]);
+  res.json({ messages, passages });
 });
 routesCollecte.post("/import", exigerRole("admin", "manager"), envoi3.array("fichiers", 20), async (req, res) => {
   const fichiers = req.files ?? [];
@@ -8671,7 +8713,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "968b44c1aa999cec96774d05b4d92f2db6b79a89",
+        version: "8c8445e7009fa3a00c7cde608f881d429c0e9e6a",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
