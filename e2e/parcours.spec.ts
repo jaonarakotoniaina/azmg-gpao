@@ -306,6 +306,22 @@ test('l’export montre les colonnes du classeur et prepare le telechargement', 
   await expect(page.getByText(/structure du classeur n.est pas modifiee/i)).toBeVisible();
 });
 
+test('le suivi rend le tableau du classeur, colonnes comprises', async ({ page }) => {
+  await seConnecter(page, COMPTES.ceo);
+  await page.goto('/suivi');
+  await page.getByRole('combobox', { name: 'Compte client', exact: true }).selectOption({ index: 1 });
+
+  const tableau = page.locator('section#tableau table');
+  await expect(tableau).toBeVisible({ timeout: 20_000 });
+  // Les colonnes du classeur, et celles qui lui manquaient.
+  for (const colonne of ['Date', 'Priorite', 'Statut', 'Sujet ou dossier', 'Demande', 'Action attendue', 'Cause', 'Delai']) {
+    await expect(tableau.getByRole('columnheader', { name: colonne, exact: true })).toBeVisible();
+  }
+  // La ligne importee porte la demande telle qu'elle a ete ecrite, a cote de l'action attendue.
+  await expect(tableau.getByText('Le client attend la cotation depuis deux jours')).toBeVisible();
+  await expect(tableau.getByRole('link', { name: 'Relancer le transitaire et transmettre la cotation' })).toBeVisible();
+});
+
 test('l’accompagnement met les causes avant la courbe', async ({ page }) => {
   await seConnecter(page, COMPTES.ceo);
   await page.goto('/accompagnement');

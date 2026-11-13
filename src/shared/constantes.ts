@@ -260,6 +260,13 @@ export type Priorite = (typeof PRIORITES)[number];
 
 export const POIDS_PRIORITES: Record<Priorite, number> = { critique: 0, haute: 1, normale: 2, basse: 3 };
 
+export const LIBELLES_PRIORITES: Record<Priorite, string> = {
+  critique: 'Critique',
+  haute: 'Haute',
+  normale: 'Normale',
+  basse: 'Basse',
+};
+
 export const TYPES_ECHEANCE = ['cut_off', 'etd', 'eta', 'validite_offre', 'expiration_document', 'creneau_entrepot'] as const;
 export type TypeEcheance = (typeof TYPES_ECHEANCE)[number];
 

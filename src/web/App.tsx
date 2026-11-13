@@ -18,6 +18,7 @@ const Qualite = lazy(() => import('./pages/Qualite'));
 const DigestDo = lazy(() => import('./pages/DigestDo'));
 const Brouillons = lazy(() => import('./pages/Brouillons'));
 const Accompagnement = lazy(() => import('./pages/Accompagnement'));
+const Suivi = lazy(() => import('./pages/Suivi'));
 const AClasser = lazy(() => import('./pages/AClasser'));
 const ImportMails = lazy(() => import('./pages/ImportMails'));
 const Parametres = lazy(() => import('./pages/Parametres'));
@@ -60,6 +61,7 @@ export function App() {
             <Route path="digest" element={<DigestDo />} />
             <Route path="brouillons" element={<Brouillons />} />
             <Route path="accompagnement" element={<Accompagnement />} />
+            <Route path="suivi" element={<Suivi />} />
             <Route path="a-classer" element={<AClasser />} />
             <Route path="import-mails" element={<ImportMails />} />
             <Route path="parametres" element={<Parametres />} />

@@ -570,3 +570,20 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
 - Ce qui ne change pas : vingt echecs par quart d'heure restent refuses, et la reponse ne revele
   toujours pas si l'adresse existe.
 - Retour arriere : l'option se retire dans `modules/auth/routes.ts`.
+
+## 2026-11-13 : la ligne du classeur est conservee colonne par colonne
+
+- Sujet : l'import rangeait la demande, le type, le commentaire et le lien du mail dans un seul
+  bloc de texte, `demandes.notes`. Lisible sur une fiche, inutilisable pour un tableau.
+- Ce que cela a coute : le commanditaire ne retrouvait pas son tableau de suivi dans la GPAO. La
+  mesure etait livree, la vue ne l'etait pas, et la vue est ce qu'il regarde tous les jours.
+- Choix : une colonne `demandes.suivi` qui garde la ligne d'origine champ par champ, en plus des
+  notes. L'ecran « Suivi des demandes » la rend sous la forme connue.
+- Pourquoi pas relire les notes : reconstituer des colonnes en decoupant un texte qu'on a soi-meme
+  concatene marche jusqu'au jour ou un commentaire contient le separateur. Conserver la source
+  coute une colonne et ne se trompe jamais.
+- Ce que le tableau ajoute au classeur : l'echeance, la cloture et le delai de traitement, comptes
+  en heures ouvrees du client, ainsi que la cause et la marque de reprise. Ce sont les trois
+  colonnes que le commanditaire demandait en premier, et elles se calculent au lieu de se saisir.
+- Un second import rafraichit la ligne source : le manager peut avoir complete un commentaire.
+- Retour arriere : `suiviDesDemandes` dans `pilotage/suivi.ts`, et la colonne reste facultative.
