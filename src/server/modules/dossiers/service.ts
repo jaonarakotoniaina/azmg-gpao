@@ -242,6 +242,21 @@ export async function chronologieDossier(dossierId: number): Promise<LigneChrono
   const echeances = await db.select().from(schema.echeances).where(eq(schema.echeances.dossierId, dossierId)).limit(200);
   const pieces = await db.select().from(schema.pieces).where(eq(schema.pieces.dossierId, dossierId)).limit(200);
 
+  // L'action qui debloque, par demande du dossier. Un evenement sans elle ne dit que ce qui est
+  // arrive ; avec elle, il dit ce qu'il reste a faire, ce qui est la question du lecteur.
+  const demandes = await db
+    .select({ id: schema.demandes.id, objet: schema.demandes.objet, suivi: schema.demandes.suivi })
+    .from(schema.demandes)
+    .where(eq(schema.demandes.dossierId, dossierId))
+    .limit(500);
+  const actions = new Map(demandes.map((d) => [d.id, d.objet]));
+  const briefs = new Map(
+    demandes.map((d) => {
+      const suivi = (d.suivi ?? {}) as Record<string, unknown>;
+      return [d.id, typeof suivi.demande === 'string' ? suivi.demande : ''];
+    }),
+  );
+
   const lignes: LigneChronologie[] = [
     ...evenements.map((e) => ({
       type: 'evenement' as const,
@@ -250,9 +265,13 @@ export async function chronologieDossier(dossierId: number): Promise<LigneChrono
       // `partieUtile` est appliquee a la lecture, et pas seulement a la collecte : les evenements
       // deja enregistres portent le debut brut du mail, chaine citee comprise, et la chronologie
       // doit rester lisible pour eux aussi.
-      detail: e.resume ? partieUtile(e.resume) : null,
+      // Le brief : le texte du message debarrasse des en-tetes de transfert et de la chaine
+      // citee. Quand il ne reste rien de lisible, celui de la demande prend le relais plutot que
+      // d'afficher une liste d'adresses.
+      detail: (e.resume ? partieUtile(e.resume) : '') || (e.demandeId ? briefs.get(e.demandeId) || null : null),
       demandeId: e.demandeId,
       meta: {
+        action: e.demandeId ? (actions.get(e.demandeId) ?? null) : null,
         sens: e.sens,
         nature: e.nature,
         interlocuteur: e.interlocuteur,

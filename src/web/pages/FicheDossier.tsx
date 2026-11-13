@@ -195,6 +195,7 @@ export default function FicheDossier() {
               {chronologie.map((l, i) => {
                 const Icone = ICONES[l.type];
                 const meta = (l.meta ?? {}) as {
+                  action?: string | null;
                   nature?: string;
                   interlocuteur?: string;
                   source?: string;
@@ -215,6 +216,15 @@ export default function FicheDossier() {
                         // clic, dans la demande ou dans la boite d'origine.
                         <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-sm text-texte-doux" title={l.detail}>
                           {l.detail}
+                        </p>
+                      )}
+                      {l.type === 'evenement' && meta.action && (
+                        // La question du lecteur n'est pas « qu'est-il arrive » mais « que
+                        // faut-il faire ». L'action se lit donc sur l'evenement, pas seulement
+                        // dans la demande.
+                        <p className="mt-1 text-sm">
+                          <span className="font-medium">Action attendue : </span>
+                          <Link to={`/demandes/${l.demandeId}`}>{meta.action}</Link>
                         </p>
                       )}
                       <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-texte-discret">

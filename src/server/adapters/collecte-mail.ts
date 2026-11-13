@@ -249,35 +249,71 @@ export function verifierSignature(corps: string, signature: string, secret: stri
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+/** Etiquettes d'en-tete d'un mail transfere, dans les langues et les clients qu'on rencontre. */
+const ETIQUETTE_ENTETE =
+  /^(de|from|envoye|envoyee|sent|a|to|cc|cci|bcc|copie|objet|subject|date|reply-to|repondre a|importance|priorite)\s*:/i;
+
+/** Marque le debut d'une citation ou d'un transfert : tout ce qui suit appartient au passe. */
+const DEBUT_CITATION = [
+  /^>/,
+  /^-{2,}\s*(message|forwarded|original)/i,
+  /^_{5,}$/,
+  /^le .{5,80}a ecrit\s*:?$/i,
+  /^on .{5,80}wrote\s*:?$/i,
+  /^el .{5,80}escribio\s*:?$/i,
+];
+
 /**
- * Premier message utile d'un mail, sans la chaine citee.
+ * Vrai quand la ligne appartient a un bloc d'en-tetes de transfert.
  *
- * Un mail d'un fil ancien porte souvent dix reponses empilees, les en-tetes de transfert et les
- * signatures. Les afficher tels quels rend la chronologie illisible, alors que ce qui compte tient
- * dans les premieres lignes. Le corps complet reste enregistre a part : seul le resume est coupe.
+ * Deux formes se rencontrent. Une ligne par champ, quand le mail est en texte brut. Et tous les
+ * champs sur une seule ligne, quand le HTML a ete aplati : c'est le cas le plus frequent, et
+ * c'est celui qui remplissait la chronologie d'adresses.
+ */
+function estLigneEntete(ligne: string): boolean {
+  if (ETIQUETTE_ENTETE.test(ligne)) return true;
+  const etiquettes = ligne.match(/(?:^|\s)(?:de|from|envoye|envoyee|sent|a|to|cc|cci|objet|subject|date)\s*:/gi);
+  return (etiquettes?.length ?? 0) >= 2;
+}
+
+/**
+ * Le texte utile d'un mail : ce qu'une personne a ecrit, sans la machinerie autour.
+ *
+ * Trois choses sont retirees : le bloc d'en-tetes d'un transfert, la chaine des reponses citees,
+ * et la signature. Un mail transfere commence par ses en-tetes, donc le bloc de tete est
+ * **saute**, pas pris pour la fin du message : c'est la difference entre afficher une liste
+ * d'adresses et afficher la demande.
+ *
+ * Rend une chaine vide quand il ne reste rien de lisible. C'est voulu : l'appelant affiche alors
+ * le brief de la demande, ou rien. Afficher des en-tetes a la place d'un message ne renseigne
+ * personne, et c'est precisement ce qu'on corrige.
  */
 export function partieUtile(corps: string): string {
   const lignes = corps.replace(/\r\n/g, '\n').split('\n');
   const utiles: string[] = [];
+  let commence = false;
 
   for (const brute of lignes) {
     const ligne = brute.trim();
-    // Debut d'une reponse citee ou d'un transfert : tout ce qui suit appartient au passe.
-    if (
-      /^>/.test(ligne) ||
-      /^(de|from|envoye|sent|a|to|cc|objet|subject)\s*:/i.test(ligne) ||
-      /^-{2,}\s*(message|forwarded|original)/i.test(ligne) ||
-      /^le .{5,60}a ecrit\s*:?$/i.test(ligne) ||
-      /^on .{5,60}wrote\s*:?$/i.test(ligne)
-    ) {
-      break;
+
+    if (DEBUT_CITATION.some((motif) => motif.test(ligne))) break;
+    // Une signature ferme le message, mais seulement si du texte a deja ete pris.
+    if (/^--\s*$/.test(ligne)) {
+      if (commence) break;
+      continue;
     }
-    // Debut d'une signature.
-    if (/^--\s*$/.test(ligne)) break;
+
+    if (estLigneEntete(ligne)) {
+      // Un bloc d'en-tetes en tete de message est saute ; un bloc qui arrive apres du texte
+      // annonce un transfert imbrique, et ferme le message.
+      if (commence) break;
+      continue;
+    }
+
+    if (!ligne && !commence) continue;
+    commence = commence || Boolean(ligne);
     utiles.push(ligne);
   }
 
-  const texte = utiles.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  // Un mail entierement cite ne doit pas rendre un resume vide : on reprend alors le debut brut.
-  return texte || corps.trim().slice(0, 500);
+  return utiles.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
