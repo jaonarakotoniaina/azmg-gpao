@@ -128,8 +128,10 @@ Chaque transition est horodatée avec son auteur. Le temps passé dans chaque st
 Reprends à l'identique la section 5 bis du CLAUDE.md de Sourcing :
 - Branche de travail imposée par la session ; **commit et push après chaque tâche** (jamais plus de 30 min non poussées). À chaque reprise : lire `CLAUDE.md`, `docs/JOURNAL.md`, `git log -20`, reprendre à la première tâche non terminée.
 - Fin de phase : pull request vers `main` avec le résumé ; tu enchaînes sans attendre la fusion.
-- **Fusion autonome** (accord du commanditaire, 12/11/2026) : tu fusionnes toi-même tes pull
-  requests vers `main`, sans attendre de validation. Deux garde-fous que tu gardes : jamais sur une
+- **Fusion autonome** (accord du commanditaire, 12/11/2026, rappelé le 13/11) : tu fusionnes
+  toi-même tes pull requests vers `main`, sans attendre de validation. **Tu ne demandes pas
+  l'autorisation de fusionner, ni une confirmation avant de déployer : l'accord est donné une fois
+  pour toutes.** Tu annonces ce que tu as fusionné et déployé, tu ne le proposes pas. Deux garde-fous que tu gardes : jamais sur une
   CI rouge ou incomplète (tu attends la fin des vérifications), et aucune réécriture d'historique
   partagé (pas de `push --force`, pas de rebase d'une branche déjà poussée). Après chaque fusion,
   tu suis la chaîne de déploiement et tu vérifies `/health` : version servie et `migrations.aJour`.
