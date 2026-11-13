@@ -324,6 +324,13 @@ var init_schema = __esm({
         /** Cible SLA en heures ouvrees du client, et instant correspondant. */
         slaHeures: (0, import_pg_core.doublePrecision)("sla_heures"),
         slaEcheanceLe: horodatage("sla_echeance_le"),
+        /**
+         * Cause d'une reprise, quand la demande en est une. Vide pour un travail ordinaire : seule
+         * une demande qui revient a cause d'un manquement porte une cause.
+         */
+        cause: (0, import_pg_core.text)("cause").$type(),
+        /** Vrai quand le suivi du manager a classe cette demande comme une reclamation. */
+        reprise: (0, import_pg_core.boolean)("reprise").notNull().default(false),
         niveauRelance: (0, import_pg_core.integer)("niveau_relance").notNull().default(0),
         derniereRelanceLe: horodatage("derniere_relance_le"),
         /** Horodatages de cycle de vie, en instants UTC. */
@@ -835,7 +842,7 @@ function statutReporting(code) {
 function estFerme(statut) {
   return STATUTS_FERMES.includes(statut);
 }
-var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
+var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, LIBELLES_CAUSES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
 var init_constantes = __esm({
   "src/shared/constantes.ts"() {
     "use strict";
@@ -934,6 +941,14 @@ var init_constantes = __esm({
     STATUTS_OUVERTS = DEFINITIONS_STATUTS.filter((s) => !s.fermee).map((s) => s.code);
     STATUTS_FERMES = DEFINITIONS_STATUTS.filter((s) => s.fermee).map((s) => s.code);
     SOURCES = ["mail", "whatsapp", "vocal", "saisie", "import"];
+    LIBELLES_CAUSES = {
+      delai_reponse: "Delai de reponse",
+      procedure_non_suivie: "Procedure non suivie",
+      erreur_document: "Erreur de document",
+      classement_tracabilite: "Classement et tracabilite",
+      qualite_livrable: "Qualite du livrable",
+      manque_autonomie: "Manque d\u2019autonomie"
+    };
     PRIORITES = ["basse", "normale", "haute", "critique"];
     POIDS_PRIORITES = { critique: 0, haute: 1, normale: 2, basse: 3 };
     TYPES_ECHEANCE = ["cut_off", "etd", "eta", "validite_offre", "expiration_document", "creneau_entrepot"];
@@ -1185,9 +1200,9 @@ function fusionner(enregistres) {
 async function lireParametres() {
   if (cache && Date.now() - cache.lu < 2e3) return cache.valeur;
   const [ligne] = await db.select().from(schema_exports.parametres).where((0, import_drizzle_orm4.eq)(schema_exports.parametres.cle, CLE));
-  const valeur2 = fusionner(ligne?.valeur);
-  cache = { valeur: valeur2, lu: Date.now() };
-  return valeur2;
+  const valeur3 = fusionner(ligne?.valeur);
+  cache = { valeur: valeur3, lu: Date.now() };
+  return valeur3;
 }
 async function enregistrerParametres(nouveaux, utilisateurId) {
   const valides = fusionner(parametresSchema.parse(nouveaux));
@@ -1220,15 +1235,15 @@ function retirerTiretsLongs(texte2) {
   if (!TIRETS_LONGS.test(texte2)) return texte2;
   return texte2.replace(/(\d)\s*[\u2012\u2013\u2014\u2015]\s*(\d)/g, "$1 \xE0 $2").replace(/^(\s*)[\u2012\u2013\u2014\u2015]\s*/gm, "$1- ").replace(/\s+[\u2012\u2013\u2014\u2015]\s+/g, ", ").replace(TIRETS_LONGS_G, "-");
 }
-function nettoyerProfondement(valeur2) {
-  if (typeof valeur2 === "string") return retirerTiretsLongs(valeur2);
-  if (Array.isArray(valeur2)) return valeur2.map((v) => nettoyerProfondement(v));
-  if (valeur2 && typeof valeur2 === "object") {
+function nettoyerProfondement(valeur3) {
+  if (typeof valeur3 === "string") return retirerTiretsLongs(valeur3);
+  if (Array.isArray(valeur3)) return valeur3.map((v) => nettoyerProfondement(v));
+  if (valeur3 && typeof valeur3 === "object") {
     const sortie = {};
-    for (const [cle, v] of Object.entries(valeur2)) sortie[cle] = nettoyerProfondement(v);
+    for (const [cle, v] of Object.entries(valeur3)) sortie[cle] = nettoyerProfondement(v);
     return sortie;
   }
-  return valeur2;
+  return valeur3;
 }
 var TIRETS_LONGS, TIRETS_LONGS_G;
 var init_tirets = __esm({
@@ -1251,7 +1266,7 @@ async function demanderIa(demande) {
     return { sortie: nettoyerProfondement(simulateur(demande.entree)), statut: "traite", fournisseur, tacheId: null };
   }
   const empreinte = sha256(JSON.stringify({ type: demande.type, version: demande.versionPrompt, entree: demande.entree }));
-  const [deja] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm11.and)((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.empreinteEntree, empreinte), (0, import_drizzle_orm11.eq)(schema_exports.aiTasks.statut, "traite"))).limit(1);
+  const [deja] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm12.and)((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.empreinteEntree, empreinte), (0, import_drizzle_orm12.eq)(schema_exports.aiTasks.statut, "traite"))).limit(1);
   if (deja?.sortie) return { sortie: nettoyerProfondement(deja.sortie), statut: "traite", fournisseur, tacheId: deja.id };
   if (fournisseur === "api") {
     try {
@@ -1302,16 +1317,16 @@ async function appelerApi(demande) {
 async function tachesEnAttente(limite = 50) {
   const maintenant = /* @__PURE__ */ new Date();
   const taches = await db.select().from(schema_exports.aiTasks).where(
-    (0, import_drizzle_orm11.and)(
-      (0, import_drizzle_orm11.or)((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.statut, "en_attente"), (0, import_drizzle_orm11.eq)(schema_exports.aiTasks.statut, "echec")),
-      (0, import_drizzle_orm11.or)(import_drizzle_orm11.sql`${schema_exports.aiTasks.verrouilleJusqua} IS NULL`, (0, import_drizzle_orm11.lt)(schema_exports.aiTasks.verrouilleJusqua, maintenant)),
-      (0, import_drizzle_orm11.lt)(schema_exports.aiTasks.essais, schema_exports.aiTasks.essaisMax)
+    (0, import_drizzle_orm12.and)(
+      (0, import_drizzle_orm12.or)((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.statut, "en_attente"), (0, import_drizzle_orm12.eq)(schema_exports.aiTasks.statut, "echec")),
+      (0, import_drizzle_orm12.or)(import_drizzle_orm12.sql`${schema_exports.aiTasks.verrouilleJusqua} IS NULL`, (0, import_drizzle_orm12.lt)(schema_exports.aiTasks.verrouilleJusqua, maintenant)),
+      (0, import_drizzle_orm12.lt)(schema_exports.aiTasks.essais, schema_exports.aiTasks.essaisMax)
     )
-  ).orderBy((0, import_drizzle_orm11.asc)(schema_exports.aiTasks.priorite), (0, import_drizzle_orm11.asc)(schema_exports.aiTasks.creeLe)).limit(Math.min(Math.max(limite, 1), 200));
+  ).orderBy((0, import_drizzle_orm12.asc)(schema_exports.aiTasks.priorite), (0, import_drizzle_orm12.asc)(schema_exports.aiTasks.creeLe)).limit(Math.min(Math.max(limite, 1), 200));
   if (taches.length) {
     const verrou = new Date(maintenant.getTime() + DUREE_VERROU_MS);
     for (const t of taches) {
-      await db.update(schema_exports.aiTasks).set({ verrouilleJusqua: verrou, majLe: maintenant }).where((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.id, t.id));
+      await db.update(schema_exports.aiTasks).set({ verrouilleJusqua: verrou, majLe: maintenant }).where((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.id, t.id));
     }
   }
   return taches.map((t) => {
@@ -1328,19 +1343,19 @@ async function tachesEnAttente(limite = 50) {
   });
 }
 async function enregistrerResultat(id2, sortie, erreur2) {
-  const [tache] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.id, id2));
+  const [tache] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.id, id2));
   if (!tache) throw new Error("Tache IA introuvable");
   const essais = tache.essais + 1;
   if (sortie) {
-    await db.update(schema_exports.aiTasks).set({ sortie: nettoyerProfondement(sortie), statut: "traite", essais, erreur: null, verrouilleJusqua: null, termineLe: /* @__PURE__ */ new Date(), majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.id, id2));
+    await db.update(schema_exports.aiTasks).set({ sortie: nettoyerProfondement(sortie), statut: "traite", essais, erreur: null, verrouilleJusqua: null, termineLe: /* @__PURE__ */ new Date(), majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.id, id2));
     return { statut: "traite", essais };
   }
   const statut = essais >= tache.essaisMax ? "abandonne" : "echec";
-  await db.update(schema_exports.aiTasks).set({ statut, essais, erreur: (erreur2 ?? "sortie invalide").slice(0, 1e3), verrouilleJusqua: null, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm11.eq)(schema_exports.aiTasks.id, id2));
+  await db.update(schema_exports.aiTasks).set({ statut, essais, erreur: (erreur2 ?? "sortie invalide").slice(0, 1e3), verrouilleJusqua: null, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm12.eq)(schema_exports.aiTasks.id, id2));
   return { statut, essais };
 }
 async function etatFileIa() {
-  const lignes = await db.select({ statut: schema_exports.aiTasks.statut, nombre: import_drizzle_orm11.sql`count(*)::int`, plusAncienne: import_drizzle_orm11.sql`min(${schema_exports.aiTasks.creeLe})` }).from(schema_exports.aiTasks).groupBy(schema_exports.aiTasks.statut);
+  const lignes = await db.select({ statut: schema_exports.aiTasks.statut, nombre: import_drizzle_orm12.sql`count(*)::int`, plusAncienne: import_drizzle_orm12.sql`min(${schema_exports.aiTasks.creeLe})` }).from(schema_exports.aiTasks).groupBy(schema_exports.aiTasks.statut);
   const enAttente = lignes.find((l) => l.statut === "en_attente");
   return {
     fournisseur: config.ia.fournisseur,
@@ -1349,11 +1364,11 @@ async function etatFileIa() {
     plusAncienneEnAttente: enAttente?.plusAncienne ?? null
   };
 }
-var import_drizzle_orm11, simulateurs, DUREE_VERROU_MS;
+var import_drizzle_orm12, simulateurs, DUREE_VERROU_MS;
 var init_service = __esm({
   "src/server/ai/service.ts"() {
     "use strict";
-    import_drizzle_orm11 = require("drizzle-orm");
+    import_drizzle_orm12 = require("drizzle-orm");
     init_client();
     init_config();
     init_journal();
@@ -1870,11 +1885,11 @@ __export(service_exports, {
   reglesActives: () => reglesActives,
   reglesProposees: () => reglesProposees,
   sortieTypageSchema: () => sortieTypageSchema,
-  sql: () => import_drizzle_orm12.sql,
+  sql: () => import_drizzle_orm13.sql,
   typerMessage: () => typerMessage
 });
 async function reglesActives(compteId) {
-  const lignes = await db.select().from(schema_exports.reglesTypage).where((0, import_drizzle_orm12.and)((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.actif, true), (0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.proposee, false))).orderBy((0, import_drizzle_orm12.asc)(schema_exports.reglesTypage.priorite));
+  const lignes = await db.select().from(schema_exports.reglesTypage).where((0, import_drizzle_orm13.and)((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.actif, true), (0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.proposee, false))).orderBy((0, import_drizzle_orm13.asc)(schema_exports.reglesTypage.priorite));
   const enBase = lignes.filter((l) => !l.compteId || !compteId || l.compteId === compteId).map((l) => ({
     id: l.id,
     libelle: l.libelle,
@@ -1891,7 +1906,7 @@ async function reglesActives(compteId) {
 async function initialiserRegles() {
   let ajoutees = 0;
   for (const regle of REGLES_INITIALES) {
-    const [existe] = await db.select({ id: schema_exports.reglesTypage.id }).from(schema_exports.reglesTypage).where((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.libelle, regle.libelle));
+    const [existe] = await db.select({ id: schema_exports.reglesTypage.id }).from(schema_exports.reglesTypage).where((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.libelle, regle.libelle));
     if (existe) continue;
     await db.insert(schema_exports.reglesTypage).values({
       libelle: regle.libelle,
@@ -1962,7 +1977,7 @@ function typageVide(message) {
   };
 }
 async function proposerRegle(evenementId, correction, auteur) {
-  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm12.eq)(schema_exports.evenements.id, evenementId));
+  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm13.eq)(schema_exports.evenements.id, evenementId));
   if (!evenement) throw new ErreurHttp(404, "Evenement introuvable");
   const motsObjet = normaliserTypage(evenement.objet ?? "").split(" ").filter((m) => m.length >= 4 && !MOTS_VIDES.has(m) && !/^\d+$/.test(m));
   const motsCles = [...new Set(motsObjet)].slice(0, 4);
@@ -1970,7 +1985,7 @@ async function proposerRegle(evenementId, correction, auteur) {
   const domaine = domaineBrut && !domaineBrut.includes("azmg-solutions") ? domaineBrut : null;
   if (!motsCles.length && !domaine) return null;
   const libelle = `Propose depuis \xAB ${(evenement.objet ?? "un evenement").slice(0, 60)} \xBB`;
-  const [existe] = await db.select({ id: schema_exports.reglesTypage.id }).from(schema_exports.reglesTypage).where((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.libelle, libelle));
+  const [existe] = await db.select({ id: schema_exports.reglesTypage.id }).from(schema_exports.reglesTypage).where((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.libelle, libelle));
   if (existe) return null;
   const [regle] = await db.insert(schema_exports.reglesTypage).values({
     compteId: evenement.compteId,
@@ -1996,25 +2011,25 @@ async function proposerRegle(evenementId, correction, auteur) {
   return { regleId: regle.id, motsCles, domaine };
 }
 async function accepterRegle(regleId, auteur) {
-  const [maj] = await db.update(schema_exports.reglesTypage).set({ proposee: false, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.id, regleId)).returning();
+  const [maj] = await db.update(schema_exports.reglesTypage).set({ proposee: false, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.id, regleId)).returning();
   if (!maj) throw new ErreurHttp(404, "Regle introuvable");
   await journaliser("regle_acceptee", { utilisateurId: auteur.utilisateurId, auteurType: auteur.type, entite: "regle_typage", entiteId: regleId });
   return maj;
 }
 async function refuserRegle(regleId, auteur) {
-  const [maj] = await db.update(schema_exports.reglesTypage).set({ actif: false, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.id, regleId)).returning();
+  const [maj] = await db.update(schema_exports.reglesTypage).set({ actif: false, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.id, regleId)).returning();
   if (!maj) throw new ErreurHttp(404, "Regle introuvable");
   await journaliser("regle_refusee", { utilisateurId: auteur.utilisateurId, auteurType: auteur.type, entite: "regle_typage", entiteId: regleId });
   return maj;
 }
 async function reglesProposees(limite = 50) {
-  return db.select().from(schema_exports.reglesTypage).where((0, import_drizzle_orm12.and)((0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.proposee, true), (0, import_drizzle_orm12.eq)(schema_exports.reglesTypage.actif, true))).orderBy((0, import_drizzle_orm12.desc)(schema_exports.reglesTypage.creeLe)).limit(limite);
+  return db.select().from(schema_exports.reglesTypage).where((0, import_drizzle_orm13.and)((0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.proposee, true), (0, import_drizzle_orm13.eq)(schema_exports.reglesTypage.actif, true))).orderBy((0, import_drizzle_orm13.desc)(schema_exports.reglesTypage.creeLe)).limit(limite);
 }
-var import_drizzle_orm12, import_zod6, sortieTypageSchema, MOTS_VIDES;
+var import_drizzle_orm13, import_zod6, sortieTypageSchema, MOTS_VIDES;
 var init_service2 = __esm({
   "src/server/modules/typage/service.ts"() {
     "use strict";
-    import_drizzle_orm12 = require("drizzle-orm");
+    import_drizzle_orm13 = require("drizzle-orm");
     import_zod6 = require("zod");
     init_client();
     init_http();
@@ -2571,6 +2586,7 @@ function poserCookies(res, jeton, csrf) {
 var limiteConnexion = (0, import_express_rate_limit.default)({
   windowMs: 15 * 6e4,
   limit: config.test ? 1e3 : 20,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: { erreur: "Trop de tentatives, reessayez dans 15 minutes" }
@@ -2652,7 +2668,7 @@ routesUtilisateurs.patch("/:id", exigerRole("admin"), async (req, res) => {
 // src/server/modules/pilotage/routes.ts
 var import_express2 = require("express");
 var import_zod4 = require("zod");
-var import_drizzle_orm7 = require("drizzle-orm");
+var import_drizzle_orm9 = require("drizzle-orm");
 init_client();
 init_http();
 init_config();
@@ -2793,299 +2809,14 @@ async function listerPostes(comptes) {
   return comptes === null ? lignes : lignes.filter((l) => comptes.includes(l.compteId));
 }
 
-// src/server/modules/pilotage/routes.ts
-init_parametres();
-
-// src/server/lib/auteur.ts
-function auteurDe(req) {
-  return { utilisateurId: req.utilisateur?.id ?? null, type: "humain" };
-}
-function auteurClaude(utilisateurId) {
-  return { utilisateurId, type: "claude" };
-}
-
-// src/server/modules/pilotage/routes.ts
-init_constantes();
-var routesComptes = (0, import_express2.Router)();
-routesComptes.use(exigerConnexion);
-routesComptes.get("/", async (req, res) => {
-  const p = await perimetreDe(req.utilisateur);
-  res.json(await listerComptes(p.comptes));
-});
-routesComptes.post("/", exigerRole("admin"), async (req, res) => {
-  const d = valider(compteSchema, req.body);
-  const compte = await creerCompte({ ...d, donneurOrdreEmail: d.donneurOrdreEmail || null }, auteurDe(req));
-  res.status(201).json(compte);
-});
-routesComptes.patch("/:id", exigerRole("admin", "manager"), async (req, res) => {
-  const id2 = idParam(req);
-  const p = await perimetreDe(req.utilisateur);
-  exigerCompte(p, id2);
-  const d = valider(modificationCompteSchema, req.body);
-  res.json(await modifierCompte(id2, d, auteurDe(req)));
-});
-var routesPostes = (0, import_express2.Router)();
-routesPostes.use(exigerConnexion);
-routesPostes.get("/", async (req, res) => {
-  const p = await perimetreDe(req.utilisateur);
-  res.json(await listerPostes(p.comptes));
-});
-routesPostes.post("/", exigerRole("admin", "manager"), async (req, res) => {
-  const d = valider(posteSchema, req.body);
-  const p = await perimetreDe(req.utilisateur);
-  exigerCompte(p, d.compteId);
-  res.status(201).json(await creerPoste(d, auteurDe(req)));
-});
-routesPostes.patch("/:id", exigerRole("admin", "manager"), async (req, res) => {
-  const id2 = idParam(req);
-  const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm7.eq)(schema_exports.postes.id, id2));
-  if (!poste) throw new ErreurHttp(404, "Poste introuvable");
-  const p = await perimetreDe(req.utilisateur);
-  exigerCompte(p, poste.compteId);
-  res.json(await modifierPoste(id2, valider(modificationPosteSchema, req.body), auteurDe(req)));
-});
-var routesParametres = (0, import_express2.Router)();
-routesParametres.use(exigerConnexion);
-routesParametres.get("/", async (req, res) => {
-  const p = await perimetreDe(req.utilisateur);
-  res.json({
-    parametres: await lireParametres(),
-    integrationsSimulees: integrationsSimulees(),
-    perimetre: { comptes: p.comptes, postes: p.postes, lectureSeule: p.lectureSeule }
-  });
-});
-routesParametres.put("/", exigerRole("admin"), async (req, res) => {
-  const valides = valider(parametresSchema, req.body);
-  res.json({ parametres: await enregistrerParametres(valides, req.utilisateur.id) });
-});
-var routesReferentiels = (0, import_express2.Router)();
-routesReferentiels.use(exigerConnexion);
-routesReferentiels.get("/", async (_req, res) => {
-  const lignes = await db.select().from(schema_exports.referentiels).where((0, import_drizzle_orm7.eq)(schema_exports.referentiels.actif, true)).orderBy((0, import_drizzle_orm7.asc)(schema_exports.referentiels.type), (0, import_drizzle_orm7.asc)(schema_exports.referentiels.ordre));
-  if (lignes.length) {
-    const parType = {};
-    for (const l of lignes) (parType[l.type] ??= []).push(l);
-    return res.json(parType);
-  }
-  res.json({
-    famille: FAMILLES.map((f, i) => ({ type: "famille", code: f.code, libelle: f.libelle, attributs: f, ordre: i, actif: true })),
-    nature: DEFINITIONS_NATURES.map((n, i) => ({ type: "nature", code: n.code, libelle: n.libelle, attributs: n, ordre: i, actif: true })),
-    statut: DEFINITIONS_STATUTS.map((s, i) => ({ type: "statut", code: s.code, libelle: s.libelle, attributs: s, ordre: i, actif: true })),
-    interlocuteur: INTERLOCUTEURS.map((c, i) => ({ type: "interlocuteur", code: c, libelle: LIBELLES_INTERLOCUTEURS[c], attributs: {}, ordre: i, actif: true }))
-  });
-});
-routesReferentiels.patch("/:id", exigerRole("admin"), async (req, res) => {
-  const id2 = idParam(req);
-  const d = valider(
-    import_zod4.z.object({ libelle: import_zod4.z.string().trim().min(1).max(200).optional(), attributs: import_zod4.z.record(import_zod4.z.string(), import_zod4.z.unknown()).optional(), actif: import_zod4.z.boolean().optional(), ordre: import_zod4.z.number().int().optional() }),
-    req.body
-  );
-  const [maj] = await db.update(schema_exports.referentiels).set({ ...d, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm7.eq)(schema_exports.referentiels.id, id2)).returning();
-  if (!maj) throw new ErreurHttp(404, "Entree de referentiel introuvable");
-  res.json(maj);
-});
-routesReferentiels.post("/", exigerRole("admin"), async (req, res) => {
-  const d = valider(
-    import_zod4.z.object({
-      type: import_zod4.z.enum(["famille", "nature", "statut", "interlocuteur", "source", "echeance"]),
-      code: import_zod4.z.string().trim().min(1).max(40),
-      libelle: import_zod4.z.string().trim().min(1).max(200),
-      attributs: import_zod4.z.record(import_zod4.z.string(), import_zod4.z.unknown()).optional(),
-      ordre: import_zod4.z.number().int().optional()
-    }),
-    req.body
-  );
-  const [ligne] = await db.insert(schema_exports.referentiels).values({ ...d, attributs: d.attributs ?? {}, ordre: d.ordre ?? 100 }).onConflictDoNothing().returning();
-  if (!ligne) throw new ErreurHttp(409, "Ce code existe deja pour ce type de referentiel");
-  res.status(201).json(ligne);
-});
-
-// src/server/modules/dossiers/routes.ts
-var import_express3 = require("express");
-var import_zod5 = require("zod");
-var import_drizzle_orm10 = require("drizzle-orm");
-init_client();
-init_http();
-init_evenements();
-
-// src/server/modules/dossiers/service.ts
+// src/server/modules/pilotage/accompagnement.ts
 var import_drizzle_orm8 = require("drizzle-orm");
+var import_luxon2 = require("luxon");
 init_client();
-init_http();
-init_evenements();
-init_constantes();
-function libelleParDefaut(e) {
-  const tete = e.pays ? `${e.client} (${e.pays})` : e.client;
-  return [tete, e.produit, e.operation].map((m) => m?.trim()).filter(Boolean).join(" / ");
-}
-async function trouverOuCreerDossier(entree, auteur) {
-  const client = entree.client.trim();
-  if (!client) throw new ErreurHttp(400, "Le client du dossier est obligatoire");
-  const cle = cleDossier(client, entree.produit ?? "", entree.operation ?? "");
-  if (!cle) throw new ErreurHttp(400, "Le dossier doit porter au moins un client identifiable");
-  const [existant] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm8.and)((0, import_drizzle_orm8.eq)(schema_exports.dossiers.compteId, entree.compteId), (0, import_drizzle_orm8.eq)(schema_exports.dossiers.cleRapprochement, cle)));
-  if (existant) {
-    const complements = {};
-    if (!existant.pays && entree.pays) complements.pays = entree.pays;
-    if (!existant.produit && entree.produit) complements.produit = entree.produit;
-    if (!existant.operation && entree.operation) complements.operation = entree.operation;
-    if (!existant.posteId && entree.posteId) complements.posteId = entree.posteId;
-    if (entree.references && Object.keys(entree.references).length) {
-      complements.references = { ...existant.references, ...entree.references };
-    }
-    if (!Object.keys(complements).length) return { dossier: existant, cree: false };
-    const [maj] = await db.update(schema_exports.dossiers).set({ ...complements, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm8.eq)(schema_exports.dossiers.id, existant.id)).returning();
-    return { dossier: maj, cree: false };
-  }
-  const [dossier] = await db.insert(schema_exports.dossiers).values({
-    compteId: entree.compteId,
-    posteId: entree.posteId ?? null,
-    client,
-    pays: entree.pays ?? null,
-    produit: entree.produit ?? null,
-    operation: entree.operation ?? null,
-    cleRapprochement: cle,
-    libelle: entree.libelle?.trim() || libelleParDefaut({ ...entree, client }),
-    statut: entree.statut ?? "ouvert",
-    references: entree.references ?? {},
-    notes: entree.notes ?? null
-  }).returning();
-  await journaliser("dossier_cree", {
-    utilisateurId: auteur.utilisateurId,
-    auteurType: auteur.type,
-    entite: "dossier",
-    entiteId: dossier.id,
-    details: { client, produit: entree.produit ?? null, operation: entree.operation ?? null }
-  });
-  return { dossier, cree: true };
-}
-async function dossiersParClientProduit(compteId, client, produit) {
-  const prefixe = cleDossier(client, produit ?? "", "");
-  if (!prefixe) return [];
-  return db.select().from(schema_exports.dossiers).where(
-    (0, import_drizzle_orm8.and)(
-      (0, import_drizzle_orm8.eq)(schema_exports.dossiers.compteId, compteId),
-      // Le prefixe exact, ou le prefixe suivi du separateur d'operation.
-      (0, import_drizzle_orm8.or)((0, import_drizzle_orm8.eq)(schema_exports.dossiers.cleRapprochement, prefixe), import_drizzle_orm8.sql`${schema_exports.dossiers.cleRapprochement} LIKE ${`${prefixe}|%`}`)
-    )
-  );
-}
-async function lireDossier(id2) {
-  const [dossier] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm8.eq)(schema_exports.dossiers.id, id2));
-  if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
-  return dossier;
-}
-async function modifierDossier(id2, modifs, auteur) {
-  const dossier = await lireDossier(id2);
-  const valeurs = { majLe: /* @__PURE__ */ new Date() };
-  for (const champ of ["pays", "produit", "operation", "libelle", "statut", "notes", "resume", "posteId"]) {
-    if (modifs[champ] !== void 0) valeurs[champ] = modifs[champ];
-  }
-  if (modifs.client) {
-    valeurs.client = modifs.client.trim();
-    valeurs.cleRapprochement = cleDossier(
-      String(valeurs.client),
-      modifs.produit ?? dossier.produit ?? "",
-      modifs.operation ?? dossier.operation ?? ""
-    );
-  } else if (modifs.produit !== void 0 || modifs.operation !== void 0) {
-    valeurs.cleRapprochement = cleDossier(dossier.client, modifs.produit ?? dossier.produit ?? "", modifs.operation ?? dossier.operation ?? "");
-  }
-  if (modifs.references) valeurs.references = { ...dossier.references, ...modifs.references };
-  if (modifs.statut === "clos" || modifs.statut === "annule") valeurs.clotureLe = /* @__PURE__ */ new Date();
-  if (modifs.statut === "ouvert") valeurs.clotureLe = null;
-  if (valeurs.cleRapprochement && valeurs.cleRapprochement !== dossier.cleRapprochement) {
-    const [collision] = await db.select({ id: schema_exports.dossiers.id, libelle: schema_exports.dossiers.libelle }).from(schema_exports.dossiers).where((0, import_drizzle_orm8.and)((0, import_drizzle_orm8.eq)(schema_exports.dossiers.compteId, dossier.compteId), (0, import_drizzle_orm8.eq)(schema_exports.dossiers.cleRapprochement, String(valeurs.cleRapprochement))));
-    if (collision && collision.id !== id2) {
-      throw new ErreurHttp(409, `Un dossier identique existe deja sur ce compte : \xAB ${collision.libelle} \xBB`);
-    }
-  }
-  const [maj] = await db.update(schema_exports.dossiers).set(valeurs).where((0, import_drizzle_orm8.eq)(schema_exports.dossiers.id, id2)).returning();
-  await journaliser("dossier_modifie", {
-    utilisateurId: auteur.utilisateurId,
-    auteurType: auteur.type,
-    entite: "dossier",
-    entiteId: id2,
-    details: { champs: Object.keys(valeurs).filter((c) => c !== "majLe") }
-  });
-  return maj;
-}
-async function chercherDossiers(terme, opts = {}) {
-  const motif = `%${terme.trim()}%`;
-  const normalise = normaliser(terme);
-  const conditions = [];
-  if (opts.compteId) conditions.push((0, import_drizzle_orm8.eq)(schema_exports.dossiers.compteId, opts.compteId));
-  if (terme.trim()) {
-    const recherche = (0, import_drizzle_orm8.or)(
-      (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.libelle, motif),
-      (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.client, motif),
-      (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.produit, motif),
-      (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.operation, motif),
-      (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.pays, motif),
-      normalise ? (0, import_drizzle_orm8.ilike)(schema_exports.dossiers.cleRapprochement, `%${normalise}%`) : void 0
-    );
-    if (recherche) conditions.push(recherche);
-  }
-  return db.select({
-    id: schema_exports.dossiers.id,
-    libelle: schema_exports.dossiers.libelle,
-    client: schema_exports.dossiers.client,
-    pays: schema_exports.dossiers.pays,
-    produit: schema_exports.dossiers.produit,
-    operation: schema_exports.dossiers.operation,
-    statut: schema_exports.dossiers.statut,
-    resume: schema_exports.dossiers.resume,
-    majLe: schema_exports.dossiers.majLe,
-    demandesOuvertes: import_drizzle_orm8.sql`(
-        SELECT count(*)::int FROM demandes d
-        WHERE d.dossier_id = ${schema_exports.dossiers.id} AND d.statut NOT IN ('termine', 'annule') AND d.famille <> ${FAMILLE_HORS_PERIMETRE}
-      )`.as("demandes_ouvertes")
-  }).from(schema_exports.dossiers).where(conditions.length ? (0, import_drizzle_orm8.and)(...conditions) : void 0).orderBy((0, import_drizzle_orm8.desc)(schema_exports.dossiers.majLe)).limit(Math.min(opts.limite ?? 20, 100));
-}
-async function chronologieDossier(dossierId) {
-  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm8.and)((0, import_drizzle_orm8.eq)(schema_exports.evenements.dossierId, dossierId), import_drizzle_orm8.sql`coalesce(${schema_exports.evenements.famille}, '') <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm8.desc)(schema_exports.evenements.survenuLe)).limit(500);
-  const transitions = await db.select({ t: schema_exports.transitionsStatut, objet: schema_exports.demandes.objet }).from(schema_exports.transitionsStatut).innerJoin(schema_exports.demandes, (0, import_drizzle_orm8.eq)(schema_exports.demandes.id, schema_exports.transitionsStatut.demandeId)).where((0, import_drizzle_orm8.and)((0, import_drizzle_orm8.eq)(schema_exports.demandes.dossierId, dossierId), import_drizzle_orm8.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm8.desc)(schema_exports.transitionsStatut.survenuLe)).limit(500);
-  const echeances2 = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm8.eq)(schema_exports.echeances.dossierId, dossierId)).limit(200);
-  const pieces2 = await db.select().from(schema_exports.pieces).where((0, import_drizzle_orm8.eq)(schema_exports.pieces.dossierId, dossierId)).limit(200);
-  const lignes = [
-    ...evenements2.map((e) => ({
-      type: "evenement",
-      survenuLe: e.survenuLe,
-      titre: e.objet ?? e.resume ?? "Evenement",
-      detail: e.resume,
-      demandeId: e.demandeId,
-      meta: { sens: e.sens, nature: e.nature, interlocuteur: e.interlocuteur, source: e.source, famille: e.famille, confiance: e.confianceTypage }
-    })),
-    ...transitions.map((l) => ({
-      type: "transition",
-      survenuLe: l.t.survenuLe,
-      titre: l.t.statutAvant ? `${l.objet} : ${libelleStatut(l.t.statutAvant)} vers ${libelleStatut(l.t.statutApres)}` : `${l.objet} : ouverture en ${libelleStatut(l.t.statutApres)}`,
-      detail: l.t.motif,
-      demandeId: l.t.demandeId,
-      meta: { statutAvant: l.t.statutAvant, statutApres: l.t.statutApres, minutesOuvrees: l.t.minutesOuvrees, auteurType: l.t.auteurType }
-    })),
-    ...echeances2.map((e) => ({
-      type: "echeance",
-      survenuLe: e.echeanceLe,
-      titre: `${LIBELLES_ECHEANCES[e.type] ?? e.type}${e.libelle ? ` : ${e.libelle}` : ""}`,
-      detail: e.phraseSource,
-      demandeId: e.demandeId,
-      meta: { honoreeLe: e.honoreeLe, annulee: e.annulee }
-    })),
-    ...pieces2.map((p) => ({
-      type: "piece",
-      survenuLe: p.creeLe,
-      titre: `${p.type}${p.reference ? ` ${p.reference}` : ""}`,
-      detail: p.nomFichier,
-      demandeId: p.demandeId,
-      meta: { archive: p.archive }
-    }))
-  ];
-  return lignes.sort((a, b) => b.survenuLe.getTime() - a.survenuLe.getTime());
-}
+init_parametres2();
 
 // src/server/modules/demandes/service.ts
-var import_drizzle_orm9 = require("drizzle-orm");
+var import_drizzle_orm7 = require("drizzle-orm");
 init_client();
 init_http();
 init_evenements();
@@ -3104,7 +2835,7 @@ async function creerDemande(entree, auteur) {
   if (estHorsPerimetre(entree.famille)) {
     throw new ErreurHttp(400, `La famille ${FAMILLE_HORS_PERIMETRE} est hors perimetre du poste : elle ne cree pas de demande`);
   }
-  const [dossier] = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId, posteId: schema_exports.dossiers.posteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm9.eq)(schema_exports.dossiers.id, entree.dossierId));
+  const [dossier] = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId, posteId: schema_exports.dossiers.posteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm7.eq)(schema_exports.dossiers.id, entree.dossierId));
   if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
   const statut = entree.statut ?? "nouveau";
   const def = definitionStatut(statut);
@@ -3121,6 +2852,8 @@ async function creerDemande(entree, auteur) {
     statut,
     acteurAttendu: def.acteur,
     priorite: entree.priorite ?? "normale",
+    reprise: entree.reprise ?? false,
+    cause: entree.cause ?? null,
     echeanceLe: entree.echeanceLe ?? null,
     slaHeures: sla.heures,
     slaEcheanceLe: sla.echeance,
@@ -3151,7 +2884,7 @@ async function creerDemande(entree, auteur) {
   return demande;
 }
 async function debutStatutCourant(demande) {
-  const [derniere] = await db.select({ survenuLe: schema_exports.transitionsStatut.survenuLe }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm9.eq)(schema_exports.transitionsStatut.demandeId, demande.id)).orderBy((0, import_drizzle_orm9.desc)(schema_exports.transitionsStatut.survenuLe), (0, import_drizzle_orm9.desc)(schema_exports.transitionsStatut.id)).limit(1);
+  const [derniere] = await db.select({ survenuLe: schema_exports.transitionsStatut.survenuLe }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm7.eq)(schema_exports.transitionsStatut.demandeId, demande.id)).orderBy((0, import_drizzle_orm7.desc)(schema_exports.transitionsStatut.survenuLe), (0, import_drizzle_orm7.desc)(schema_exports.transitionsStatut.id)).limit(1);
   return derniere?.survenuLe ?? demande.ouverteLe;
 }
 function cumuler(compteurs, cle, minutes) {
@@ -3162,7 +2895,7 @@ function cumuler(compteurs, cle, minutes) {
 async function changerStatut(demandeId, nouveau, auteur, opts = {}) {
   const def = definitionStatut(nouveau);
   if (!def) throw new ErreurHttp(400, `Statut inconnu : ${nouveau}`);
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm9.eq)(schema_exports.demandes.id, demandeId));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm7.eq)(schema_exports.demandes.id, demandeId));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   const acteurApres = opts.acteurAttendu ?? def.acteur;
   if (!ACTEURS.includes(acteurApres)) throw new ErreurHttp(400, `Acteur inconnu : ${acteurApres}`);
@@ -3193,7 +2926,7 @@ async function changerStatut(demandeId, nouveau, auteur, opts = {}) {
     termineeLe: def.fermee ? survenuLe : null,
     dernierEvenementLe: survenuLe,
     majLe: /* @__PURE__ */ new Date()
-  }).where((0, import_drizzle_orm9.eq)(schema_exports.demandes.id, demande.id)).returning();
+  }).where((0, import_drizzle_orm7.eq)(schema_exports.demandes.id, demande.id)).returning();
   await journaliser("statut_change", {
     utilisateurId: auteur.utilisateurId,
     auteurType: auteur.type,
@@ -3204,10 +2937,10 @@ async function changerStatut(demandeId, nouveau, auteur, opts = {}) {
   return maj;
 }
 async function enregistrerRelance(demandeId, auteur, survenuLe = /* @__PURE__ */ new Date()) {
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm9.eq)(schema_exports.demandes.id, demandeId));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm7.eq)(schema_exports.demandes.id, demandeId));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   const niveau = Math.min(3, demande.niveauRelance + 1);
-  const [maj] = await db.update(schema_exports.demandes).set({ niveauRelance: niveau, derniereRelanceLe: survenuLe, dernierEvenementLe: survenuLe, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm9.eq)(schema_exports.demandes.id, demandeId)).returning();
+  const [maj] = await db.update(schema_exports.demandes).set({ niveauRelance: niveau, derniereRelanceLe: survenuLe, dernierEvenementLe: survenuLe, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm7.eq)(schema_exports.demandes.id, demandeId)).returning();
   await journaliser("relance_enregistree", {
     utilisateurId: auteur.utilisateurId,
     auteurType: auteur.type,
@@ -3237,8 +2970,8 @@ async function tempsDesDemandes(demandes2, maintenant = /* @__PURE__ */ new Date
   if (!demandes2.length) return sortie;
   const debuts = await db.select({
     demandeId: schema_exports.transitionsStatut.demandeId,
-    debut: import_drizzle_orm9.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut")
-  }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm9.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
+    debut: import_drizzle_orm7.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut")
+  }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm7.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
   const parDemande = new Map(debuts.map((d) => [d.demandeId, new Date(d.debut)]));
   const horairesParCompte2 = /* @__PURE__ */ new Map();
   for (const compteId of new Set(demandes2.map((d) => d.compteId))) {
@@ -3262,27 +2995,27 @@ function tempsDemandeAvecHoraires(demande, debutStatut, horaires, maintenant = /
   };
 }
 function conditionPerimetre() {
-  return import_drizzle_orm9.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`;
+  return import_drizzle_orm7.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`;
 }
 async function fileDuJour(filtres = {}, maintenant = /* @__PURE__ */ new Date()) {
   const conditions = [conditionPerimetre()];
-  conditions.push((0, import_drizzle_orm9.inArray)(schema_exports.demandes.statut, filtres.statuts ?? STATUTS_OUVERTS));
-  if (filtres.compteId) conditions.push((0, import_drizzle_orm9.eq)(schema_exports.demandes.compteId, filtres.compteId));
-  if (filtres.posteId) conditions.push((0, import_drizzle_orm9.eq)(schema_exports.demandes.posteId, filtres.posteId));
-  if (filtres.familles?.length) conditions.push((0, import_drizzle_orm9.inArray)(schema_exports.demandes.famille, filtres.familles));
-  if (filtres.acteurs?.length) conditions.push((0, import_drizzle_orm9.inArray)(schema_exports.demandes.acteurAttendu, filtres.acteurs));
+  conditions.push((0, import_drizzle_orm7.inArray)(schema_exports.demandes.statut, filtres.statuts ?? STATUTS_OUVERTS));
+  if (filtres.compteId) conditions.push((0, import_drizzle_orm7.eq)(schema_exports.demandes.compteId, filtres.compteId));
+  if (filtres.posteId) conditions.push((0, import_drizzle_orm7.eq)(schema_exports.demandes.posteId, filtres.posteId));
+  if (filtres.familles?.length) conditions.push((0, import_drizzle_orm7.inArray)(schema_exports.demandes.famille, filtres.familles));
+  if (filtres.acteurs?.length) conditions.push((0, import_drizzle_orm7.inArray)(schema_exports.demandes.acteurAttendu, filtres.acteurs));
   const lignes = await db.select({
     demande: schema_exports.demandes,
     dossierLibelle: schema_exports.dossiers.libelle,
     client: schema_exports.dossiers.client,
-    debutStatut: import_drizzle_orm9.sql`coalesce((
+    debutStatut: import_drizzle_orm7.sql`coalesce((
         SELECT max(t.survenu_le) FROM transitions_statut t WHERE t.demande_id = ${schema_exports.demandes.id}
       ), ${schema_exports.demandes.ouverteLe})`.as("debut_statut"),
-    prochaineEcheance: import_drizzle_orm9.sql`(
+    prochaineEcheance: import_drizzle_orm7.sql`(
         SELECT min(e.echeance_le) FROM echeances e
         WHERE e.dossier_id = ${schema_exports.demandes.dossierId} AND e.annulee = false AND e.honoree_le IS NULL AND e.echeance_le >= ${maintenant}
       )`.as("prochaine_echeance")
-  }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm9.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm9.and)(...conditions)).orderBy((0, import_drizzle_orm9.asc)(schema_exports.demandes.echeanceLe), (0, import_drizzle_orm9.asc)(schema_exports.demandes.ouverteLe)).limit(Math.min(filtres.limite ?? 300, 1e3));
+  }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm7.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm7.and)(...conditions)).orderBy((0, import_drizzle_orm7.asc)(schema_exports.demandes.echeanceLe), (0, import_drizzle_orm7.asc)(schema_exports.demandes.ouverteLe)).limit(Math.min(filtres.limite ?? 300, 1e3));
   const horairesParCompte2 = /* @__PURE__ */ new Map();
   for (const compteId of new Set(lignes.map((l) => l.demande.compteId))) {
     horairesParCompte2.set(compteId, await horairesDuCompte(compteId));
@@ -3328,9 +3061,482 @@ async function fileDuJour(filtres = {}, maintenant = /* @__PURE__ */ new Date())
   });
 }
 async function demandesDuDossier(dossierId, ouvertesSeulement = false) {
-  const conditions = [(0, import_drizzle_orm9.eq)(schema_exports.demandes.dossierId, dossierId), conditionPerimetre()];
-  if (ouvertesSeulement) conditions.push((0, import_drizzle_orm9.inArray)(schema_exports.demandes.statut, STATUTS_OUVERTS));
-  return db.select().from(schema_exports.demandes).where((0, import_drizzle_orm9.and)(...conditions)).orderBy((0, import_drizzle_orm9.desc)(schema_exports.demandes.ouverteLe));
+  const conditions = [(0, import_drizzle_orm7.eq)(schema_exports.demandes.dossierId, dossierId), conditionPerimetre()];
+  if (ouvertesSeulement) conditions.push((0, import_drizzle_orm7.inArray)(schema_exports.demandes.statut, STATUTS_OUVERTS));
+  return db.select().from(schema_exports.demandes).where((0, import_drizzle_orm7.and)(...conditions)).orderBy((0, import_drizzle_orm7.desc)(schema_exports.demandes.ouverteLe));
+}
+
+// src/server/modules/pilotage/accompagnement.ts
+init_heures_ouvrees();
+init_constantes();
+function mediane(valeurs) {
+  if (!valeurs.length) return null;
+  const tries = [...valeurs].sort((a, b) => a - b);
+  const milieu = Math.floor(tries.length / 2);
+  return tries.length % 2 ? tries[milieu] : (tries[milieu - 1] + tries[milieu]) / 2;
+}
+function lundi(jour) {
+  return jour.startOf("week");
+}
+async function accompagnement(posteId, periode, maintenant = /* @__PURE__ */ new Date()) {
+  const [poste] = await db.select({
+    id: schema_exports.postes.id,
+    compteId: schema_exports.postes.compteId,
+    intitule: schema_exports.postes.intitule,
+    collaborateur: schema_exports.utilisateurs.nom
+  }).from(schema_exports.postes).leftJoin(schema_exports.utilisateurs, (0, import_drizzle_orm8.eq)(schema_exports.utilisateurs.id, schema_exports.postes.collaborateurId)).where((0, import_drizzle_orm8.eq)(schema_exports.postes.id, posteId));
+  if (!poste) throw new Error("Poste introuvable");
+  const horaires = await horairesDuCompte(poste.compteId);
+  const conditions = [
+    (0, import_drizzle_orm8.eq)(schema_exports.demandes.posteId, posteId),
+    import_drizzle_orm8.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
+    (0, import_drizzle_orm8.gte)(schema_exports.demandes.ouverteLe, periode.debut),
+    (0, import_drizzle_orm8.lt)(schema_exports.demandes.ouverteLe, periode.fin)
+  ];
+  const demandes2 = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm8.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm8.and)(...conditions)).orderBy((0, import_drizzle_orm8.asc)(schema_exports.demandes.ouverteLe));
+  const debuts = await debutsDeStatut(demandes2.map((l) => l.demande));
+  const dossiersVus = /* @__PURE__ */ new Set();
+  const causesVues = /* @__PURE__ */ new Set();
+  const parSemaine = /* @__PURE__ */ new Map();
+  const parCause = /* @__PURE__ */ new Map();
+  const parDossier = /* @__PURE__ */ new Map();
+  const delaisPeriode = [];
+  for (const { demande, dossier } of demandes2) {
+    const cle = lundi(import_luxon2.DateTime.fromJSDate(demande.ouverteLe)).toISODate();
+    const semaine = parSemaine.get(cle) ?? {
+      debut: cle,
+      semaine: import_luxon2.DateTime.fromISO(cle).weekNumber,
+      demandesOuvertes: 0,
+      reprises: 0,
+      recidives: 0,
+      tauxRecidive: null,
+      delaiMedianHeures: null,
+      p1EnRetard: 0
+    };
+    parSemaine.set(cle, semaine);
+    semaine.demandesOuvertes++;
+    if (demande.reprise) {
+      semaine.reprises++;
+      const dejaVu = dossiersVus.has(demande.dossierId) || demande.cause !== null && causesVues.has(demande.cause);
+      if (dejaVu) semaine.recidives++;
+      dossiersVus.add(demande.dossierId);
+      if (demande.cause) causesVues.add(demande.cause);
+      const cause = demande.cause ?? "inconnue";
+      parCause.set(cause, (parCause.get(cause) ?? 0) + 1);
+      const suivi = parDossier.get(demande.dossierId) ?? { libelle: dossier, reprises: 0 };
+      suivi.reprises++;
+      parDossier.set(demande.dossierId, suivi);
+    }
+    if (demande.termineeLe) {
+      const heures = minutesOuvrees(horaires, demande.ouverteLe, demande.termineeLe) / 60;
+      delaisPeriode.push(heures);
+      const delaisSemaine = semaine._delais ?? [];
+      delaisSemaine.push(heures);
+      semaine._delais = delaisSemaine;
+    } else if (demande.priorite === "haute" || demande.priorite === "critique") {
+      const temps = tempsDemandeAvecHoraires(demande, debuts.get(demande.id) ?? demande.ouverteLe, horaires, maintenant);
+      const depasse = demande.slaHeures !== null && temps.total / 60 > demande.slaHeures;
+      if (depasse) semaine.p1EnRetard++;
+    }
+  }
+  const semaines = [...parSemaine.values()].sort((a, b) => a.debut.localeCompare(b.debut)).map((s) => {
+    const delais2 = s._delais ?? [];
+    delete s._delais;
+    return {
+      ...s,
+      tauxRecidive: s.reprises ? Math.round(s.recidives / s.reprises * 100) / 100 : null,
+      delaiMedianHeures: mediane(delais2)
+    };
+  });
+  const retoursPositifs = await compterRetoursPositifs(posteId, periode);
+  return {
+    posteId,
+    poste: poste.intitule,
+    collaborateur: poste.collaborateur,
+    periode: { debut: periode.debut.toISOString(), fin: periode.fin.toISOString() },
+    semaines,
+    causes: [...parCause.entries()].map(([cause, nombre]) => ({
+      cause: cause === "inconnue" ? null : cause,
+      libelle: cause === "inconnue" ? "Cause non renseignee" : LIBELLES_CAUSES[cause],
+      nombre
+    })).sort((a, b) => b.nombre - a.nombre),
+    dossiersRepetes: [...parDossier.entries()].filter(([, d]) => d.reprises > 1).map(([dossierId, d]) => ({ dossierId, libelle: d.libelle, reprises: d.reprises })).sort((a, b) => b.reprises - a.reprises),
+    retoursPositifs,
+    total: {
+      demandesOuvertes: demandes2.length,
+      reprises: semaines.reduce((s, x) => s + x.reprises, 0),
+      recidives: semaines.reduce((s, x) => s + x.recidives, 0),
+      delaiMedianHeures: mediane(delaisPeriode)
+    }
+  };
+}
+async function compterRetoursPositifs(posteId, periode) {
+  const [ligne] = await db.select({ nombre: import_drizzle_orm8.sql`count(*)::int` }).from(schema_exports.evenements).innerJoin(schema_exports.demandes, (0, import_drizzle_orm8.eq)(schema_exports.demandes.id, schema_exports.evenements.demandeId)).where(
+    (0, import_drizzle_orm8.and)(
+      (0, import_drizzle_orm8.eq)(schema_exports.demandes.posteId, posteId),
+      (0, import_drizzle_orm8.eq)(schema_exports.evenements.nature, "validation_do"),
+      (0, import_drizzle_orm8.gte)(schema_exports.evenements.survenuLe, periode.debut),
+      (0, import_drizzle_orm8.lt)(schema_exports.evenements.survenuLe, periode.fin)
+    )
+  );
+  return ligne?.nombre ?? 0;
+}
+async function debutsDeStatut(demandes2) {
+  if (!demandes2.length) return /* @__PURE__ */ new Map();
+  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm8.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm8.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
+  return new Map(lignes.map((l) => [l.demandeId, new Date(l.debut)]));
+}
+var FAMILLES_BLOQUANTES = /* @__PURE__ */ new Set(["T01", "T02", "T03", "T04", "T05", "T14"]);
+var FAMILLES_DE_FORME = /* @__PURE__ */ new Set(["T06", "T09", "T10", "T11", "T12"]);
+function prioriteConseillee(demande, horaires, maintenant = /* @__PURE__ */ new Date()) {
+  const echeance = demande.echeanceLe;
+  if (echeance) {
+    const restant = minutesOuvrees(horaires, maintenant, echeance) / 60;
+    if (echeance <= maintenant) return { priorite: "haute", raison: "echeance depassee" };
+    if (restant <= 24) return { priorite: "haute", raison: "echeance sous 24 heures ouvrees" };
+  }
+  if (FAMILLES_BLOQUANTES.has(demande.famille) && (demande.acteurAttendu === "client" || demande.acteurAttendu === "tiers")) {
+    return { priorite: "haute", raison: "un tiers reste bloque" };
+  }
+  if (FAMILLES_DE_FORME.has(demande.famille) && !echeance) {
+    return { priorite: "basse", raison: "forme ou procedure, sans echeance" };
+  }
+  return { priorite: "normale", raison: "travail de la semaine" };
+}
+async function ecartsPriorite(posteId, maintenant = /* @__PURE__ */ new Date()) {
+  const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm8.eq)(schema_exports.postes.id, posteId));
+  if (!poste) return [];
+  const horaires = await horairesDuCompte(poste.compteId);
+  const lignes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm8.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where(
+    (0, import_drizzle_orm8.and)(
+      (0, import_drizzle_orm8.eq)(schema_exports.demandes.posteId, posteId),
+      import_drizzle_orm8.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
+      import_drizzle_orm8.sql`${schema_exports.demandes.statut} NOT IN ('termine', 'annule')`
+    )
+  );
+  const ecarts = [];
+  for (const { demande, dossier } of lignes) {
+    const conseil = prioriteConseillee(demande, horaires, maintenant);
+    if (conseil.priorite === demande.priorite) continue;
+    if (demande.priorite === "critique") continue;
+    ecarts.push({
+      demandeId: demande.id,
+      objet: demande.objet,
+      dossier,
+      declaree: demande.priorite,
+      conseillee: conseil.priorite,
+      raison: conseil.raison
+    });
+  }
+  return ecarts.sort((a, b) => Number(b.declaree === "haute") - Number(a.declaree === "haute"));
+}
+
+// src/server/modules/pilotage/routes.ts
+init_parametres();
+
+// src/server/lib/auteur.ts
+function auteurDe(req) {
+  return { utilisateurId: req.utilisateur?.id ?? null, type: "humain" };
+}
+function auteurClaude(utilisateurId) {
+  return { utilisateurId, type: "claude" };
+}
+
+// src/server/modules/pilotage/routes.ts
+init_constantes();
+var routesComptes = (0, import_express2.Router)();
+routesComptes.use(exigerConnexion);
+routesComptes.get("/", async (req, res) => {
+  const p = await perimetreDe(req.utilisateur);
+  res.json(await listerComptes(p.comptes));
+});
+routesComptes.post("/", exigerRole("admin"), async (req, res) => {
+  const d = valider(compteSchema, req.body);
+  const compte = await creerCompte({ ...d, donneurOrdreEmail: d.donneurOrdreEmail || null }, auteurDe(req));
+  res.status(201).json(compte);
+});
+routesComptes.patch("/:id", exigerRole("admin", "manager"), async (req, res) => {
+  const id2 = idParam(req);
+  const p = await perimetreDe(req.utilisateur);
+  exigerCompte(p, id2);
+  const d = valider(modificationCompteSchema, req.body);
+  res.json(await modifierCompte(id2, d, auteurDe(req)));
+});
+var routesPostes = (0, import_express2.Router)();
+routesPostes.use(exigerConnexion);
+routesPostes.get("/", async (req, res) => {
+  const p = await perimetreDe(req.utilisateur);
+  res.json(await listerPostes(p.comptes));
+});
+routesPostes.post("/", exigerRole("admin", "manager"), async (req, res) => {
+  const d = valider(posteSchema, req.body);
+  const p = await perimetreDe(req.utilisateur);
+  exigerCompte(p, d.compteId);
+  res.status(201).json(await creerPoste(d, auteurDe(req)));
+});
+routesPostes.patch("/:id", exigerRole("admin", "manager"), async (req, res) => {
+  const id2 = idParam(req);
+  const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm9.eq)(schema_exports.postes.id, id2));
+  if (!poste) throw new ErreurHttp(404, "Poste introuvable");
+  const p = await perimetreDe(req.utilisateur);
+  exigerCompte(p, poste.compteId);
+  res.json(await modifierPoste(id2, valider(modificationPosteSchema, req.body), auteurDe(req)));
+});
+routesPostes.get("/:id/accompagnement", async (req, res) => {
+  const id2 = idParam(req);
+  const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm9.eq)(schema_exports.postes.id, id2));
+  if (!poste) throw new ErreurHttp(404, "Poste introuvable");
+  exigerCompte(await perimetreDe(req.utilisateur), poste.compteId);
+  const q = valider(
+    import_zod4.z.object({
+      debut: import_zod4.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      fin: import_zod4.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+    }),
+    req.query
+  );
+  const fin = q.fin ? /* @__PURE__ */ new Date(`${q.fin}T23:59:59.999Z`) : /* @__PURE__ */ new Date();
+  const debut = q.debut ? /* @__PURE__ */ new Date(`${q.debut}T00:00:00.000Z`) : new Date(fin.getTime() - 28 * 864e5);
+  const [bilan, ecarts] = await Promise.all([accompagnement(id2, { debut, fin }), ecartsPriorite(id2)]);
+  res.json({ ...bilan, ecartsPriorite: ecarts });
+});
+var routesParametres = (0, import_express2.Router)();
+routesParametres.use(exigerConnexion);
+routesParametres.get("/", async (req, res) => {
+  const p = await perimetreDe(req.utilisateur);
+  res.json({
+    parametres: await lireParametres(),
+    integrationsSimulees: integrationsSimulees(),
+    perimetre: { comptes: p.comptes, postes: p.postes, lectureSeule: p.lectureSeule }
+  });
+});
+routesParametres.put("/", exigerRole("admin"), async (req, res) => {
+  const valides = valider(parametresSchema, req.body);
+  res.json({ parametres: await enregistrerParametres(valides, req.utilisateur.id) });
+});
+var routesReferentiels = (0, import_express2.Router)();
+routesReferentiels.use(exigerConnexion);
+routesReferentiels.get("/", async (_req, res) => {
+  const lignes = await db.select().from(schema_exports.referentiels).where((0, import_drizzle_orm9.eq)(schema_exports.referentiels.actif, true)).orderBy((0, import_drizzle_orm9.asc)(schema_exports.referentiels.type), (0, import_drizzle_orm9.asc)(schema_exports.referentiels.ordre));
+  if (lignes.length) {
+    const parType = {};
+    for (const l of lignes) (parType[l.type] ??= []).push(l);
+    return res.json(parType);
+  }
+  res.json({
+    famille: FAMILLES.map((f, i) => ({ type: "famille", code: f.code, libelle: f.libelle, attributs: f, ordre: i, actif: true })),
+    nature: DEFINITIONS_NATURES.map((n, i) => ({ type: "nature", code: n.code, libelle: n.libelle, attributs: n, ordre: i, actif: true })),
+    statut: DEFINITIONS_STATUTS.map((s, i) => ({ type: "statut", code: s.code, libelle: s.libelle, attributs: s, ordre: i, actif: true })),
+    interlocuteur: INTERLOCUTEURS.map((c, i) => ({ type: "interlocuteur", code: c, libelle: LIBELLES_INTERLOCUTEURS[c], attributs: {}, ordre: i, actif: true }))
+  });
+});
+routesReferentiels.patch("/:id", exigerRole("admin"), async (req, res) => {
+  const id2 = idParam(req);
+  const d = valider(
+    import_zod4.z.object({ libelle: import_zod4.z.string().trim().min(1).max(200).optional(), attributs: import_zod4.z.record(import_zod4.z.string(), import_zod4.z.unknown()).optional(), actif: import_zod4.z.boolean().optional(), ordre: import_zod4.z.number().int().optional() }),
+    req.body
+  );
+  const [maj] = await db.update(schema_exports.referentiels).set({ ...d, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm9.eq)(schema_exports.referentiels.id, id2)).returning();
+  if (!maj) throw new ErreurHttp(404, "Entree de referentiel introuvable");
+  res.json(maj);
+});
+routesReferentiels.post("/", exigerRole("admin"), async (req, res) => {
+  const d = valider(
+    import_zod4.z.object({
+      type: import_zod4.z.enum(["famille", "nature", "statut", "interlocuteur", "source", "echeance"]),
+      code: import_zod4.z.string().trim().min(1).max(40),
+      libelle: import_zod4.z.string().trim().min(1).max(200),
+      attributs: import_zod4.z.record(import_zod4.z.string(), import_zod4.z.unknown()).optional(),
+      ordre: import_zod4.z.number().int().optional()
+    }),
+    req.body
+  );
+  const [ligne] = await db.insert(schema_exports.referentiels).values({ ...d, attributs: d.attributs ?? {}, ordre: d.ordre ?? 100 }).onConflictDoNothing().returning();
+  if (!ligne) throw new ErreurHttp(409, "Ce code existe deja pour ce type de referentiel");
+  res.status(201).json(ligne);
+});
+
+// src/server/modules/dossiers/routes.ts
+var import_express3 = require("express");
+var import_zod5 = require("zod");
+var import_drizzle_orm11 = require("drizzle-orm");
+init_client();
+init_http();
+init_evenements();
+
+// src/server/modules/dossiers/service.ts
+var import_drizzle_orm10 = require("drizzle-orm");
+init_client();
+init_http();
+init_evenements();
+init_constantes();
+function libelleParDefaut(e) {
+  const tete = e.pays ? `${e.client} (${e.pays})` : e.client;
+  return [tete, e.produit, e.operation].map((m) => m?.trim()).filter(Boolean).join(" / ");
+}
+async function trouverOuCreerDossier(entree, auteur) {
+  const client = entree.client.trim();
+  if (!client) throw new ErreurHttp(400, "Le client du dossier est obligatoire");
+  const cle = cleDossier(client, entree.produit ?? "", entree.operation ?? "");
+  if (!cle) throw new ErreurHttp(400, "Le dossier doit porter au moins un client identifiable");
+  const [existant] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm10.and)((0, import_drizzle_orm10.eq)(schema_exports.dossiers.compteId, entree.compteId), (0, import_drizzle_orm10.eq)(schema_exports.dossiers.cleRapprochement, cle)));
+  if (existant) {
+    const complements = {};
+    if (!existant.pays && entree.pays) complements.pays = entree.pays;
+    if (!existant.produit && entree.produit) complements.produit = entree.produit;
+    if (!existant.operation && entree.operation) complements.operation = entree.operation;
+    if (!existant.posteId && entree.posteId) complements.posteId = entree.posteId;
+    if (entree.references && Object.keys(entree.references).length) {
+      complements.references = { ...existant.references, ...entree.references };
+    }
+    if (!Object.keys(complements).length) return { dossier: existant, cree: false };
+    const [maj] = await db.update(schema_exports.dossiers).set({ ...complements, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm10.eq)(schema_exports.dossiers.id, existant.id)).returning();
+    return { dossier: maj, cree: false };
+  }
+  const [dossier] = await db.insert(schema_exports.dossiers).values({
+    compteId: entree.compteId,
+    posteId: entree.posteId ?? null,
+    client,
+    pays: entree.pays ?? null,
+    produit: entree.produit ?? null,
+    operation: entree.operation ?? null,
+    cleRapprochement: cle,
+    libelle: entree.libelle?.trim() || libelleParDefaut({ ...entree, client }),
+    statut: entree.statut ?? "ouvert",
+    references: entree.references ?? {},
+    notes: entree.notes ?? null
+  }).returning();
+  await journaliser("dossier_cree", {
+    utilisateurId: auteur.utilisateurId,
+    auteurType: auteur.type,
+    entite: "dossier",
+    entiteId: dossier.id,
+    details: { client, produit: entree.produit ?? null, operation: entree.operation ?? null }
+  });
+  return { dossier, cree: true };
+}
+async function dossiersParClientProduit(compteId, client, produit) {
+  const prefixe = cleDossier(client, produit ?? "", "");
+  if (!prefixe) return [];
+  return db.select().from(schema_exports.dossiers).where(
+    (0, import_drizzle_orm10.and)(
+      (0, import_drizzle_orm10.eq)(schema_exports.dossiers.compteId, compteId),
+      // Le prefixe exact, ou le prefixe suivi du separateur d'operation.
+      (0, import_drizzle_orm10.or)((0, import_drizzle_orm10.eq)(schema_exports.dossiers.cleRapprochement, prefixe), import_drizzle_orm10.sql`${schema_exports.dossiers.cleRapprochement} LIKE ${`${prefixe}|%`}`)
+    )
+  );
+}
+async function lireDossier(id2) {
+  const [dossier] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm10.eq)(schema_exports.dossiers.id, id2));
+  if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
+  return dossier;
+}
+async function modifierDossier(id2, modifs, auteur) {
+  const dossier = await lireDossier(id2);
+  const valeurs = { majLe: /* @__PURE__ */ new Date() };
+  for (const champ of ["pays", "produit", "operation", "libelle", "statut", "notes", "resume", "posteId"]) {
+    if (modifs[champ] !== void 0) valeurs[champ] = modifs[champ];
+  }
+  if (modifs.client) {
+    valeurs.client = modifs.client.trim();
+    valeurs.cleRapprochement = cleDossier(
+      String(valeurs.client),
+      modifs.produit ?? dossier.produit ?? "",
+      modifs.operation ?? dossier.operation ?? ""
+    );
+  } else if (modifs.produit !== void 0 || modifs.operation !== void 0) {
+    valeurs.cleRapprochement = cleDossier(dossier.client, modifs.produit ?? dossier.produit ?? "", modifs.operation ?? dossier.operation ?? "");
+  }
+  if (modifs.references) valeurs.references = { ...dossier.references, ...modifs.references };
+  if (modifs.statut === "clos" || modifs.statut === "annule") valeurs.clotureLe = /* @__PURE__ */ new Date();
+  if (modifs.statut === "ouvert") valeurs.clotureLe = null;
+  if (valeurs.cleRapprochement && valeurs.cleRapprochement !== dossier.cleRapprochement) {
+    const [collision] = await db.select({ id: schema_exports.dossiers.id, libelle: schema_exports.dossiers.libelle }).from(schema_exports.dossiers).where((0, import_drizzle_orm10.and)((0, import_drizzle_orm10.eq)(schema_exports.dossiers.compteId, dossier.compteId), (0, import_drizzle_orm10.eq)(schema_exports.dossiers.cleRapprochement, String(valeurs.cleRapprochement))));
+    if (collision && collision.id !== id2) {
+      throw new ErreurHttp(409, `Un dossier identique existe deja sur ce compte : \xAB ${collision.libelle} \xBB`);
+    }
+  }
+  const [maj] = await db.update(schema_exports.dossiers).set(valeurs).where((0, import_drizzle_orm10.eq)(schema_exports.dossiers.id, id2)).returning();
+  await journaliser("dossier_modifie", {
+    utilisateurId: auteur.utilisateurId,
+    auteurType: auteur.type,
+    entite: "dossier",
+    entiteId: id2,
+    details: { champs: Object.keys(valeurs).filter((c) => c !== "majLe") }
+  });
+  return maj;
+}
+async function chercherDossiers(terme, opts = {}) {
+  const motif = `%${terme.trim()}%`;
+  const normalise = normaliser(terme);
+  const conditions = [];
+  if (opts.compteId) conditions.push((0, import_drizzle_orm10.eq)(schema_exports.dossiers.compteId, opts.compteId));
+  if (terme.trim()) {
+    const recherche = (0, import_drizzle_orm10.or)(
+      (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.libelle, motif),
+      (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.client, motif),
+      (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.produit, motif),
+      (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.operation, motif),
+      (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.pays, motif),
+      normalise ? (0, import_drizzle_orm10.ilike)(schema_exports.dossiers.cleRapprochement, `%${normalise}%`) : void 0
+    );
+    if (recherche) conditions.push(recherche);
+  }
+  return db.select({
+    id: schema_exports.dossiers.id,
+    libelle: schema_exports.dossiers.libelle,
+    client: schema_exports.dossiers.client,
+    pays: schema_exports.dossiers.pays,
+    produit: schema_exports.dossiers.produit,
+    operation: schema_exports.dossiers.operation,
+    statut: schema_exports.dossiers.statut,
+    resume: schema_exports.dossiers.resume,
+    majLe: schema_exports.dossiers.majLe,
+    demandesOuvertes: import_drizzle_orm10.sql`(
+        SELECT count(*)::int FROM demandes d
+        WHERE d.dossier_id = ${schema_exports.dossiers.id} AND d.statut NOT IN ('termine', 'annule') AND d.famille <> ${FAMILLE_HORS_PERIMETRE}
+      )`.as("demandes_ouvertes")
+  }).from(schema_exports.dossiers).where(conditions.length ? (0, import_drizzle_orm10.and)(...conditions) : void 0).orderBy((0, import_drizzle_orm10.desc)(schema_exports.dossiers.majLe)).limit(Math.min(opts.limite ?? 20, 100));
+}
+async function chronologieDossier(dossierId) {
+  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm10.and)((0, import_drizzle_orm10.eq)(schema_exports.evenements.dossierId, dossierId), import_drizzle_orm10.sql`coalesce(${schema_exports.evenements.famille}, '') <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm10.desc)(schema_exports.evenements.survenuLe)).limit(500);
+  const transitions = await db.select({ t: schema_exports.transitionsStatut, objet: schema_exports.demandes.objet }).from(schema_exports.transitionsStatut).innerJoin(schema_exports.demandes, (0, import_drizzle_orm10.eq)(schema_exports.demandes.id, schema_exports.transitionsStatut.demandeId)).where((0, import_drizzle_orm10.and)((0, import_drizzle_orm10.eq)(schema_exports.demandes.dossierId, dossierId), import_drizzle_orm10.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm10.desc)(schema_exports.transitionsStatut.survenuLe)).limit(500);
+  const echeances2 = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm10.eq)(schema_exports.echeances.dossierId, dossierId)).limit(200);
+  const pieces2 = await db.select().from(schema_exports.pieces).where((0, import_drizzle_orm10.eq)(schema_exports.pieces.dossierId, dossierId)).limit(200);
+  const lignes = [
+    ...evenements2.map((e) => ({
+      type: "evenement",
+      survenuLe: e.survenuLe,
+      titre: e.objet ?? e.resume ?? "Evenement",
+      detail: e.resume,
+      demandeId: e.demandeId,
+      meta: { sens: e.sens, nature: e.nature, interlocuteur: e.interlocuteur, source: e.source, famille: e.famille, confiance: e.confianceTypage }
+    })),
+    ...transitions.map((l) => ({
+      type: "transition",
+      survenuLe: l.t.survenuLe,
+      titre: l.t.statutAvant ? `${l.objet} : ${libelleStatut(l.t.statutAvant)} vers ${libelleStatut(l.t.statutApres)}` : `${l.objet} : ouverture en ${libelleStatut(l.t.statutApres)}`,
+      detail: l.t.motif,
+      demandeId: l.t.demandeId,
+      meta: { statutAvant: l.t.statutAvant, statutApres: l.t.statutApres, minutesOuvrees: l.t.minutesOuvrees, auteurType: l.t.auteurType }
+    })),
+    ...echeances2.map((e) => ({
+      type: "echeance",
+      survenuLe: e.echeanceLe,
+      titre: `${LIBELLES_ECHEANCES[e.type] ?? e.type}${e.libelle ? ` : ${e.libelle}` : ""}`,
+      detail: e.phraseSource,
+      demandeId: e.demandeId,
+      meta: { honoreeLe: e.honoreeLe, annulee: e.annulee }
+    })),
+    ...pieces2.map((p) => ({
+      type: "piece",
+      survenuLe: p.creeLe,
+      titre: `${p.type}${p.reference ? ` ${p.reference}` : ""}`,
+      detail: p.nomFichier,
+      demandeId: p.demandeId,
+      meta: { archive: p.archive }
+    }))
+  ];
+  return lignes.sort((a, b) => b.survenuLe.getTime() - a.survenuLe.getTime());
 }
 
 // src/server/modules/dossiers/routes.ts
@@ -3349,7 +3555,7 @@ routesDossiers.get("/", async (req, res) => {
   const autorises = new Set(p.comptes);
   const ids = lignes.map((l) => l.id);
   if (!ids.length) return res.json([]);
-  const comptes = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm10.inArray)(schema_exports.dossiers.id, ids));
+  const comptes = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm11.inArray)(schema_exports.dossiers.id, ids));
   const parId = new Map(comptes.map((c) => [c.id, c.compteId]));
   res.json(lignes.filter((l) => autorises.has(parId.get(l.id) ?? -1)));
 });
@@ -3368,8 +3574,8 @@ routesDossiers.get("/:id", async (req, res) => {
   const demandes2 = await demandesDuDossier(id2);
   const temps = await tempsDesDemandes(demandes2);
   const avecTemps = demandes2.map((d) => ({ ...d, temps: temps.get(d.id) }));
-  const echeancesDossier = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm10.and)((0, import_drizzle_orm10.eq)(schema_exports.echeances.dossierId, id2), (0, import_drizzle_orm10.eq)(schema_exports.echeances.annulee, false))).orderBy((0, import_drizzle_orm10.asc)(schema_exports.echeances.echeanceLe));
-  const piecesDossier = await db.select().from(schema_exports.pieces).where((0, import_drizzle_orm10.eq)(schema_exports.pieces.dossierId, id2)).orderBy((0, import_drizzle_orm10.desc)(schema_exports.pieces.creeLe));
+  const echeancesDossier = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm11.and)((0, import_drizzle_orm11.eq)(schema_exports.echeances.dossierId, id2), (0, import_drizzle_orm11.eq)(schema_exports.echeances.annulee, false))).orderBy((0, import_drizzle_orm11.asc)(schema_exports.echeances.echeanceLe));
+  const piecesDossier = await db.select().from(schema_exports.pieces).where((0, import_drizzle_orm11.eq)(schema_exports.pieces.dossierId, id2)).orderBy((0, import_drizzle_orm11.desc)(schema_exports.pieces.creeLe));
   res.json({ dossier, demandes: avecTemps, echeances: echeancesDossier, pieces: piecesDossier });
 });
 routesDossiers.get("/:id/chronologie", async (req, res) => {
@@ -3394,15 +3600,15 @@ routesEcheances.get("/", async (req, res) => {
   const p = await perimetreDe(req.utilisateur);
   if (q.compteId) exigerCompte(p, q.compteId);
   const horizon = new Date(Date.now() + (q.jours ?? 30) * 864e5);
-  const conditions = [(0, import_drizzle_orm10.eq)(schema_exports.echeances.annulee, false), (0, import_drizzle_orm10.gte)(schema_exports.echeances.echeanceLe, new Date(Date.now() - 7 * 864e5))];
-  if (q.compteId) conditions.push((0, import_drizzle_orm10.eq)(schema_exports.dossiers.compteId, q.compteId));
+  const conditions = [(0, import_drizzle_orm11.eq)(schema_exports.echeances.annulee, false), (0, import_drizzle_orm11.gte)(schema_exports.echeances.echeanceLe, new Date(Date.now() - 7 * 864e5))];
+  if (q.compteId) conditions.push((0, import_drizzle_orm11.eq)(schema_exports.dossiers.compteId, q.compteId));
   const lignes = await db.select({
     echeance: schema_exports.echeances,
     dossierId: schema_exports.dossiers.id,
     dossier: schema_exports.dossiers.libelle,
     client: schema_exports.dossiers.client,
     compteId: schema_exports.dossiers.compteId
-  }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm10.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm10.and)(...conditions, (0, import_drizzle_orm10.lte)(schema_exports.echeances.echeanceLe, horizon))).orderBy((0, import_drizzle_orm10.asc)(schema_exports.echeances.echeanceLe)).limit(300);
+  }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm11.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm11.and)(...conditions, (0, import_drizzle_orm11.lte)(schema_exports.echeances.echeanceLe, horizon))).orderBy((0, import_drizzle_orm11.asc)(schema_exports.echeances.echeanceLe)).limit(300);
   res.json(p.comptes === null ? lignes : lignes.filter((l) => p.comptes.includes(l.compteId)));
 });
 routesEcheances.post("/", exigerEcriture, async (req, res) => {
@@ -3410,7 +3616,7 @@ routesEcheances.post("/", exigerEcriture, async (req, res) => {
   const dossier = await lireDossier(d.dossierId);
   exigerCompte(await perimetreDe(req.utilisateur), dossier.compteId);
   if (d.demandeId) {
-    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, famille: schema_exports.demandes.famille }).from(schema_exports.demandes).where((0, import_drizzle_orm10.eq)(schema_exports.demandes.id, d.demandeId));
+    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, famille: schema_exports.demandes.famille }).from(schema_exports.demandes).where((0, import_drizzle_orm11.eq)(schema_exports.demandes.id, d.demandeId));
     if (!demande || demande.dossierId !== d.dossierId) throw new ErreurHttp(400, "La demande indiquee n\u2019appartient pas a ce dossier");
     if (demande.famille === FAMILLE_HORS_PERIMETRE) throw new ErreurHttp(400, "Une demande hors perimetre ne porte pas d\u2019echeance");
   }
@@ -3421,7 +3627,7 @@ routesEcheances.post("/", exigerEcriture, async (req, res) => {
 routesEcheances.patch("/:id", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
   const d = valider(modificationEcheanceSchema, req.body);
-  const [existe] = await db.select({ echeance: schema_exports.echeances, compteId: schema_exports.dossiers.compteId }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm10.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm10.eq)(schema_exports.echeances.id, id2));
+  const [existe] = await db.select({ echeance: schema_exports.echeances, compteId: schema_exports.dossiers.compteId }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm11.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm11.eq)(schema_exports.echeances.id, id2));
   if (!existe) throw new ErreurHttp(404, "Echeance introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), existe.compteId);
   const valeurs = { majLe: /* @__PURE__ */ new Date() };
@@ -3429,21 +3635,21 @@ routesEcheances.patch("/:id", exigerEcriture, async (req, res) => {
   if (d.echeanceLe !== void 0) valeurs.echeanceLe = d.echeanceLe;
   if (d.annulee !== void 0) valeurs.annulee = d.annulee;
   if (d.honoree !== void 0) valeurs.honoreeLe = d.honoree ? /* @__PURE__ */ new Date() : null;
-  const [maj] = await db.update(schema_exports.echeances).set(valeurs).where((0, import_drizzle_orm10.eq)(schema_exports.echeances.id, id2)).returning();
+  const [maj] = await db.update(schema_exports.echeances).set(valeurs).where((0, import_drizzle_orm11.eq)(schema_exports.echeances.id, id2)).returning();
   res.json(maj);
 });
 
 // src/server/modules/demandes/routes.ts
 var import_express4 = require("express");
 var import_zod7 = require("zod");
-var import_drizzle_orm14 = require("drizzle-orm");
+var import_drizzle_orm15 = require("drizzle-orm");
 init_client();
 init_http();
 init_evenements();
 init_parametres2();
 
 // src/server/modules/evenements/service.ts
-var import_drizzle_orm13 = require("drizzle-orm");
+var import_drizzle_orm14 = require("drizzle-orm");
 init_client();
 init_http();
 init_evenements();
@@ -3486,7 +3692,7 @@ async function ajouterEvenement(entree, auteur, opts = {}) {
   verifierSens(entree.nature, entree.sens);
   if (!entree.demandeId && !entree.dossierId) throw new ErreurHttp(400, "Un evenement doit etre rattache a une demande ou a un dossier");
   if (entree.messageId) {
-    const [deja] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm13.eq)(schema_exports.evenements.messageId, entree.messageId));
+    const [deja] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm14.eq)(schema_exports.evenements.messageId, entree.messageId));
     if (deja) {
       const demande2 = deja.demandeId ? await lireDemande(deja.demandeId) : null;
       return { evenement: deja, demande: demande2, demandeCreee: false, statutApplique: null, horsPerimetre: estHorsPerimetre(deja.famille) };
@@ -3495,7 +3701,7 @@ async function ajouterEvenement(entree, auteur, opts = {}) {
   let demande = entree.demandeId ? await lireDemande(entree.demandeId) : null;
   const dossierId = demande?.dossierId ?? entree.dossierId ?? null;
   if (!dossierId) throw new ErreurHttp(400, "Dossier introuvable pour cet evenement");
-  const [dossier] = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm13.eq)(schema_exports.dossiers.id, dossierId));
+  const [dossier] = await db.select({ id: schema_exports.dossiers.id, compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm14.eq)(schema_exports.dossiers.id, dossierId));
   if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
   const survenuLe = entree.survenuLe ?? /* @__PURE__ */ new Date();
   const horsPerimetre = estHorsPerimetre(entree.famille);
@@ -3559,7 +3765,7 @@ async function ajouterEvenement(entree, auteur, opts = {}) {
       statutApplique = demande.statut;
     }
     if (!effet.statut && !effet.relance) {
-      await db.update(schema_exports.demandes).set({ dernierEvenementLe: survenuLe, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm13.eq)(schema_exports.demandes.id, demande.id));
+      await db.update(schema_exports.demandes).set({ dernierEvenementLe: survenuLe, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, demande.id));
     }
   }
   await journaliser("evenement_ajoute", {
@@ -3573,7 +3779,7 @@ async function ajouterEvenement(entree, auteur, opts = {}) {
 }
 async function completerParTypage(entree) {
   const { typerMessage: typerMessage2 } = await Promise.resolve().then(() => (init_service2(), service_exports));
-  const compteId = entree.dossierId ? (await db.select({ compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm13.eq)(schema_exports.dossiers.id, entree.dossierId)))[0]?.compteId : void 0;
+  const compteId = entree.dossierId ? (await db.select({ compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm14.eq)(schema_exports.dossiers.id, entree.dossierId)))[0]?.compteId : void 0;
   const resultat = await typerMessage2(
     { objet: entree.objet, corps: entree.contenu ?? entree.resume, expediteur: entree.expediteur, destinataires: entree.destinataires, sens: entree.sens },
     { compteId }
@@ -3591,24 +3797,24 @@ async function completerParTypage(entree) {
   };
 }
 async function lireDemande(id2) {
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm13.eq)(schema_exports.demandes.id, id2));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   return demande;
 }
 async function evenementsDeLaDemande(demandeId, limite = 100) {
-  return db.select().from(schema_exports.evenements).where((0, import_drizzle_orm13.eq)(schema_exports.evenements.demandeId, demandeId)).orderBy((0, import_drizzle_orm13.desc)(schema_exports.evenements.survenuLe)).limit(Math.min(limite, 500));
+  return db.select().from(schema_exports.evenements).where((0, import_drizzle_orm14.eq)(schema_exports.evenements.demandeId, demandeId)).orderBy((0, import_drizzle_orm14.desc)(schema_exports.evenements.survenuLe)).limit(Math.min(limite, 500));
 }
 async function aClasser(seuil, limite = 50) {
-  return db.select({ evenement: schema_exports.evenements, dossier: schema_exports.dossiers.libelle }).from(schema_exports.evenements).leftJoin(schema_exports.dossiers, (0, import_drizzle_orm13.eq)(schema_exports.dossiers.id, schema_exports.evenements.dossierId)).where(
-    (0, import_drizzle_orm13.and)(
-      import_drizzle_orm13.sql`coalesce(${schema_exports.evenements.famille}, '') <> 'T00'`,
-      import_drizzle_orm13.sql`${schema_exports.evenements.corrigeLe} IS NULL`,
-      import_drizzle_orm13.sql`(${schema_exports.evenements.famille} IS NULL OR (${schema_exports.evenements.confianceTypage} IS NOT NULL AND ${schema_exports.evenements.confianceTypage} < ${seuil}))`
+  return db.select({ evenement: schema_exports.evenements, dossier: schema_exports.dossiers.libelle }).from(schema_exports.evenements).leftJoin(schema_exports.dossiers, (0, import_drizzle_orm14.eq)(schema_exports.dossiers.id, schema_exports.evenements.dossierId)).where(
+    (0, import_drizzle_orm14.and)(
+      import_drizzle_orm14.sql`coalesce(${schema_exports.evenements.famille}, '') <> 'T00'`,
+      import_drizzle_orm14.sql`${schema_exports.evenements.corrigeLe} IS NULL`,
+      import_drizzle_orm14.sql`(${schema_exports.evenements.famille} IS NULL OR (${schema_exports.evenements.confianceTypage} IS NOT NULL AND ${schema_exports.evenements.confianceTypage} < ${seuil}))`
     )
-  ).orderBy((0, import_drizzle_orm13.desc)(schema_exports.evenements.survenuLe)).limit(Math.min(limite, 200));
+  ).orderBy((0, import_drizzle_orm14.desc)(schema_exports.evenements.survenuLe)).limit(Math.min(limite, 200));
 }
 async function corrigerTypage(evenementId, modifs, auteur) {
-  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm13.eq)(schema_exports.evenements.id, evenementId));
+  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm14.eq)(schema_exports.evenements.id, evenementId));
   if (!evenement) throw new ErreurHttp(404, "Evenement introuvable");
   if (modifs.nature && modifs.sens) verifierSens(modifs.nature, modifs.sens);
   const [maj] = await db.update(schema_exports.evenements).set({
@@ -3620,7 +3826,7 @@ async function corrigerTypage(evenementId, modifs, auteur) {
     confianceTypage: null,
     corrigeParId: auteur.utilisateurId,
     corrigeLe: /* @__PURE__ */ new Date()
-  }).where((0, import_drizzle_orm13.eq)(schema_exports.evenements.id, evenementId)).returning();
+  }).where((0, import_drizzle_orm14.eq)(schema_exports.evenements.id, evenementId)).returning();
   await journaliser("typage_corrige", {
     utilisateurId: auteur.utilisateurId,
     auteurType: auteur.type,
@@ -3643,7 +3849,7 @@ routesDemandes.get("/file", async (req, res) => {
   if (q.compteId) exigerCompte(p, q.compteId);
   const posteId = q.posteId ?? (!q.compteId && req.utilisateur.role === "collaborateur" && p.postes.length === 1 ? p.postes[0] : void 0);
   if (q.posteId) {
-    const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm14.eq)(schema_exports.postes.id, q.posteId));
+    const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm15.eq)(schema_exports.postes.id, q.posteId));
     if (!poste) throw new ErreurHttp(404, "Poste introuvable");
     exigerCompte(p, poste.compteId);
   }
@@ -3662,18 +3868,18 @@ routesDemandes.get("/file", async (req, res) => {
 async function filtrerParPerimetre(lignes, comptes) {
   if (!lignes.length) return [];
   if (!comptes.length) return [];
-  const rattachements = await db.select({ id: schema_exports.demandes.id, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm14.and)((0, import_drizzle_orm14.inArray)(schema_exports.demandes.id, lignes.map((l) => l.id)), (0, import_drizzle_orm14.inArray)(schema_exports.demandes.compteId, comptes)));
+  const rattachements = await db.select({ id: schema_exports.demandes.id, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.and)((0, import_drizzle_orm15.inArray)(schema_exports.demandes.id, lignes.map((l) => l.id)), (0, import_drizzle_orm15.inArray)(schema_exports.demandes.compteId, comptes)));
   const autorises = new Set(rattachements.map((r) => r.id));
   return lignes.filter((l) => autorises.has(l.id));
 }
 routesDemandes.get("/:id", async (req, res) => {
   const id2 = idParam(req);
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, id2));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   if (estHorsPerimetre(demande.famille)) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   const dossier = await lireDossier(demande.dossierId);
-  const transitions = await db.select().from(schema_exports.transitionsStatut).where((0, import_drizzle_orm14.eq)(schema_exports.transitionsStatut.demandeId, id2)).orderBy(schema_exports.transitionsStatut.survenuLe);
+  const transitions = await db.select().from(schema_exports.transitionsStatut).where((0, import_drizzle_orm15.eq)(schema_exports.transitionsStatut.demandeId, id2)).orderBy(schema_exports.transitionsStatut.survenuLe);
   res.json({
     demande,
     dossier,
@@ -3692,7 +3898,7 @@ routesDemandes.post("/", exigerEcriture, async (req, res) => {
 routesDemandes.patch("/:id", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
   const d = valider(modificationDemandeSchema, req.body);
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, id2));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   if (d.famille && estHorsPerimetre(d.famille)) {
@@ -3707,14 +3913,14 @@ routesDemandes.patch("/:id", exigerEcriture, async (req, res) => {
     valeurs.slaHeures = sla.heures;
     valeurs.slaEcheanceLe = sla.echeance;
   }
-  const [maj] = await db.update(schema_exports.demandes).set(valeurs).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2)).returning();
+  const [maj] = await db.update(schema_exports.demandes).set(valeurs).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, id2)).returning();
   await journaliser("demande_modifiee", { utilisateurId: req.utilisateur.id, entite: "demande", entiteId: id2, details: { champs: Object.keys(valeurs) } });
   res.json(maj);
 });
 routesDemandes.post("/:id/statut", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
   const d = valider(changementStatutSchema, req.body);
-  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2));
+  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, id2));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   const maj = await changerStatut(id2, d.statut, auteurDe(req), { motif: d.motif ?? null, acteurAttendu: d.acteurAttendu });
@@ -3722,7 +3928,7 @@ routesDemandes.post("/:id/statut", exigerEcriture, async (req, res) => {
 });
 routesDemandes.post("/:id/relance", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
-  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, id2));
+  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, id2));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   res.json(await enregistrerRelance(id2, auteurDe(req)));
@@ -3740,7 +3946,7 @@ routesSaisie.post("/rapide", exigerEcriture, async (req, res) => {
   let dossierId = d.dossierId ?? null;
   let dossierCree = false;
   if (d.demandeId) {
-    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, d.demandeId));
+    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, d.demandeId));
     if (!demande) throw new ErreurHttp(404, "Demande introuvable");
     exigerCompte(p, demande.compteId);
     dossierId = demande.dossierId;
@@ -3804,7 +4010,7 @@ routesSaisie.post("/note", exigerEcriture, async (req, res) => {
   const auteur = auteurDe(req);
   let dossierId = d.dossierId ?? null;
   if (d.demandeId) {
-    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm14.eq)(schema_exports.demandes.id, d.demandeId));
+    const [demande] = await db.select({ dossierId: schema_exports.demandes.dossierId, compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, d.demandeId));
     if (!demande) throw new ErreurHttp(404, "Demande introuvable");
     exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
     dossierId = demande.dossierId;
@@ -3829,7 +4035,7 @@ routesDemandes.get("/dossier/:id/liste", async (req, res) => {
 
 // src/server/modules/evenements/routes.ts
 var import_express5 = require("express");
-var import_drizzle_orm15 = require("drizzle-orm");
+var import_drizzle_orm16 = require("drizzle-orm");
 init_client();
 init_http();
 init_parametres2();
@@ -3839,7 +4045,7 @@ routesEvenements.post("/", exigerEcriture, async (req, res) => {
   const d = valider(evenementSchema, req.body);
   const p = await perimetreDe(req.utilisateur);
   if (d.demandeId) {
-    const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm15.eq)(schema_exports.demandes.id, d.demandeId));
+    const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm16.eq)(schema_exports.demandes.id, d.demandeId));
     if (!demande) throw new ErreurHttp(404, "Demande introuvable");
     exigerCompte(p, demande.compteId);
   } else {
@@ -3863,7 +4069,7 @@ routesEvenements.get("/a-classer", async (req, res) => {
 });
 routesEvenements.post("/:id/typage", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
-  const [evenement] = await db.select({ compteId: schema_exports.evenements.compteId }).from(schema_exports.evenements).where((0, import_drizzle_orm15.eq)(schema_exports.evenements.id, id2));
+  const [evenement] = await db.select({ compteId: schema_exports.evenements.compteId }).from(schema_exports.evenements).where((0, import_drizzle_orm16.eq)(schema_exports.evenements.id, id2));
   if (!evenement) throw new ErreurHttp(404, "Evenement introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), evenement.compteId);
   res.json(await corrigerTypage(id2, valider(correctionTypageSchema, req.body), auteurDe(req)));
@@ -3873,14 +4079,14 @@ routesEvenements.post("/:id/typage", exigerEcriture, async (req, res) => {
 var import_express6 = require("express");
 var import_multer = __toESM(require("multer"));
 var import_zod8 = require("zod");
-var import_drizzle_orm17 = require("drizzle-orm");
+var import_drizzle_orm19 = require("drizzle-orm");
 init_client();
 init_config();
 init_http();
 
 // src/server/modules/import/service.ts
-var import_luxon2 = require("luxon");
-var import_drizzle_orm16 = require("drizzle-orm");
+var import_luxon3 = require("luxon");
+var import_drizzle_orm17 = require("drizzle-orm");
 init_client();
 init_http();
 init_evenements();
@@ -4159,12 +4365,12 @@ function lireJour(brut) {
   if (!texte2) return null;
   const jjmmaaaa = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(texte2);
   if (jjmmaaaa) {
-    const d = import_luxon2.DateTime.fromObject({ day: Number(jjmmaaaa[1]), month: Number(jjmmaaaa[2]), year: Number(jjmmaaaa[3]) });
+    const d = import_luxon3.DateTime.fromObject({ day: Number(jjmmaaaa[1]), month: Number(jjmmaaaa[2]), year: Number(jjmmaaaa[3]) });
     return d.isValid ? d.toISODate() : null;
   }
   const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texte2);
   if (iso) {
-    const d = import_luxon2.DateTime.fromISO(texte2.slice(0, 10));
+    const d = import_luxon3.DateTime.fromISO(texte2.slice(0, 10));
     return d.isValid ? d.toISODate() : null;
   }
   return null;
@@ -4257,8 +4463,8 @@ async function importerClasseur(buffer, opts, auteur) {
       cree = r.cree;
     }
     const statut = statutDossierDepuisReporting(l.statutReporting);
-    const resume = l.statutReporting ? `${l.statutReporting} au ${import_luxon2.DateTime.fromISO(l.jour).toFormat("dd/MM/yyyy")}` : null;
-    const [maj] = await db.update(schema_exports.dossiers).set({ statut, resume, clotureLe: statut === "clos" || statut === "annule" ? /* @__PURE__ */ new Date() : null, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm16.eq)(schema_exports.dossiers.id, dossier.id)).returning();
+    const resume = l.statutReporting ? `${l.statutReporting} au ${import_luxon3.DateTime.fromISO(l.jour).toFormat("dd/MM/yyyy")}` : null;
+    const [maj] = await db.update(schema_exports.dossiers).set({ statut, resume, clotureLe: statut === "clos" || statut === "annule" ? /* @__PURE__ */ new Date() : null, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm17.eq)(schema_exports.dossiers.id, dossier.id)).returning();
     dossiers2.push(maj ?? dossier);
     if (cree) crees++;
     else misAJour++;
@@ -4290,6 +4496,320 @@ async function importerClasseur(buffer, opts, auteur) {
     details: { nomFichier: opts.nomFichier, ...bilan, anomalies: bilan.anomalies.length }
   });
   return { bilan, dossiers: dossiers2 };
+}
+
+// src/server/modules/import/suivi-demandes.ts
+var import_drizzle_orm18 = require("drizzle-orm");
+var import_luxon4 = require("luxon");
+init_client();
+init_http();
+init_evenements();
+init_regles();
+init_service2();
+init_parametres2();
+init_heures_ouvrees();
+var COL = {
+  date: 1,
+  heure: 2,
+  priorite: 3,
+  statut: 4,
+  type: 5,
+  sujet: 6,
+  demande: 7,
+  action: 8,
+  responsable: 9,
+  commentaire: 10,
+  refMail: 11,
+  lienMail: 12
+};
+var PRIORITES_CLASSEUR = { p1: "haute", p2: "normale", p3: "basse" };
+var STATUTS_CLASSEUR = {
+  "a traiter": "nouveau",
+  "en cours": "en_cours",
+  "a verifier": "en_cours",
+  traite: "termine"
+};
+function valeur2(cellules, colonne) {
+  return (cellules.get(colonne) ?? "").trim();
+}
+function estEnTete2(cellules) {
+  return normaliser(valeur2(cellules, COL.date)) === "date" && normaliser(valeur2(cellules, COL.action)).startsWith("action");
+}
+function lireDateCellule(texte2) {
+  const brut = texte2.trim();
+  if (!brut) return null;
+  const jjmmaaaa = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(brut);
+  if (jjmmaaaa) {
+    const d = import_luxon4.DateTime.fromObject({ day: Number(jjmmaaaa[1]), month: Number(jjmmaaaa[2]), year: Number(jjmmaaaa[3]) });
+    return d.isValid ? d.toISODate() : null;
+  }
+  const iso = import_luxon4.DateTime.fromISO(brut.slice(0, 10));
+  return iso.isValid ? iso.toISODate() : null;
+}
+function lireHeureCellule(texte2) {
+  const brut = texte2.trim();
+  if (!brut) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(brut);
+  if (m) {
+    const h2 = Number(m[1]);
+    const min = Number(m[2]);
+    return h2 > 23 || min > 59 ? null : `${String(h2).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  }
+  const fraction = Number(brut);
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction >= 1) return null;
+  const minutes = Math.round(fraction * 24 * 60);
+  const h = Math.floor(minutes / 60) % 24;
+  return `${String(h).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+function lireOngletSuivi(onglet) {
+  const lignes = [];
+  const anomalies = [];
+  let enTeteVue = false;
+  for (let numero = 1; numero <= onglet.derniereLigne; numero++) {
+    const cellules = /* @__PURE__ */ new Map();
+    for (const c of onglet.lignes.get(numero) ?? []) cellules.set(c.colonne, c.texte);
+    if (cellules.size === 0) continue;
+    if (estEnTete2(cellules)) {
+      enTeteVue = true;
+      continue;
+    }
+    if (!enTeteVue) continue;
+    const jour = lireDateCellule(valeur2(cellules, COL.date));
+    const sujet = valeur2(cellules, COL.sujet);
+    const action = valeur2(cellules, COL.action);
+    if (!jour && !sujet && !action) continue;
+    if (!jour) {
+      anomalies.push({ onglet: onglet.nom, ligne: numero, raison: "date illisible" });
+      continue;
+    }
+    if (!sujet) {
+      anomalies.push({ onglet: onglet.nom, ligne: numero, raison: "sujet ou dossier absent" });
+      continue;
+    }
+    const statutClasseur = valeur2(cellules, COL.statut);
+    const statut = STATUTS_CLASSEUR[normaliser(statutClasseur)];
+    if (!statut) {
+      anomalies.push({ onglet: onglet.nom, ligne: numero, raison: `statut inconnu : \xAB ${statutClasseur || "vide"} \xBB` });
+      continue;
+    }
+    lignes.push({
+      ligne: numero,
+      onglet: onglet.nom,
+      jour,
+      heure: lireHeureCellule(valeur2(cellules, COL.heure)),
+      priorite: PRIORITES_CLASSEUR[normaliser(valeur2(cellules, COL.priorite))] ?? "normale",
+      statut,
+      statutClasseur,
+      type: valeur2(cellules, COL.type),
+      sujet,
+      demande: valeur2(cellules, COL.demande),
+      action: action || sujet,
+      responsable: valeur2(cellules, COL.responsable),
+      commentaire: valeur2(cellules, COL.commentaire),
+      refMail: valeur2(cellules, COL.refMail),
+      lienMail: valeur2(cellules, COL.lienMail)
+    });
+  }
+  return { lignes, anomalies };
+}
+function cleLigne(ligne, compteId) {
+  if (ligne.refMail) return `<${ligne.refMail}@mail.gmail.com>`;
+  return `<suivi-${compteId}-${normaliser(ligne.onglet).replace(/\s+/g, "-")}-${ligne.jour}-${normaliser(ligne.sujet).replace(/\s+/g, "-").slice(0, 80)}@azmg-gpao>`;
+}
+function instantLigne(ligne) {
+  const heure2 = ligne.heure ?? "09:00";
+  return import_luxon4.DateTime.fromISO(`${ligne.jour}T${heure2}`, { zone: FUSEAU_TANA }).toUTC().toJSDate();
+}
+function nomPosteDeLigne(ligne) {
+  const premierMot = ligne.responsable.split(/[(,]/)[0].trim();
+  return [ligne.onglet, premierMot].filter(Boolean);
+}
+async function importerSuiviDemandes(buffer, opts, auteur) {
+  let classeur;
+  try {
+    classeur = lireClasseur(buffer);
+  } catch (e) {
+    throw new ErreurHttp(400, `Classeur illisible : ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const bilan = {
+    lignesLues: 0,
+    lignesIgnorees: 0,
+    demandesCreees: 0,
+    demandesMisesAJour: 0,
+    dossiersCrees: 0,
+    aClasser: 0,
+    anomalies: []
+  };
+  const toutes = [];
+  for (const onglet of classeur.onglets) {
+    const { lignes, anomalies } = lireOngletSuivi(onglet);
+    toutes.push(...lignes);
+    bilan.anomalies.push(...anomalies);
+  }
+  bilan.lignesIgnorees = bilan.anomalies.length;
+  if (!toutes.length) {
+    throw new ErreurHttp(
+      400,
+      "Aucune ligne au format \xAB Suivi des demandes \xBB. L\u2019en-tete attendue porte \xAB Date \xBB en colonne A et \xAB Action attendue \xBB en colonne H."
+    );
+  }
+  const postes2 = await db.select({ id: schema_exports.postes.id, intitule: schema_exports.postes.intitule, collaborateur: schema_exports.utilisateurs.nom }).from(schema_exports.postes).leftJoin(schema_exports.utilisateurs, (0, import_drizzle_orm18.eq)(schema_exports.utilisateurs.id, schema_exports.postes.collaborateurId)).where((0, import_drizzle_orm18.and)((0, import_drizzle_orm18.eq)(schema_exports.postes.compteId, opts.compteId), (0, import_drizzle_orm18.eq)(schema_exports.postes.actif, true)));
+  const posteDe = (noms) => {
+    for (const nom of noms.map(normaliser).filter(Boolean)) {
+      const trouve = postes2.find((p) => normaliser(p.intitule).includes(nom) || normaliser(p.collaborateur ?? "").includes(nom));
+      if (trouve) return trouve.id;
+    }
+    return null;
+  };
+  const regles = await reglesActives(opts.compteId);
+  const seuil = (await lireParametres()).seuilConfianceTypage;
+  for (const ligne of toutes) {
+    bilan.lignesLues++;
+    try {
+      const cle = cleLigne(ligne, opts.compteId);
+      const [connu] = await db.select({ id: schema_exports.evenements.id, demandeId: schema_exports.evenements.demandeId }).from(schema_exports.evenements).where((0, import_drizzle_orm18.eq)(schema_exports.evenements.messageId, cle));
+      if (connu?.demandeId) {
+        const [demande2] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm18.eq)(schema_exports.demandes.id, connu.demandeId));
+        if (demande2 && (demande2.statut !== ligne.statut || demande2.priorite !== ligne.priorite)) {
+          if (demande2.priorite !== ligne.priorite) {
+            await db.update(schema_exports.demandes).set({ priorite: ligne.priorite, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm18.eq)(schema_exports.demandes.id, demande2.id));
+          }
+          if (demande2.statut !== ligne.statut) {
+            await changerStatut(demande2.id, ligne.statut, auteur, {
+              motif: `suivi du manager : \xAB ${ligne.statutClasseur} \xBB`,
+              survenuLe: instantLigne(ligne)
+            });
+          }
+          bilan.demandesMisesAJour++;
+        }
+        continue;
+      }
+      const texte2 = [ligne.sujet, ligne.demande, ligne.action].filter(Boolean).join(". ");
+      const typage = appliquerRegles({ objet: ligne.sujet, corps: texte2, sens: "entrant" }, regles);
+      const applicable = Boolean(typage && typage.typage.famille && typage.typage.confiance >= seuil);
+      if (!applicable) bilan.aClasser++;
+      const { dossier, cree } = await trouverOuCreerDossier(
+        {
+          compteId: opts.compteId,
+          posteId: posteDe(nomPosteDeLigne(ligne)),
+          client: cleDossierSuivi(ligne.sujet),
+          libelle: ligne.sujet,
+          produit: null,
+          operation: null
+        },
+        auteur
+      );
+      if (cree) bilan.dossiersCrees++;
+      const demande = await creerDemande(
+        {
+          dossierId: dossier.id,
+          famille: applicable ? typage.typage.famille : "T13",
+          objet: ligne.action,
+          origine: "import",
+          priorite: ligne.priorite,
+          reprise: estReprise(ligne.type),
+          cause: estReprise(ligne.type) ? causeDeLigne(ligne) : null,
+          ouverteLe: instantLigne(ligne),
+          notes: [
+            ligne.demande && `Demande de la donneuse d\u2019ordre : ${ligne.demande}`,
+            ligne.type && `Type au suivi : ${ligne.type}`,
+            ligne.statutClasseur && `Statut au suivi : ${ligne.statutClasseur}`,
+            ligne.commentaire && `Commentaire de suivi : ${ligne.commentaire}`,
+            ligne.lienMail && `Mail : ${ligne.lienMail}`
+          ].filter(Boolean).join("\n")
+        },
+        auteur
+      );
+      bilan.demandesCreees++;
+      await db.insert(schema_exports.evenements).values({
+        compteId: opts.compteId,
+        dossierId: dossier.id,
+        demandeId: demande.id,
+        sens: "entrant",
+        nature: "demande_entrante",
+        famille: applicable ? typage.typage.famille : null,
+        interlocuteur: "do",
+        source: "import",
+        messageId: cle,
+        filId: cle,
+        survenuLe: instantLigne(ligne),
+        objet: ligne.sujet,
+        resume: (ligne.demande || ligne.action).slice(0, 500),
+        contenu: texte2.slice(0, 5e4),
+        confianceTypage: typage?.typage.confiance ?? null,
+        justificatifs: typage?.typage.justificatifs ?? []
+      });
+      if (ligne.statut !== "nouveau") {
+        await changerStatut(demande.id, ligne.statut, auteur, {
+          motif: `suivi du manager : \xAB ${ligne.statutClasseur} \xBB`,
+          survenuLe: instantLigne(ligne)
+        });
+      }
+    } catch (e) {
+      bilan.anomalies.push({ onglet: ligne.onglet, ligne: ligne.ligne, raison: e instanceof Error ? e.message.slice(0, 200) : String(e) });
+      bilan.lignesIgnorees++;
+    }
+  }
+  await journaliser("import_suivi_demandes", {
+    utilisateurId: auteur.utilisateurId,
+    auteurType: auteur.type,
+    entite: "compte",
+    entiteId: opts.compteId,
+    details: { fichier: opts.nomFichier, ...bilan, anomalies: bilan.anomalies.length }
+  });
+  return bilan;
+}
+function referenceDuSujet(sujet) {
+  const texte2 = sujet.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const avecPrefixe = /\b(bl|awb|inv|pfi|clv|lam|mds|coi|fcr)\s*n?[°o]?\s*[:#-]?\s*(\d[\d./-]{1,14})/i.exec(texte2);
+  if (avecPrefixe) {
+    const chiffres = avecPrefixe[2].replace(/[^\d]/g, "");
+    if (chiffres.length >= 2) return `${avecPrefixe[1].toLowerCase()}${chiffres}`;
+  }
+  const code = /\b([a-z]{1,4}\d{6,})\b/i.exec(texte2);
+  if (code) return `ref${code[1].toLowerCase()}`;
+  const numeroLong = /(?:^|[^\d])(\d{5,})(?:[^\d]|$)/.exec(texte2);
+  if (numeroLong) return `ref${numeroLong[1]}`;
+  return null;
+}
+function cleDossierSuivi(sujet) {
+  return referenceDuSujet(sujet) ?? normaliser(sujet).slice(0, 120);
+}
+var INDICES_CAUSE = [
+  {
+    cause: "classement_tracabilite",
+    mots: ["classement", "classer", "tracabilite", "tracer", "clientify", "drive", "serveur h", "dans h", "enregistre dans", "chemise", "introuvable", "ranger", "range dans"]
+  },
+  {
+    cause: "procedure_non_suivie",
+    mots: ["procedure", "consigne", "sans validation", "sans mon accord", "avait annule", "regarde les taches", "avant d envoyer", "non respect", "rappele plusieurs fois"]
+  },
+  {
+    cause: "erreur_document",
+    mots: ["erreur", "mal faites", "incoherence", "au lieu de pdf", "en excel", "incorrect", "faux", "nif", "mauvaise version", "se trompe"]
+  },
+  {
+    cause: "qualite_livrable",
+    mots: ["charte", "qualite", "non conforme", "conforme ni", "styles depasses", "genere par ia", "par ia", "pas le post reel", "a revoir"]
+  },
+  {
+    cause: "manque_autonomie",
+    mots: ["autonomie", "sans attendre", "ne gere pas", "doit s en charger", "attendre ma reponse", "attendre sa validation"]
+  },
+  {
+    cause: "delai_reponse",
+    mots: ["sans repondre", "pas repondu", "depuis lundi", "depuis la semaine", "jours pour repondre", "retard", "trop long", "immediat", "sous 24", "relance", "toujours rien", "rien recu"]
+  }
+];
+function causeDeLigne(ligne) {
+  const texte2 = normaliser(`${ligne.demande} ${ligne.action}`);
+  for (const { cause, mots } of INDICES_CAUSE) {
+    if (mots.some((m) => texte2.includes(m))) return cause;
+  }
+  return null;
+}
+function estReprise(type) {
+  return normaliser(type) === "reclamation";
 }
 
 // src/server/modules/import/routes.ts
@@ -4325,6 +4845,17 @@ routesImport.post("/classeur", exigerRole("admin", "manager"), envoi.single("fic
   );
   res.status(201).json({ bilan, dossiers: dossiers2.map((x) => ({ id: x.id, libelle: x.libelle, statut: x.statut, resume: x.resume })) });
 });
+routesImport.post("/suivi-demandes", exigerRole("admin", "manager"), envoi.single("fichier"), async (req, res) => {
+  if (!req.file) throw new ErreurHttp(400, "Aucun classeur recu (champ \xAB fichier \xBB attendu)");
+  const d = valider(import_zod8.z.object({ compteId: import_zod8.z.coerce.number().int().positive() }), req.body);
+  exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
+  const bilan = await importerSuiviDemandes(
+    req.file.buffer,
+    { compteId: d.compteId, nomFichier: req.file.originalname },
+    auteurDe(req)
+  );
+  res.status(201).json({ bilan });
+});
 routesImport.get("/", async (req, res) => {
   const d = valider(import_zod8.z.object({ compteId: import_zod8.z.coerce.number().int().positive() }), req.query);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
@@ -4335,20 +4866,20 @@ routesImport.get("/", async (req, res) => {
     jourDebut: schema_exports.imports.jourDebut,
     jourFin: schema_exports.imports.jourFin,
     creeLe: schema_exports.imports.creeLe
-  }).from(schema_exports.imports).where((0, import_drizzle_orm17.eq)(schema_exports.imports.compteId, d.compteId)).orderBy((0, import_drizzle_orm17.desc)(schema_exports.imports.creeLe)).limit(50);
+  }).from(schema_exports.imports).where((0, import_drizzle_orm19.eq)(schema_exports.imports.compteId, d.compteId)).orderBy((0, import_drizzle_orm19.desc)(schema_exports.imports.creeLe)).limit(50);
   res.json(lignes);
 });
 
 // src/server/modules/indicateurs/routes.ts
 var import_express7 = require("express");
 var import_zod9 = require("zod");
-var import_drizzle_orm19 = require("drizzle-orm");
+var import_drizzle_orm21 = require("drizzle-orm");
 init_client();
 init_http();
 
 // src/server/modules/indicateurs/service.ts
-var import_drizzle_orm18 = require("drizzle-orm");
-var import_luxon3 = require("luxon");
+var import_drizzle_orm20 = require("drizzle-orm");
+var import_luxon5 = require("luxon");
 init_client();
 init_parametres2();
 init_constantes();
@@ -4362,23 +4893,23 @@ function periodesComparees(jours, maintenant = /* @__PURE__ */ new Date()) {
   };
 }
 function conditionsCommunes(filtres) {
-  const conditions = [import_drizzle_orm18.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`];
-  if (filtres.compteId) conditions.push((0, import_drizzle_orm18.eq)(schema_exports.demandes.compteId, filtres.compteId));
-  if (filtres.posteId) conditions.push((0, import_drizzle_orm18.eq)(schema_exports.demandes.posteId, filtres.posteId));
+  const conditions = [import_drizzle_orm20.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`];
+  if (filtres.compteId) conditions.push((0, import_drizzle_orm20.eq)(schema_exports.demandes.compteId, filtres.compteId));
+  if (filtres.posteId) conditions.push((0, import_drizzle_orm20.eq)(schema_exports.demandes.posteId, filtres.posteId));
   return conditions;
 }
 async function flux(periode, filtres = {}) {
   const base = conditionsCommunes(filtres);
   const entrees = await db.select({
-    jour: import_drizzle_orm18.sql`to_char(${schema_exports.demandes.ouverteLe} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as("jour"),
+    jour: import_drizzle_orm20.sql`to_char(${schema_exports.demandes.ouverteLe} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as("jour"),
     famille: schema_exports.demandes.famille,
-    nombre: import_drizzle_orm18.sql`count(*)::int`.as("nombre")
-  }).from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...base, (0, import_drizzle_orm18.gte)(schema_exports.demandes.ouverteLe, periode.debut), (0, import_drizzle_orm18.lt)(schema_exports.demandes.ouverteLe, periode.fin))).groupBy(import_drizzle_orm18.sql`1`, schema_exports.demandes.famille);
+    nombre: import_drizzle_orm20.sql`count(*)::int`.as("nombre")
+  }).from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...base, (0, import_drizzle_orm20.gte)(schema_exports.demandes.ouverteLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.demandes.ouverteLe, periode.fin))).groupBy(import_drizzle_orm20.sql`1`, schema_exports.demandes.famille);
   const sorties = await db.select({
-    jour: import_drizzle_orm18.sql`to_char(${schema_exports.demandes.termineeLe} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as("jour"),
+    jour: import_drizzle_orm20.sql`to_char(${schema_exports.demandes.termineeLe} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as("jour"),
     famille: schema_exports.demandes.famille,
-    nombre: import_drizzle_orm18.sql`count(*)::int`.as("nombre")
-  }).from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...base, import_drizzle_orm18.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm18.gte)(schema_exports.demandes.termineeLe, periode.debut), (0, import_drizzle_orm18.lt)(schema_exports.demandes.termineeLe, periode.fin))).groupBy(import_drizzle_orm18.sql`1`, schema_exports.demandes.famille);
+    nombre: import_drizzle_orm20.sql`count(*)::int`.as("nombre")
+  }).from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...base, import_drizzle_orm20.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm20.gte)(schema_exports.demandes.termineeLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.demandes.termineeLe, periode.fin))).groupBy(import_drizzle_orm20.sql`1`, schema_exports.demandes.famille);
   const parJour = /* @__PURE__ */ new Map();
   const parFamille = /* @__PURE__ */ new Map();
   const cumuler2 = (lignes, cle) => {
@@ -4412,8 +4943,8 @@ var TRANCHES = [
 ];
 async function stock(filtres = {}, maintenant = /* @__PURE__ */ new Date()) {
   const base = conditionsCommunes(filtres);
-  const demandes2 = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...base, (0, import_drizzle_orm18.inArray)(schema_exports.demandes.statut, STATUTS_OUVERTS)));
-  const debuts = await debutsDeStatut(demandes2);
+  const demandes2 = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...base, (0, import_drizzle_orm20.inArray)(schema_exports.demandes.statut, STATUTS_OUVERTS)));
+  const debuts = await debutsDeStatut2(demandes2);
   const horaires = await horairesParCompte(demandes2);
   const minutesJour = minutesParJourOuvre(horaires.values().next().value ?? await horairesDuCompte(filtres.compteId));
   const parStatut = {};
@@ -4450,7 +4981,7 @@ async function stock(filtres = {}, maintenant = /* @__PURE__ */ new Date()) {
     chargeEstimeeMinutes
   };
 }
-function mediane(valeurs) {
+function mediane2(valeurs) {
   if (!valeurs.length) return null;
   const tri = [...valeurs].sort((a, b) => a - b);
   return Math.round(tri[Math.floor(tri.length / 2)]);
@@ -4461,7 +4992,7 @@ function moyenne(valeurs) {
 }
 async function delais(periode, filtres = {}) {
   const base = conditionsCommunes(filtres);
-  const demandes2 = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...base, import_drizzle_orm18.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm18.gte)(schema_exports.demandes.termineeLe, periode.debut), (0, import_drizzle_orm18.lt)(schema_exports.demandes.termineeLe, periode.fin)));
+  const demandes2 = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...base, import_drizzle_orm20.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm20.gte)(schema_exports.demandes.termineeLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.demandes.termineeLe, periode.fin)));
   const horaires = await horairesParCompte(demandes2);
   const premieres = [];
   const totaux = [];
@@ -4493,22 +5024,22 @@ async function delais(periode, filtres = {}) {
   return {
     terminees: demandes2.length,
     premiereReponseMoyenneMinutes: moyenne(premieres),
-    premiereReponseMedianeMinutes: mediane(premieres),
+    premiereReponseMedianeMinutes: mediane2(premieres),
     delaiTotalMoyenMinutes: moyenne(totaux),
-    delaiTotalMedianMinutes: mediane(totaux),
+    delaiTotalMedianMinutes: mediane2(totaux),
     attenteParActeurMinutes,
     respectSla: avecSla ? dansSla / avecSla : null,
     parFamille: [...parFamille.entries()].map(([famille2, v]) => ({
       famille: famille2,
       terminees: v.delais.length,
-      delaiMedianMinutes: mediane(v.delais) ?? 0,
+      delaiMedianMinutes: mediane2(v.delais) ?? 0,
       respectSla: v.avecSla ? v.dansSla / v.avecSla : null
     })).sort((a, b) => b.terminees - a.terminees)
   };
 }
 async function charge(periode, filtres = {}) {
   const base = conditionsCommunes(filtres);
-  const lignes = await db.select({ famille: schema_exports.demandes.famille, volume: import_drizzle_orm18.sql`count(*)::int`.as("volume") }).from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...base, (0, import_drizzle_orm18.gte)(schema_exports.demandes.ouverteLe, periode.debut), (0, import_drizzle_orm18.lt)(schema_exports.demandes.ouverteLe, periode.fin))).groupBy(schema_exports.demandes.famille);
+  const lignes = await db.select({ famille: schema_exports.demandes.famille, volume: import_drizzle_orm20.sql`count(*)::int`.as("volume") }).from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...base, (0, import_drizzle_orm20.gte)(schema_exports.demandes.ouverteLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.demandes.ouverteLe, periode.fin))).groupBy(schema_exports.demandes.famille);
   const horaires = await horairesDuCompte(filtres.compteId);
   const minutesJour = minutesParJourOuvre(horaires);
   const parFamille = lignes.map((l) => {
@@ -4543,24 +5074,24 @@ async function tableauDeBord(jours, filtres = {}, maintenant = /* @__PURE__ */ n
   ]);
   const horizonJours = Math.max(...parametres2.alertes.joursAvantEcheance, 0);
   const horizon = new Date(maintenant.getTime() + horizonJours * 864e5);
-  const conditionsEcheance = [(0, import_drizzle_orm18.eq)(schema_exports.echeances.annulee, false), import_drizzle_orm18.sql`${schema_exports.echeances.honoreeLe} IS NULL`, (0, import_drizzle_orm18.lte)(schema_exports.echeances.echeanceLe, horizon)];
-  if (filtres.compteId) conditionsEcheance.push((0, import_drizzle_orm18.eq)(schema_exports.dossiers.compteId, filtres.compteId));
+  const conditionsEcheance = [(0, import_drizzle_orm20.eq)(schema_exports.echeances.annulee, false), import_drizzle_orm20.sql`${schema_exports.echeances.honoreeLe} IS NULL`, (0, import_drizzle_orm20.lte)(schema_exports.echeances.echeanceLe, horizon)];
+  if (filtres.compteId) conditionsEcheance.push((0, import_drizzle_orm20.eq)(schema_exports.dossiers.compteId, filtres.compteId));
   const echeances2 = await db.select({
     dossierId: schema_exports.dossiers.id,
     dossier: schema_exports.dossiers.libelle,
     type: schema_exports.echeances.type,
     libelle: schema_exports.echeances.libelle,
     echeanceLe: schema_exports.echeances.echeanceLe
-  }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm18.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm18.and)(...conditionsEcheance)).orderBy(schema_exports.echeances.echeanceLe).limit(50);
+  }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm20.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm20.and)(...conditionsEcheance)).orderBy(schema_exports.echeances.echeanceLe).limit(50);
   const seuilAttenteMinutes = parametres2.sla.attenteDoHeures * 60;
-  const enAttenteDo = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm18.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm18.and)(...conditionsCommunes(filtres), (0, import_drizzle_orm18.eq)(schema_exports.demandes.statut, "attente_do")));
-  const debutsDo = await debutsDeStatut(enAttenteDo.map((l) => l.demande));
+  const enAttenteDo = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm20.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm20.and)(...conditionsCommunes(filtres), (0, import_drizzle_orm20.eq)(schema_exports.demandes.statut, "attente_do")));
+  const debutsDo = await debutsDeStatut2(enAttenteDo.map((l) => l.demande));
   const horairesDo = await horairesParCompte(enAttenteDo.map((l) => l.demande));
   const attentesDoLongues = enAttenteDo.map((l) => {
     const temps = tempsDemandeAvecHoraires(l.demande, debutsDo.get(l.demande.id) ?? l.demande.ouverteLe, horairesDo.get(l.demande.compteId), maintenant);
     return { demandeId: l.demande.id, objet: l.demande.objet, dossier: l.dossier, minutesAttente: temps.statutCourant };
   }).filter((l) => l.minutesAttente >= seuilAttenteMinutes).sort((a, b) => b.minutesAttente - a.minutesAttente);
-  const [premiere] = await db.select({ id: schema_exports.demandes.id }).from(schema_exports.demandes).where((0, import_drizzle_orm18.and)(...conditionsCommunes(filtres))).limit(1);
+  const [premiere] = await db.select({ id: schema_exports.demandes.id }).from(schema_exports.demandes).where((0, import_drizzle_orm20.and)(...conditionsCommunes(filtres))).limit(1);
   return {
     miseEnRoute: !premiere,
     periode: { debut: courante.debut.toISOString(), fin: courante.fin.toISOString(), jours },
@@ -4576,9 +5107,9 @@ async function tableauDeBord(jours, filtres = {}, maintenant = /* @__PURE__ */ n
     attentesDoLongues
   };
 }
-async function debutsDeStatut(demandes2) {
+async function debutsDeStatut2(demandes2) {
   if (!demandes2.length) return /* @__PURE__ */ new Map();
-  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm18.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm18.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
+  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm20.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm20.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
   return new Map(lignes.map((l) => [l.demandeId, new Date(l.debut)]));
 }
 async function horairesParCompte(demandes2) {
@@ -4604,7 +5135,7 @@ routesIndicateurs.get("/tableau-de-bord", async (req, res) => {
   const p = await perimetreDe(req.utilisateur);
   if (q.compteId) exigerCompte(p, q.compteId);
   if (q.posteId) {
-    const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm19.eq)(schema_exports.postes.id, q.posteId));
+    const [poste] = await db.select({ compteId: schema_exports.postes.compteId }).from(schema_exports.postes).where((0, import_drizzle_orm21.eq)(schema_exports.postes.id, q.posteId));
     if (!poste) throw new ErreurHttp(404, "Poste introuvable");
     exigerCompte(p, poste.compteId);
   }
@@ -4622,20 +5153,20 @@ routesIndicateurs.get("/tableau-de-bord", async (req, res) => {
 // src/server/modules/qualite/routes.ts
 var import_express8 = require("express");
 var import_zod10 = require("zod");
-var import_drizzle_orm22 = require("drizzle-orm");
+var import_drizzle_orm24 = require("drizzle-orm");
 init_client();
 init_http();
 
 // src/server/modules/qualite/service.ts
-var import_drizzle_orm20 = require("drizzle-orm");
-var import_luxon4 = require("luxon");
+var import_drizzle_orm22 = require("drizzle-orm");
+var import_luxon6 = require("luxon");
 init_client();
 init_http();
 init_evenements();
 init_parametres2();
 init_constantes();
 async function checklistsPourFamille(famille2, compteId) {
-  const toutes = await db.select().from(schema_exports.checklists).where((0, import_drizzle_orm20.eq)(schema_exports.checklists.actif, true));
+  const toutes = await db.select().from(schema_exports.checklists).where((0, import_drizzle_orm22.eq)(schema_exports.checklists.actif, true));
   return toutes.filter((c) => {
     if (c.compteId && compteId && c.compteId !== compteId) return false;
     const familles = c.familles ?? [];
@@ -4643,9 +5174,9 @@ async function checklistsPourFamille(famille2, compteId) {
   });
 }
 async function enregistrerControleEnvoi(entree, auteur) {
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm20.eq)(schema_exports.demandes.id, entree.demandeId));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm22.eq)(schema_exports.demandes.id, entree.demandeId));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
-  const [checklist] = await db.select().from(schema_exports.checklists).where((0, import_drizzle_orm20.eq)(schema_exports.checklists.id, entree.checklistId));
+  const [checklist] = await db.select().from(schema_exports.checklists).where((0, import_drizzle_orm22.eq)(schema_exports.checklists.id, entree.checklistId));
   if (!checklist) throw new ErreurHttp(404, "Check-list introuvable");
   const points = checklist.points ?? [];
   const inconnus = Object.keys(entree.reponses).filter((cle) => !points.some((p) => p.cle === cle));
@@ -4671,15 +5202,15 @@ async function enregistrerControleEnvoi(entree, auteur) {
   return controle;
 }
 async function controlesEnvoiDeLaDemande(demandeId) {
-  return db.select({ controle: schema_exports.controlesEnvoi, checklist: schema_exports.checklists.libelle, points: schema_exports.checklists.points }).from(schema_exports.controlesEnvoi).leftJoin(schema_exports.checklists, (0, import_drizzle_orm20.eq)(schema_exports.checklists.id, schema_exports.controlesEnvoi.checklistId)).where((0, import_drizzle_orm20.eq)(schema_exports.controlesEnvoi.demandeId, demandeId)).orderBy((0, import_drizzle_orm20.desc)(schema_exports.controlesEnvoi.creeLe));
+  return db.select({ controle: schema_exports.controlesEnvoi, checklist: schema_exports.checklists.libelle, points: schema_exports.checklists.points }).from(schema_exports.controlesEnvoi).leftJoin(schema_exports.checklists, (0, import_drizzle_orm22.eq)(schema_exports.checklists.id, schema_exports.controlesEnvoi.checklistId)).where((0, import_drizzle_orm22.eq)(schema_exports.controlesEnvoi.demandeId, demandeId)).orderBy((0, import_drizzle_orm22.desc)(schema_exports.controlesEnvoi.creeLe));
 }
 function cleSemaine(date2) {
-  const d = import_luxon4.DateTime.fromJSDate(date2);
+  const d = import_luxon6.DateTime.fromJSDate(date2);
   return `${d.weekYear}-W${String(d.weekNumber).padStart(2, "0")}`;
 }
 function bornesSemaine(semaine) {
   const [annee, numero] = semaine.split("-W");
-  const d = import_luxon4.DateTime.fromObject({ weekYear: Number(annee), weekNumber: Number(numero), weekday: 1 }).startOf("day");
+  const d = import_luxon6.DateTime.fromObject({ weekYear: Number(annee), weekNumber: Number(numero), weekday: 1 }).startOf("day");
   return { debut: d.toJSDate(), fin: d.plus({ weeks: 1 }).toJSDate() };
 }
 async function tirerEchantillon(semaine, opts = {}, auteur) {
@@ -4687,15 +5218,15 @@ async function tirerEchantillon(semaine, opts = {}, auteur) {
   const taux = opts.taux ?? parametres2.qualite.tauxEchantillon;
   const { debut, fin } = bornesSemaine(semaine);
   const conditions = [
-    (0, import_drizzle_orm20.eq)(schema_exports.evenements.sens, "sortant"),
-    (0, import_drizzle_orm20.gte)(schema_exports.evenements.survenuLe, debut),
-    (0, import_drizzle_orm20.lt)(schema_exports.evenements.survenuLe, fin),
-    import_drizzle_orm20.sql`${schema_exports.evenements.demandeId} IS NOT NULL`,
-    import_drizzle_orm20.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`
+    (0, import_drizzle_orm22.eq)(schema_exports.evenements.sens, "sortant"),
+    (0, import_drizzle_orm22.gte)(schema_exports.evenements.survenuLe, debut),
+    (0, import_drizzle_orm22.lt)(schema_exports.evenements.survenuLe, fin),
+    import_drizzle_orm22.sql`${schema_exports.evenements.demandeId} IS NOT NULL`,
+    import_drizzle_orm22.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`
   ];
-  if (opts.compteId) conditions.push((0, import_drizzle_orm20.eq)(schema_exports.evenements.compteId, opts.compteId));
-  const envois = await db.selectDistinct({ demandeId: schema_exports.evenements.demandeId, famille: schema_exports.demandes.famille }).from(schema_exports.evenements).innerJoin(schema_exports.demandes, (0, import_drizzle_orm20.eq)(schema_exports.demandes.id, schema_exports.evenements.demandeId)).where((0, import_drizzle_orm20.and)(...conditions));
-  const deja = await db.select({ demandeId: schema_exports.controlesQualite.demandeId }).from(schema_exports.controlesQualite).where((0, import_drizzle_orm20.eq)(schema_exports.controlesQualite.semaine, semaine));
+  if (opts.compteId) conditions.push((0, import_drizzle_orm22.eq)(schema_exports.evenements.compteId, opts.compteId));
+  const envois = await db.selectDistinct({ demandeId: schema_exports.evenements.demandeId, famille: schema_exports.demandes.famille }).from(schema_exports.evenements).innerJoin(schema_exports.demandes, (0, import_drizzle_orm22.eq)(schema_exports.demandes.id, schema_exports.evenements.demandeId)).where((0, import_drizzle_orm22.and)(...conditions));
+  const deja = await db.select({ demandeId: schema_exports.controlesQualite.demandeId }).from(schema_exports.controlesQualite).where((0, import_drizzle_orm22.eq)(schema_exports.controlesQualite.semaine, semaine));
   const dejaTirees = new Set(deja.map((d) => d.demandeId));
   const candidats = envois.filter((e) => e.demandeId !== null && !dejaTirees.has(e.demandeId));
   const cible = envois.length === 0 ? 0 : Math.max(1, Math.round(envois.length * taux));
@@ -4715,7 +5246,7 @@ async function tirerEchantillon(semaine, opts = {}, auteur) {
   return { semaine, envois: envois.length, tires: melange.length, deja: dejaTirees.size };
 }
 async function grilleParDefaut(compteId) {
-  const grilles = await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm20.eq)(schema_exports.grillesQualite.actif, true));
+  const grilles = await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm22.eq)(schema_exports.grillesQualite.actif, true));
   return grilles.find((g) => g.compteId === compteId) ?? grilles.find((g) => !g.compteId) ?? grilles[0];
 }
 function calculerNote(criteres, notes) {
@@ -4726,11 +5257,11 @@ function calculerNote(criteres, notes) {
   return Math.round(notes_.reduce((s, x) => s + x.note * x.poids, 0) / poidsTotal * 100) / 100;
 }
 async function noterControle(controleId, entree, auteur) {
-  const [controle] = await db.select().from(schema_exports.controlesQualite).where((0, import_drizzle_orm20.eq)(schema_exports.controlesQualite.id, controleId));
+  const [controle] = await db.select().from(schema_exports.controlesQualite).where((0, import_drizzle_orm22.eq)(schema_exports.controlesQualite.id, controleId));
   if (!controle) throw new ErreurHttp(404, "Controle qualite introuvable");
   let criteres = [];
   if (controle.grilleId) {
-    const [grille] = await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm20.eq)(schema_exports.grillesQualite.id, controle.grilleId));
+    const [grille] = await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm22.eq)(schema_exports.grillesQualite.id, controle.grilleId));
     criteres = grille?.criteres ?? [];
   }
   const inconnus = Object.keys(entree.notes).filter((cle) => !criteres.some((c) => c.cle === cle));
@@ -4745,7 +5276,7 @@ async function noterControle(controleId, entree, auteur) {
     bonDuPremierCoup: entree.bonDuPremierCoup !== void 0 ? entree.bonDuPremierCoup : controle.bonDuPremierCoup,
     commentaire: entree.commentaire ?? controle.commentaire,
     controleParId: auteur.utilisateurId
-  }).where((0, import_drizzle_orm20.eq)(schema_exports.controlesQualite.id, controleId)).returning();
+  }).where((0, import_drizzle_orm22.eq)(schema_exports.controlesQualite.id, controleId)).returning();
   await journaliser("controle_qualite_note", {
     utilisateurId: auteur.utilisateurId,
     auteurType: auteur.type,
@@ -4756,14 +5287,14 @@ async function noterControle(controleId, entree, auteur) {
   return maj;
 }
 async function indicateursQualite(periode, filtres = {}) {
-  const conditionsControle = [(0, import_drizzle_orm20.gte)(schema_exports.controlesQualite.creeLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.controlesQualite.creeLe, periode.fin)];
-  if (filtres.compteId) conditionsControle.push((0, import_drizzle_orm20.eq)(schema_exports.demandes.compteId, filtres.compteId));
-  const controles = await db.select({ controle: schema_exports.controlesQualite }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm20.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).where((0, import_drizzle_orm20.and)(...conditionsControle));
+  const conditionsControle = [(0, import_drizzle_orm22.gte)(schema_exports.controlesQualite.creeLe, periode.debut), (0, import_drizzle_orm22.lt)(schema_exports.controlesQualite.creeLe, periode.fin)];
+  if (filtres.compteId) conditionsControle.push((0, import_drizzle_orm22.eq)(schema_exports.demandes.compteId, filtres.compteId));
+  const controles = await db.select({ controle: schema_exports.controlesQualite }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm22.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).where((0, import_drizzle_orm22.and)(...conditionsControle));
   const avecNote = controles.filter((c) => c.controle.note !== null);
   const avecBon = controles.filter((c) => c.controle.bonDuPremierCoup !== null);
-  const conditionsEnvoi = [(0, import_drizzle_orm20.gte)(schema_exports.controlesEnvoi.creeLe, periode.debut), (0, import_drizzle_orm20.lt)(schema_exports.controlesEnvoi.creeLe, periode.fin)];
-  if (filtres.compteId) conditionsEnvoi.push((0, import_drizzle_orm20.eq)(schema_exports.demandes.compteId, filtres.compteId));
-  const envois = await db.select({ controle: schema_exports.controlesEnvoi, points: schema_exports.checklists.points }).from(schema_exports.controlesEnvoi).innerJoin(schema_exports.demandes, (0, import_drizzle_orm20.eq)(schema_exports.demandes.id, schema_exports.controlesEnvoi.demandeId)).leftJoin(schema_exports.checklists, (0, import_drizzle_orm20.eq)(schema_exports.checklists.id, schema_exports.controlesEnvoi.checklistId)).where((0, import_drizzle_orm20.and)(...conditionsEnvoi));
+  const conditionsEnvoi = [(0, import_drizzle_orm22.gte)(schema_exports.controlesEnvoi.creeLe, periode.debut), (0, import_drizzle_orm22.lt)(schema_exports.controlesEnvoi.creeLe, periode.fin)];
+  if (filtres.compteId) conditionsEnvoi.push((0, import_drizzle_orm22.eq)(schema_exports.demandes.compteId, filtres.compteId));
+  const envois = await db.select({ controle: schema_exports.controlesEnvoi, points: schema_exports.checklists.points }).from(schema_exports.controlesEnvoi).innerJoin(schema_exports.demandes, (0, import_drizzle_orm22.eq)(schema_exports.demandes.id, schema_exports.controlesEnvoi.demandeId)).leftJoin(schema_exports.checklists, (0, import_drizzle_orm22.eq)(schema_exports.checklists.id, schema_exports.controlesEnvoi.checklistId)).where((0, import_drizzle_orm22.and)(...conditionsEnvoi));
   const manques = /* @__PURE__ */ new Map();
   for (const e of envois) {
     const points = e.points ?? [];
@@ -4788,20 +5319,20 @@ async function indicateursQualite(periode, filtres = {}) {
   };
 }
 async function controlesDeLaSemaine(semaine, compteId) {
-  const conditions = [(0, import_drizzle_orm20.eq)(schema_exports.controlesQualite.semaine, semaine)];
-  if (compteId) conditions.push((0, import_drizzle_orm20.eq)(schema_exports.demandes.compteId, compteId));
+  const conditions = [(0, import_drizzle_orm22.eq)(schema_exports.controlesQualite.semaine, semaine)];
+  if (compteId) conditions.push((0, import_drizzle_orm22.eq)(schema_exports.demandes.compteId, compteId));
   return db.select({
     controle: schema_exports.controlesQualite,
     demande: schema_exports.demandes,
     dossier: schema_exports.dossiers.libelle,
     grille: schema_exports.grillesQualite.libelle,
     criteres: schema_exports.grillesQualite.criteres
-  }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm20.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm20.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).leftJoin(schema_exports.grillesQualite, (0, import_drizzle_orm20.eq)(schema_exports.grillesQualite.id, schema_exports.controlesQualite.grilleId)).where((0, import_drizzle_orm20.and)(...conditions)).orderBy((0, import_drizzle_orm20.desc)(schema_exports.controlesQualite.creeLe));
+  }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm22.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm22.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).leftJoin(schema_exports.grillesQualite, (0, import_drizzle_orm22.eq)(schema_exports.grillesQualite.id, schema_exports.controlesQualite.grilleId)).where((0, import_drizzle_orm22.and)(...conditions)).orderBy((0, import_drizzle_orm22.desc)(schema_exports.controlesQualite.creeLe));
 }
 
 // src/server/modules/digest/service.ts
-var import_drizzle_orm21 = require("drizzle-orm");
-var import_luxon5 = require("luxon");
+var import_drizzle_orm23 = require("drizzle-orm");
+var import_luxon7 = require("luxon");
 init_client();
 init_parametres2();
 init_tirets();
@@ -4832,42 +5363,42 @@ function decisionAttendue(famille2, objet) {
 }
 function elementsDeDecision(references, montants, echeances2) {
   const sortie = [];
-  for (const [cle, valeur2] of Object.entries(references ?? {})) {
-    if (valeur2 !== null && valeur2 !== void 0 && String(valeur2).trim()) sortie.push({ libelle: cle, valeur: String(valeur2) });
+  for (const [cle, valeur3] of Object.entries(references ?? {})) {
+    if (valeur3 !== null && valeur3 !== void 0 && String(valeur3).trim()) sortie.push({ libelle: cle, valeur: String(valeur3) });
   }
-  for (const [cle, valeur2] of Object.entries(montants ?? {})) {
-    if (valeur2 !== null && valeur2 !== void 0 && String(valeur2).trim()) sortie.push({ libelle: `montant approuve ${cle}`, valeur: String(valeur2) });
+  for (const [cle, valeur3] of Object.entries(montants ?? {})) {
+    if (valeur3 !== null && valeur3 !== void 0 && String(valeur3).trim()) sortie.push({ libelle: `montant approuve ${cle}`, valeur: String(valeur3) });
   }
   for (const e of echeances2) {
     sortie.push({
       libelle: e.libelle || LIBELLES_ECHEANCES[e.type] || e.type,
-      valeur: import_luxon5.DateTime.fromJSDate(e.echeanceLe).setLocale("fr").toFormat("dd/MM/yyyy")
+      valeur: import_luxon7.DateTime.fromJSDate(e.echeanceLe).setLocale("fr").toFormat("dd/MM/yyyy")
     });
   }
   return sortie;
 }
 async function construireDigest(compteId, maintenant = /* @__PURE__ */ new Date()) {
-  const [compte] = await db.select().from(schema_exports.comptesClients).where((0, import_drizzle_orm21.eq)(schema_exports.comptesClients.id, compteId));
+  const [compte] = await db.select().from(schema_exports.comptesClients).where((0, import_drizzle_orm23.eq)(schema_exports.comptesClients.id, compteId));
   if (!compte) throw new Error(`Compte client ${compteId} introuvable`);
   const parametres2 = await lireParametres();
   const seuilMinutes = parametres2.sla.attenteDoHeures * 60;
   const conditions = [
-    (0, import_drizzle_orm21.eq)(schema_exports.demandes.compteId, compteId),
-    (0, import_drizzle_orm21.eq)(schema_exports.demandes.statut, "attente_do"),
-    import_drizzle_orm21.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`
+    (0, import_drizzle_orm23.eq)(schema_exports.demandes.compteId, compteId),
+    (0, import_drizzle_orm23.eq)(schema_exports.demandes.statut, "attente_do"),
+    import_drizzle_orm23.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`
   ];
-  const lignesBrutes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm21.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm21.and)(...conditions)).orderBy((0, import_drizzle_orm21.asc)(schema_exports.demandes.ouverteLe));
+  const lignesBrutes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm23.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm23.and)(...conditions)).orderBy((0, import_drizzle_orm23.asc)(schema_exports.demandes.ouverteLe));
   const horaires = await horairesDuCompte(compteId);
-  const debuts = await debutsDeStatut2(lignesBrutes.map((l) => l.demande));
+  const debuts = await debutsDeStatut3(lignesBrutes.map((l) => l.demande));
   const dossierIds = [...new Set(lignesBrutes.map((l) => l.dossier.id))];
   const echeances2 = dossierIds.length ? await db.select().from(schema_exports.echeances).where(
-    (0, import_drizzle_orm21.and)(
-      (0, import_drizzle_orm21.inArray)(schema_exports.echeances.dossierId, dossierIds),
-      (0, import_drizzle_orm21.eq)(schema_exports.echeances.annulee, false),
-      import_drizzle_orm21.sql`${schema_exports.echeances.honoreeLe} IS NULL`,
-      (0, import_drizzle_orm21.lte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() + 30 * 864e5))
+    (0, import_drizzle_orm23.and)(
+      (0, import_drizzle_orm23.inArray)(schema_exports.echeances.dossierId, dossierIds),
+      (0, import_drizzle_orm23.eq)(schema_exports.echeances.annulee, false),
+      import_drizzle_orm23.sql`${schema_exports.echeances.honoreeLe} IS NULL`,
+      (0, import_drizzle_orm23.lte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() + 30 * 864e5))
     )
-  ).orderBy((0, import_drizzle_orm21.asc)(schema_exports.echeances.echeanceLe)) : [];
+  ).orderBy((0, import_drizzle_orm23.asc)(schema_exports.echeances.echeanceLe)) : [];
   const echeancesParDossier = /* @__PURE__ */ new Map();
   for (const e of echeances2) {
     const liste = echeancesParDossier.get(e.dossierId) ?? [];
@@ -4875,7 +5406,7 @@ async function construireDigest(compteId, maintenant = /* @__PURE__ */ new Date(
     echeancesParDossier.set(e.dossierId, liste);
   }
   const demandeIds = lignesBrutes.map((l) => l.demande.id);
-  const derniers = demandeIds.length ? await db.select({ demandeId: schema_exports.evenements.demandeId, resume: schema_exports.evenements.resume, survenuLe: schema_exports.evenements.survenuLe }).from(schema_exports.evenements).where((0, import_drizzle_orm21.and)((0, import_drizzle_orm21.inArray)(schema_exports.evenements.demandeId, demandeIds), (0, import_drizzle_orm21.eq)(schema_exports.evenements.nature, "demande_validation_do"))).orderBy((0, import_drizzle_orm21.asc)(schema_exports.evenements.survenuLe)) : [];
+  const derniers = demandeIds.length ? await db.select({ demandeId: schema_exports.evenements.demandeId, resume: schema_exports.evenements.resume, survenuLe: schema_exports.evenements.survenuLe }).from(schema_exports.evenements).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.inArray)(schema_exports.evenements.demandeId, demandeIds), (0, import_drizzle_orm23.eq)(schema_exports.evenements.nature, "demande_validation_do"))).orderBy((0, import_drizzle_orm23.asc)(schema_exports.evenements.survenuLe)) : [];
   const derniereParDemande = /* @__PURE__ */ new Map();
   for (const d of derniers) if (d.demandeId !== null) derniereParDemande.set(d.demandeId, d.resume);
   const lignes = lignesBrutes.map((l) => {
@@ -4900,7 +5431,7 @@ async function construireDigest(compteId, maintenant = /* @__PURE__ */ new Date(
     };
   });
   lignes.sort((a, b) => b.minutesAttente - a.minutesAttente);
-  const dt = import_luxon5.DateTime.fromJSDate(maintenant).setLocale("fr");
+  const dt = import_luxon7.DateTime.fromJSDate(maintenant).setLocale("fr");
   const moment = dt.hour < 13 ? "matin" : "apres-midi";
   return {
     compteId,
@@ -4935,9 +5466,9 @@ function redigerBrouillon(donnees) {
     [entete, "", `Point du ${date2}. ${resume}`, "", ...corps, "", "Merci de votre retour.", "Bien cordialement,"].join("\n")
   );
 }
-async function debutsDeStatut2(demandes2) {
+async function debutsDeStatut3(demandes2) {
   if (!demandes2.length) return /* @__PURE__ */ new Map();
-  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm21.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm21.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
+  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm23.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm23.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
   return new Map(lignes.map((l) => [l.demandeId, new Date(l.debut)]));
 }
 
@@ -4947,7 +5478,7 @@ var routesQualite = (0, import_express8.Router)();
 routesQualite.use(exigerConnexion);
 routesQualite.get("/checklists/:demandeId", async (req, res) => {
   const demandeId = idParam(req, "demandeId");
-  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm22.eq)(schema_exports.demandes.id, demandeId));
+  const [demande] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm24.eq)(schema_exports.demandes.id, demandeId));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   res.json({
@@ -4966,7 +5497,7 @@ routesQualite.post("/controle-envoi", exigerEcriture, async (req, res) => {
     }),
     req.body
   );
-  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm22.eq)(schema_exports.demandes.id, d.demandeId));
+  const [demande] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.demandes).where((0, import_drizzle_orm24.eq)(schema_exports.demandes.id, d.demandeId));
   if (!demande) throw new ErreurHttp(404, "Demande introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), demande.compteId);
   res.status(201).json(await enregistrerControleEnvoi(d, auteurDe(req)));
@@ -5010,7 +5541,7 @@ routesQualite.post("/controle/:id/note", exigerEcriture, async (req, res) => {
     }),
     req.body
   );
-  const [ligne] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm22.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).where((0, import_drizzle_orm22.eq)(schema_exports.controlesQualite.id, id2));
+  const [ligne] = await db.select({ compteId: schema_exports.demandes.compteId }).from(schema_exports.controlesQualite).innerJoin(schema_exports.demandes, (0, import_drizzle_orm24.eq)(schema_exports.demandes.id, schema_exports.controlesQualite.demandeId)).where((0, import_drizzle_orm24.eq)(schema_exports.controlesQualite.id, id2));
   if (!ligne) throw new ErreurHttp(404, "Controle qualite introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), ligne.compteId);
   res.json(await noterControle(id2, d, auteurDe(req)));
@@ -5028,7 +5559,7 @@ routesQualite.get("/indicateurs", async (req, res) => {
   res.json(await indicateursQualite({ debut, fin }, { compteId: q.compteId }));
 });
 routesQualite.get("/grilles", async (_req, res) => {
-  res.json(await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm22.eq)(schema_exports.grillesQualite.actif, true)));
+  res.json(await db.select().from(schema_exports.grillesQualite).where((0, import_drizzle_orm24.eq)(schema_exports.grillesQualite.actif, true)));
 });
 var routesDigest = (0, import_express8.Router)();
 routesDigest.use(exigerConnexion);
@@ -5046,8 +5577,8 @@ init_config();
 init_http();
 
 // src/server/modules/export/service.ts
-var import_drizzle_orm23 = require("drizzle-orm");
-var import_luxon6 = require("luxon");
+var import_drizzle_orm25 = require("drizzle-orm");
+var import_luxon8 = require("luxon");
 init_client();
 init_http();
 init_evenements();
@@ -5264,22 +5795,22 @@ var ClasseurModifiable = class {
     return Boolean(corps && /<f[\s>/]/.test(corps));
   }
   /** Construit le XML d'une cellule, en conservant les attributs fournis. */
-  xmlCellule(ref2, valeur2, style) {
+  xmlCellule(ref2, valeur3, style) {
     const attributs = [`r="${ref2}"`];
     if (style !== void 0) attributs.push(`s="${style}"`);
-    if (valeur2 === null || valeur2 === "") return `<c ${attributs.join(" ")}/>`;
-    if (typeof valeur2 === "number") {
-      if (!Number.isFinite(valeur2)) throw new Error(`Valeur numerique invalide pour ${ref2}`);
-      return `<c ${attributs.join(" ")}><v>${valeur2}</v></c>`;
+    if (valeur3 === null || valeur3 === "") return `<c ${attributs.join(" ")}/>`;
+    if (typeof valeur3 === "number") {
+      if (!Number.isFinite(valeur3)) throw new Error(`Valeur numerique invalide pour ${ref2}`);
+      return `<c ${attributs.join(" ")}><v>${valeur3}</v></c>`;
     }
     attributs.push('t="s"');
-    return `<c ${attributs.join(" ")}><v>${this.indexChaine(valeur2)}</v></c>`;
+    return `<c ${attributs.join(" ")}><v>${this.indexChaine(valeur3)}</v></c>`;
   }
   /**
    * Ecrit une valeur dans une cellule existante ou absente, sans toucher a sa mise en forme.
    * Une cellule qui porte une formule est refusee : l'ecraser detruirait le calcul du classeur.
    */
-  definirCellule(nom, colonne, ligne, valeur2) {
+  definirCellule(nom, colonne, ligne, valeur3) {
     const ref2 = `${lettreColonne(colonne)}${ligne}`;
     if (this.porteUneFormule(nom, ref2)) {
       throw new Error(`La cellule ${ref2} de l'onglet \xAB ${nom} \xBB porte une formule : l'export ne l'ecrase pas`);
@@ -5287,7 +5818,7 @@ var ClasseurModifiable = class {
     let xml = this.feuille(nom);
     const brutLigne = this.extraireLigne(xml, ligne);
     if (!brutLigne) {
-      const nouvelle = `<row r="${ligne}">${this.xmlCellule(ref2, valeur2)}</row>`;
+      const nouvelle = `<row r="${ligne}">${this.xmlCellule(ref2, valeur3)}</row>`;
       this.ecrireFeuille(nom, this.insererLigne(xml, ligne, nouvelle));
       return;
     }
@@ -5296,9 +5827,9 @@ var ClasseurModifiable = class {
     let nouvelleLigne;
     if (celluleExistante) {
       const style = /\bs="(\d+)"/.exec(celluleExistante)?.[1];
-      nouvelleLigne = brutLigne.replace(motifCellule, this.xmlCellule(ref2, valeur2, style));
+      nouvelleLigne = brutLigne.replace(motifCellule, this.xmlCellule(ref2, valeur3, style));
     } else {
-      nouvelleLigne = this.insererCellule(brutLigne, colonne, this.xmlCellule(ref2, valeur2));
+      nouvelleLigne = this.insererCellule(brutLigne, colonne, this.xmlCellule(ref2, valeur3));
     }
     xml = xml.replace(brutLigne, nouvelleLigne);
     this.ecrireFeuille(nom, xml);
@@ -5387,7 +5918,7 @@ function decoderEntites(texte2) {
 init_tirets();
 init_constantes();
 var ONGLET_SUIVI = "Suivi Quotidien";
-var COL = { date: 1, client: 3, produit: 6, description: 7, livrables: 8, priorite: 9 };
+var COL2 = { date: 1, client: 3, produit: 6, description: 7, livrables: 8, priorite: 9 };
 function numeroOngletSemaine(semaineIso, annee) {
   return annee === 2026 ? semaineIso - 26 : semaineIso;
 }
@@ -5395,18 +5926,18 @@ function nomOngletSemaine(semaineIso, annee) {
   return `sem ${numeroOngletSemaine(semaineIso, annee)}`;
 }
 async function construireBlocJour(compteId, jour) {
-  const debut = import_luxon6.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
-  const fin = import_luxon6.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
+  const debut = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
+  const fin = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
   const conditions = [
-    (0, import_drizzle_orm23.eq)(schema_exports.demandes.compteId, compteId),
-    import_drizzle_orm23.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
+    (0, import_drizzle_orm25.eq)(schema_exports.demandes.compteId, compteId),
+    import_drizzle_orm25.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
     // Toute demande qui a bouge dans la journee, ou qui reste ouverte apres y etre entree.
-    import_drizzle_orm23.sql`(
+    import_drizzle_orm25.sql`(
       (${schema_exports.demandes.dernierEvenementLe} >= ${debut} AND ${schema_exports.demandes.dernierEvenementLe} < ${fin})
       OR (${schema_exports.demandes.ouverteLe} < ${fin} AND ${schema_exports.demandes.statut} NOT IN ('termine', 'annule'))
     )`
   ];
-  const demandes2 = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm23.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm23.and)(...conditions)).orderBy((0, import_drizzle_orm23.asc)(schema_exports.dossiers.client), (0, import_drizzle_orm23.asc)(schema_exports.demandes.ouverteLe));
+  const demandes2 = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm25.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm25.and)(...conditions)).orderBy((0, import_drizzle_orm25.asc)(schema_exports.dossiers.client), (0, import_drizzle_orm25.asc)(schema_exports.demandes.ouverteLe));
   const parDossier = /* @__PURE__ */ new Map();
   for (const l of demandes2) {
     const deja = parDossier.get(l.dossier.id) ?? { dossier: l.dossier, demandes: [] };
@@ -5414,7 +5945,7 @@ async function construireBlocJour(compteId, jour) {
     parDossier.set(l.dossier.id, deja);
   }
   const demandeIds = demandes2.map((l) => l.demande.id);
-  const evenements2 = demandeIds.length ? await db.select({ demandeId: schema_exports.evenements.demandeId, resume: schema_exports.evenements.resume, objet: schema_exports.evenements.objet, survenuLe: schema_exports.evenements.survenuLe }).from(schema_exports.evenements).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.inArray)(schema_exports.evenements.demandeId, demandeIds), (0, import_drizzle_orm23.gte)(schema_exports.evenements.survenuLe, debut), (0, import_drizzle_orm23.lt)(schema_exports.evenements.survenuLe, fin))).orderBy((0, import_drizzle_orm23.asc)(schema_exports.evenements.survenuLe)) : [];
+  const evenements2 = demandeIds.length ? await db.select({ demandeId: schema_exports.evenements.demandeId, resume: schema_exports.evenements.resume, objet: schema_exports.evenements.objet, survenuLe: schema_exports.evenements.survenuLe }).from(schema_exports.evenements).where((0, import_drizzle_orm25.and)((0, import_drizzle_orm25.inArray)(schema_exports.evenements.demandeId, demandeIds), (0, import_drizzle_orm25.gte)(schema_exports.evenements.survenuLe, debut), (0, import_drizzle_orm25.lt)(schema_exports.evenements.survenuLe, fin))).orderBy((0, import_drizzle_orm25.asc)(schema_exports.evenements.survenuLe)) : [];
   const dernierResume = /* @__PURE__ */ new Map();
   for (const e of evenements2) {
     if (e.demandeId !== null && (e.resume || e.objet)) dernierResume.set(e.demandeId, e.resume || e.objet);
@@ -5448,7 +5979,7 @@ function nettoyerPhrase(texte2) {
   return texte2.replace(/\s+/g, " ").replace(/\s*\.\s*$/, "").trim();
 }
 function ecrireBlocJour(classeur, bloc, modele) {
-  const dateTexte = import_luxon6.DateTime.fromISO(bloc.jour).toFormat("dd/MM/yyyy");
+  const dateTexte = import_luxon8.DateTime.fromISO(bloc.jour).toFormat("dd/MM/yyyy");
   const lignes = [{ cellules: [] }];
   lignes.push({
     cellules: modele.entetes.map((texte2, i) => ({ colonne: i + 1, valeur: texte2 })),
@@ -5458,12 +5989,12 @@ function ecrireBlocJour(classeur, bloc, modele) {
     lignes.push({
       // B, D et E restent vides : elles ne sont pas ecrites du tout.
       cellules: [
-        { colonne: COL.date, valeur: rang === 0 ? dateTexte : null },
-        { colonne: COL.client, valeur: l.client },
-        { colonne: COL.produit, valeur: l.produit },
-        { colonne: COL.description, valeur: l.description },
-        { colonne: COL.livrables, valeur: l.livrables || null },
-        { colonne: COL.priorite, valeur: l.prioriteLendemain || null }
+        { colonne: COL2.date, valeur: rang === 0 ? dateTexte : null },
+        { colonne: COL2.client, valeur: l.client },
+        { colonne: COL2.produit, valeur: l.produit },
+        { colonne: COL2.description, valeur: l.description },
+        { colonne: COL2.livrables, valeur: l.livrables || null },
+        { colonne: COL2.priorite, valeur: l.prioriteLendemain || null }
       ],
       ligneModele: modele.ligneDonnees
     });
@@ -5482,14 +6013,14 @@ function repererModele(buffer) {
   for (let n = 1; n <= onglet.derniereLigne; n++) {
     const cellules = onglet.lignes.get(n);
     if (!cellules?.length) continue;
-    const a = valeur(cellules, COL.date).toLowerCase();
-    const g = valeur(cellules, COL.description).toLowerCase();
+    const a = valeur(cellules, COL2.date).toLowerCase();
+    const g = valeur(cellules, COL2.description).toLowerCase();
     const estEntete = a.startsWith("date") || g.includes("description") || g.includes("travaux") || g.includes("taches");
     if (estEntete) {
       ligneEntete = n;
       const largeur = Math.max(...cellules.map((c) => c.colonne));
       entetes = Array.from({ length: largeur }, (_, i) => valeur(cellules, i + 1));
-    } else if (ligneEntete && valeur(cellules, COL.client)) {
+    } else if (ligneEntete && valeur(cellules, COL2.client)) {
       ligneDonnees = n;
     }
   }
@@ -5524,14 +6055,14 @@ function retirerReferences(texte2) {
   return sortie.replace(/\s{2,}/g, " ").trim();
 }
 async function construireColonneSemaine(compteId, jour) {
-  const debut = import_luxon6.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
-  const fin = import_luxon6.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
-  const horsPerimetre = import_drizzle_orm23.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`;
-  const [nouveaux] = await db.select({ n: import_drizzle_orm23.sql`count(*)::int` }).from(schema_exports.demandes).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.eq)(schema_exports.demandes.compteId, compteId), horsPerimetre, (0, import_drizzle_orm23.eq)(schema_exports.demandes.famille, "T08"), (0, import_drizzle_orm23.gte)(schema_exports.demandes.ouverteLe, debut), (0, import_drizzle_orm23.lt)(schema_exports.demandes.ouverteLe, fin)));
-  const [traites] = await db.select({ n: import_drizzle_orm23.sql`count(*)::int` }).from(schema_exports.demandes).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.eq)(schema_exports.demandes.compteId, compteId), horsPerimetre, import_drizzle_orm23.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm23.gte)(schema_exports.demandes.termineeLe, debut), (0, import_drizzle_orm23.lt)(schema_exports.demandes.termineeLe, fin)));
-  const parNature = await db.select({ nature: schema_exports.evenements.nature, n: import_drizzle_orm23.sql`count(*)::int` }).from(schema_exports.evenements).innerJoin(schema_exports.demandes, (0, import_drizzle_orm23.eq)(schema_exports.demandes.id, schema_exports.evenements.demandeId)).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.eq)(schema_exports.evenements.compteId, compteId), horsPerimetre, (0, import_drizzle_orm23.gte)(schema_exports.evenements.survenuLe, debut), (0, import_drizzle_orm23.lt)(schema_exports.evenements.survenuLe, fin))).groupBy(schema_exports.evenements.nature);
+  const debut = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
+  const fin = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
+  const horsPerimetre = import_drizzle_orm25.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`;
+  const [nouveaux] = await db.select({ n: import_drizzle_orm25.sql`count(*)::int` }).from(schema_exports.demandes).where((0, import_drizzle_orm25.and)((0, import_drizzle_orm25.eq)(schema_exports.demandes.compteId, compteId), horsPerimetre, (0, import_drizzle_orm25.eq)(schema_exports.demandes.famille, "T08"), (0, import_drizzle_orm25.gte)(schema_exports.demandes.ouverteLe, debut), (0, import_drizzle_orm25.lt)(schema_exports.demandes.ouverteLe, fin)));
+  const [traites] = await db.select({ n: import_drizzle_orm25.sql`count(*)::int` }).from(schema_exports.demandes).where((0, import_drizzle_orm25.and)((0, import_drizzle_orm25.eq)(schema_exports.demandes.compteId, compteId), horsPerimetre, import_drizzle_orm25.sql`${schema_exports.demandes.termineeLe} IS NOT NULL`, (0, import_drizzle_orm25.gte)(schema_exports.demandes.termineeLe, debut), (0, import_drizzle_orm25.lt)(schema_exports.demandes.termineeLe, fin)));
+  const parNature = await db.select({ nature: schema_exports.evenements.nature, n: import_drizzle_orm25.sql`count(*)::int` }).from(schema_exports.evenements).innerJoin(schema_exports.demandes, (0, import_drizzle_orm25.eq)(schema_exports.demandes.id, schema_exports.evenements.demandeId)).where((0, import_drizzle_orm25.and)((0, import_drizzle_orm25.eq)(schema_exports.evenements.compteId, compteId), horsPerimetre, (0, import_drizzle_orm25.gte)(schema_exports.evenements.survenuLe, debut), (0, import_drizzle_orm25.lt)(schema_exports.evenements.survenuLe, fin))).groupBy(schema_exports.evenements.nature);
   const compte = (nature) => parNature.find((p) => p.nature === nature)?.n ?? 0;
-  const [expeditions] = await db.select({ n: import_drizzle_orm23.sql`count(*)::int` }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm23.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm23.and)((0, import_drizzle_orm23.eq)(schema_exports.dossiers.compteId, compteId), (0, import_drizzle_orm23.eq)(schema_exports.echeances.type, "etd"), (0, import_drizzle_orm23.gte)(schema_exports.echeances.echeanceLe, debut), (0, import_drizzle_orm23.lt)(schema_exports.echeances.echeanceLe, fin)));
+  const [expeditions] = await db.select({ n: import_drizzle_orm25.sql`count(*)::int` }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm25.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where((0, import_drizzle_orm25.and)((0, import_drizzle_orm25.eq)(schema_exports.dossiers.compteId, compteId), (0, import_drizzle_orm25.eq)(schema_exports.echeances.type, "etd"), (0, import_drizzle_orm25.gte)(schema_exports.echeances.echeanceLe, debut), (0, import_drizzle_orm25.lt)(schema_exports.echeances.echeanceLe, fin)));
   const bloc = await construireBlocJour(compteId, jour);
   const bloques = bloc.lignes.filter((l) => l.statut === "Bloque");
   const termines = bloc.lignes.filter((l) => l.statut === "Termine");
@@ -5556,7 +6087,7 @@ async function construireColonneSemaine(compteId, jour) {
   };
 }
 function ecrireColonneSemaine(classeur, onglet, colonne, donnees) {
-  const ecrire2 = (ligne, valeur2) => classeur.definirCellule(onglet, colonne, ligne, valeur2);
+  const ecrire2 = (ligne, valeur3) => classeur.definirCellule(onglet, colonne, ligne, valeur3);
   ecrire2(LIGNES_SEMAINE.nouveauxLeads, donnees.nouveauxLeads);
   ecrire2(LIGNES_SEMAINE.dossiersTraites, donnees.dossiersTraites);
   ecrire2(LIGNES_SEMAINE.documentsEmis, donnees.documentsEmis);
@@ -5585,7 +6116,7 @@ async function exporterReporting(buffer, options, auteur) {
   let nomSemaine = null;
   let colonnesSemaine = 0;
   if (options.ongletSemaine && joursEcrits.length) {
-    const premier = import_luxon6.DateTime.fromISO(joursEcrits[0]);
+    const premier = import_luxon8.DateTime.fromISO(joursEcrits[0]);
     const candidat = nomOngletSemaine(premier.weekNumber, premier.weekYear);
     const present = classeur.nomsOnglets().find((n) => n.trim().toLowerCase() === candidat.toLowerCase());
     if (!present) {
@@ -5705,8 +6236,8 @@ init_securite();
 init_journal();
 
 // src/server/modules/mcp/service.ts
-var import_drizzle_orm24 = require("drizzle-orm");
-var import_luxon7 = require("luxon");
+var import_drizzle_orm26 = require("drizzle-orm");
+var import_luxon9 = require("luxon");
 init_client();
 init_config();
 init_parametres2();
@@ -5757,12 +6288,12 @@ var lienDemande = (id2) => `${config.url}/demandes/${id2}`;
 var lienDossier = (id2) => `${config.url}/dossiers/${id2}`;
 async function compteDemande(v) {
   if (v !== void 0 && v !== null && v !== "") return entier(v, "compte_id");
-  const comptes = await db.select({ id: schema_exports.comptesClients.id, nom: schema_exports.comptesClients.nom }).from(schema_exports.comptesClients).where((0, import_drizzle_orm24.eq)(schema_exports.comptesClients.actif, true));
+  const comptes = await db.select({ id: schema_exports.comptesClients.id, nom: schema_exports.comptesClients.nom }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.actif, true));
   if (comptes.length === 1) return comptes[0].id;
   throw new Error(`compte_id obligatoire : plusieurs comptes clients (${comptes.map((c) => `${c.id} ${c.nom}`).join(", ")})`);
 }
 async function demandeDuPerimetre(id2) {
-  const [d] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm24.eq)(schema_exports.demandes.id, entier(id2, "demande_id")));
+  const [d] = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm26.eq)(schema_exports.demandes.id, entier(id2, "demande_id")));
   if (!d || estHorsPerimetre(d.famille)) throw new Error("Demande introuvable");
   return d;
 }
@@ -5876,7 +6407,7 @@ var OUTILS = [
           };
         })
       );
-      const echeances2 = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm24.and)((0, import_drizzle_orm24.eq)(schema_exports.echeances.dossierId, dossier.id), (0, import_drizzle_orm24.eq)(schema_exports.echeances.annulee, false))).orderBy((0, import_drizzle_orm24.asc)(schema_exports.echeances.echeanceLe));
+      const echeances2 = await db.select().from(schema_exports.echeances).where((0, import_drizzle_orm26.and)((0, import_drizzle_orm26.eq)(schema_exports.echeances.dossierId, dossier.id), (0, import_drizzle_orm26.eq)(schema_exports.echeances.annulee, false))).orderBy((0, import_drizzle_orm26.asc)(schema_exports.echeances.echeanceLe));
       const chrono = await chronologieDossier(dossier.id);
       const limite = Math.min(Math.max(Number(args.evenements ?? 20), 0), 100);
       return {
@@ -6044,15 +6575,15 @@ var OUTILS = [
       const compteId = await compteDemande(args.compte_id);
       const jours = Math.min(Math.max(Number(args.jours) || 14, 1), 180);
       const maintenant = /* @__PURE__ */ new Date();
-      const lignes = await db.select({ echeance: schema_exports.echeances, dossierId: schema_exports.dossiers.id, dossier: schema_exports.dossiers.libelle }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm24.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where(
-        (0, import_drizzle_orm24.and)(
-          (0, import_drizzle_orm24.eq)(schema_exports.dossiers.compteId, compteId),
-          (0, import_drizzle_orm24.eq)(schema_exports.echeances.annulee, false),
-          import_drizzle_orm24.sql`${schema_exports.echeances.honoreeLe} IS NULL`,
-          (0, import_drizzle_orm24.gte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() - 7 * 864e5)),
-          (0, import_drizzle_orm24.lte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() + jours * 864e5))
+      const lignes = await db.select({ echeance: schema_exports.echeances, dossierId: schema_exports.dossiers.id, dossier: schema_exports.dossiers.libelle }).from(schema_exports.echeances).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm26.eq)(schema_exports.dossiers.id, schema_exports.echeances.dossierId)).where(
+        (0, import_drizzle_orm26.and)(
+          (0, import_drizzle_orm26.eq)(schema_exports.dossiers.compteId, compteId),
+          (0, import_drizzle_orm26.eq)(schema_exports.echeances.annulee, false),
+          import_drizzle_orm26.sql`${schema_exports.echeances.honoreeLe} IS NULL`,
+          (0, import_drizzle_orm26.gte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() - 7 * 864e5)),
+          (0, import_drizzle_orm26.lte)(schema_exports.echeances.echeanceLe, new Date(maintenant.getTime() + jours * 864e5))
         )
-      ).orderBy((0, import_drizzle_orm24.asc)(schema_exports.echeances.echeanceLe)).limit(100);
+      ).orderBy((0, import_drizzle_orm26.asc)(schema_exports.echeances.echeanceLe)).limit(100);
       return lignes.map((l) => ({
         dossier_id: l.dossierId,
         dossier: l.dossier,
@@ -6175,11 +6706,11 @@ var OUTILS = [
     annotations: { readOnlyHint: true },
     async executer(args) {
       const compteId = await compteDemande(args.compte_id);
-      const jour = args.jour ? texte(args.jour, "jour", 10).slice(0, 10) : import_luxon7.DateTime.now().toISODate();
+      const jour = args.jour ? texte(args.jour, "jour", 10).slice(0, 10) : import_luxon9.DateTime.now().toISODate();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) throw new Error("jour : format AAAA-MM-JJ attendu");
       const bloc = await construireBlocJour(compteId, jour);
       return {
-        jour: import_luxon7.DateTime.fromISO(jour).toFormat("dd/MM/yyyy"),
+        jour: import_luxon9.DateTime.fromISO(jour).toFormat("dd/MM/yyyy"),
         lignes: bloc.lignes.map((l) => ({
           client_ou_pays: l.client,
           produit_et_reference: l.produit,
@@ -6198,10 +6729,10 @@ function erreur(id2, code, message) {
 }
 async function utilisateurDuConnecteur() {
   if (config.mcp.utilisateur) {
-    const [u] = await db.select({ id: schema_exports.utilisateurs.id }).from(schema_exports.utilisateurs).where((0, import_drizzle_orm24.and)((0, import_drizzle_orm24.eq)(schema_exports.utilisateurs.email, config.mcp.utilisateur), (0, import_drizzle_orm24.eq)(schema_exports.utilisateurs.actif, true)));
+    const [u] = await db.select({ id: schema_exports.utilisateurs.id }).from(schema_exports.utilisateurs).where((0, import_drizzle_orm26.and)((0, import_drizzle_orm26.eq)(schema_exports.utilisateurs.email, config.mcp.utilisateur), (0, import_drizzle_orm26.eq)(schema_exports.utilisateurs.actif, true)));
     if (u) return u.id;
   }
-  const [admin] = await db.select({ id: schema_exports.utilisateurs.id }).from(schema_exports.utilisateurs).where((0, import_drizzle_orm24.and)((0, import_drizzle_orm24.eq)(schema_exports.utilisateurs.role, "admin"), (0, import_drizzle_orm24.eq)(schema_exports.utilisateurs.actif, true))).orderBy((0, import_drizzle_orm24.asc)(schema_exports.utilisateurs.id));
+  const [admin] = await db.select({ id: schema_exports.utilisateurs.id }).from(schema_exports.utilisateurs).where((0, import_drizzle_orm26.and)((0, import_drizzle_orm26.eq)(schema_exports.utilisateurs.role, "admin"), (0, import_drizzle_orm26.eq)(schema_exports.utilisateurs.actif, true))).orderBy((0, import_drizzle_orm26.asc)(schema_exports.utilisateurs.id));
   return admin?.id ?? null;
 }
 async function traiterMessage(msg) {
@@ -6311,7 +6842,7 @@ var import_express11 = require("express");
 var import_express12 = __toESM(require("express"));
 var import_express_rate_limit3 = __toESM(require("express-rate-limit"));
 var import_zod12 = require("zod");
-var import_drizzle_orm25 = require("drizzle-orm");
+var import_drizzle_orm27 = require("drizzle-orm");
 init_client();
 init_config();
 init_http();
@@ -6336,7 +6867,7 @@ routesTypage.post("/essai", async (req, res) => {
   res.json({ typage: resultat.typage, applicable: resultat.applicable });
 });
 routesTypage.get("/regles", async (_req, res) => {
-  const lignes = await db.select().from(schema_exports.reglesTypage).orderBy((0, import_drizzle_orm25.asc)(schema_exports.reglesTypage.priorite), (0, import_drizzle_orm25.asc)(schema_exports.reglesTypage.id));
+  const lignes = await db.select().from(schema_exports.reglesTypage).orderBy((0, import_drizzle_orm27.asc)(schema_exports.reglesTypage.priorite), (0, import_drizzle_orm27.asc)(schema_exports.reglesTypage.id));
   res.json(lignes);
 });
 routesTypage.get("/regles/proposees", async (_req, res) => {
@@ -6378,7 +6909,7 @@ routesTypage.patch("/regles/:id", exigerRole("admin"), async (req, res) => {
     }),
     req.body
   );
-  const [maj] = await db.update(schema_exports.reglesTypage).set({ ...d, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm25.eq)(schema_exports.reglesTypage.id, idParam(req))).returning();
+  const [maj] = await db.update(schema_exports.reglesTypage).set({ ...d, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm27.eq)(schema_exports.reglesTypage.id, idParam(req))).returning();
   if (!maj) throw new ErreurHttp(404, "Regle introuvable");
   res.json(maj);
 });
@@ -6387,7 +6918,7 @@ routesTypage.get("/ia/etat", async (_req, res) => {
 });
 routesTypage.post("/regles/proposer/:evenementId", exigerRole("admin", "manager"), async (req, res) => {
   const evenementId = idParam(req, "evenementId");
-  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm25.eq)(schema_exports.evenements.id, evenementId));
+  const [evenement] = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm27.eq)(schema_exports.evenements.id, evenementId));
   if (!evenement) throw new ErreurHttp(404, "Evenement introuvable");
   const proposition = await proposerRegle(
     evenementId,
@@ -6420,7 +6951,7 @@ routesAgent.get("/ia/taches", async (req, res) => {
 });
 routesAgent.post("/ia/taches/:id/resultat", async (req, res) => {
   const id2 = idParam(req);
-  const [tache] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm25.eq)(schema_exports.aiTasks.id, id2));
+  const [tache] = await db.select().from(schema_exports.aiTasks).where((0, import_drizzle_orm27.eq)(schema_exports.aiTasks.id, id2));
   if (!tache) throw new ErreurHttp(404, "Tache IA introuvable");
   const corps = valider(
     import_zod12.z.object({ resultat: import_zod12.z.record(import_zod12.z.string(), import_zod12.z.unknown()).nullish(), erreur: import_zod12.z.string().trim().max(1e3).nullish() }),
@@ -6448,7 +6979,7 @@ var import_multer3 = __toESM(require("multer"));
 var import_express_rate_limit4 = __toESM(require("express-rate-limit"));
 var import_node_path4 = __toESM(require("node:path"));
 var import_zod13 = require("zod");
-var import_drizzle_orm27 = require("drizzle-orm");
+var import_drizzle_orm29 = require("drizzle-orm");
 init_client();
 init_config();
 init_http();
@@ -6521,17 +7052,17 @@ var import_node_crypto3 = __toESM(require("node:crypto"));
 var import_mailparser = require("mailparser");
 init_config();
 init_journal();
-function adresse(valeur2) {
-  if (!valeur2) return "";
-  const v = valeur2;
+function adresse(valeur3) {
+  if (!valeur3) return "";
+  const v = valeur3;
   const premiere = v.value?.[0]?.address;
   if (premiere) return premiere.toLowerCase();
   const m = /<([^>]+)>/.exec(v.text ?? "");
   return (m ? m[1] : v.text ?? "").trim().toLowerCase();
 }
-function adresses(valeur2) {
-  if (!valeur2) return [];
-  const liste = Array.isArray(valeur2) ? valeur2 : [valeur2];
+function adresses(valeur3) {
+  if (!valeur3) return [];
+  const liste = Array.isArray(valeur3) ? valeur3 : [valeur3];
   const sortie = [];
   for (const v of liste) {
     for (const a of v.value ?? []) if (a.address) sortie.push(a.address.toLowerCase());
@@ -6654,7 +7185,7 @@ function verifierSignature(corps, signature, secret) {
 }
 
 // src/server/modules/collecte/service.ts
-var import_drizzle_orm26 = require("drizzle-orm");
+var import_drizzle_orm28 = require("drizzle-orm");
 init_client();
 init_journal();
 init_http();
@@ -6680,7 +7211,7 @@ function estIgnore(message, config2) {
   return correspondants.some((a) => estUneDe(a, config2.adressesIgnorees));
 }
 async function exigerCompteCollecte(compteId) {
-  const [compte] = await db.select({ actif: schema_exports.comptesClients.actif }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.id, compteId));
+  const [compte] = await db.select({ actif: schema_exports.comptesClients.actif }).from(schema_exports.comptesClients).where((0, import_drizzle_orm28.eq)(schema_exports.comptesClients.id, compteId));
   if (!compte || !compte.actif) {
     throw new ErreurHttp(404, `Compte client ${compteId} inconnu ou inactif. Verifier COMPTE_ID dans le script Apps Script.`);
   }
@@ -6689,13 +7220,13 @@ async function configDuCompte(compteId) {
   const [compte] = await db.select({
     donneurOrdreEmail: schema_exports.comptesClients.donneurOrdreEmail,
     adressesIgnorees: schema_exports.comptesClients.adressesIgnorees
-  }).from(schema_exports.comptesClients).where((0, import_drizzle_orm26.eq)(schema_exports.comptesClients.id, compteId));
+  }).from(schema_exports.comptesClients).where((0, import_drizzle_orm28.eq)(schema_exports.comptesClients.id, compteId));
   const lignes = await db.select({
     id: schema_exports.postes.id,
     intitule: schema_exports.postes.intitule,
     adresses: schema_exports.postes.adresses,
     familles: schema_exports.postes.familles
-  }).from(schema_exports.postes).where((0, import_drizzle_orm26.and)((0, import_drizzle_orm26.eq)(schema_exports.postes.compteId, compteId), (0, import_drizzle_orm26.eq)(schema_exports.postes.actif, true)));
+  }).from(schema_exports.postes).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.eq)(schema_exports.postes.compteId, compteId), (0, import_drizzle_orm28.eq)(schema_exports.postes.actif, true)));
   const chaines = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
   const postes2 = lignes.map((l) => ({
     id: l.id,
@@ -6724,12 +7255,12 @@ function posteDuMessage(message, postes2, famille2) {
   return null;
 }
 async function demandeDuFil(filId, compteId) {
-  const [ligne] = await db.select({ demandeId: schema_exports.evenements.demandeId, dossierId: schema_exports.evenements.dossierId }).from(schema_exports.evenements).where((0, import_drizzle_orm26.and)((0, import_drizzle_orm26.eq)(schema_exports.evenements.filId, filId), (0, import_drizzle_orm26.eq)(schema_exports.evenements.compteId, compteId), (0, import_drizzle_orm26.isNotNull)(schema_exports.evenements.demandeId))).orderBy((0, import_drizzle_orm26.desc)(schema_exports.evenements.survenuLe)).limit(1);
+  const [ligne] = await db.select({ demandeId: schema_exports.evenements.demandeId, dossierId: schema_exports.evenements.dossierId }).from(schema_exports.evenements).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.eq)(schema_exports.evenements.filId, filId), (0, import_drizzle_orm28.eq)(schema_exports.evenements.compteId, compteId), (0, import_drizzle_orm28.isNotNull)(schema_exports.evenements.demandeId))).orderBy((0, import_drizzle_orm28.desc)(schema_exports.evenements.survenuLe)).limit(1);
   if (!ligne?.demandeId || !ligne.dossierId) return null;
   return { demandeId: ligne.demandeId, dossierId: ligne.dossierId };
 }
 async function enregistrerMessage(message, opts, auteur) {
-  const [deja] = await db.select({ id: schema_exports.evenements.id }).from(schema_exports.evenements).where((0, import_drizzle_orm26.eq)(schema_exports.evenements.messageId, message.messageId));
+  const [deja] = await db.select({ id: schema_exports.evenements.id }).from(schema_exports.evenements).where((0, import_drizzle_orm28.eq)(schema_exports.evenements.messageId, message.messageId));
   if (deja) return null;
   const config2 = opts.config ?? await configDuCompte(opts.compteId);
   if (estIgnore(message, config2)) return { ignore: true };
@@ -6859,7 +7390,7 @@ var envoi3 = (0, import_multer3.default)({
 var routesCollecte = (0, import_express13.Router)();
 routesCollecte.use(exigerConnexion);
 routesCollecte.get("/etat", async (_req, res) => {
-  const [dernier] = await db.select({ creeLe: schema_exports.journalActions.creeLe, details: schema_exports.journalActions.details }).from(schema_exports.journalActions).where((0, import_drizzle_orm27.eq)(schema_exports.journalActions.action, "mails_collectes")).orderBy((0, import_drizzle_orm27.desc)(schema_exports.journalActions.creeLe)).limit(1);
+  const [dernier] = await db.select({ creeLe: schema_exports.journalActions.creeLe, details: schema_exports.journalActions.details }).from(schema_exports.journalActions).where((0, import_drizzle_orm29.eq)(schema_exports.journalActions.action, "mails_collectes")).orderBy((0, import_drizzle_orm29.desc)(schema_exports.journalActions.creeLe)).limit(1);
   res.json({
     mode: adaptateurCollecte().mode,
     webhookConfigure: Boolean(config.collecte.secretAppsScript),
@@ -6909,7 +7440,7 @@ routesCollecte.post("/relever", exigerRole("admin", "manager"), async (req, res)
 });
 routesCollecte.get("/piece/:id", async (req, res) => {
   const id2 = idParam(req);
-  const [ligne] = await db.select({ piece: schema_exports.pieces, compteId: schema_exports.dossiers.compteId }).from(schema_exports.pieces).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm27.eq)(schema_exports.dossiers.id, schema_exports.pieces.dossierId)).where((0, import_drizzle_orm27.eq)(schema_exports.pieces.id, id2));
+  const [ligne] = await db.select({ piece: schema_exports.pieces, compteId: schema_exports.dossiers.compteId }).from(schema_exports.pieces).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm29.eq)(schema_exports.dossiers.id, schema_exports.pieces.dossierId)).where((0, import_drizzle_orm29.eq)(schema_exports.pieces.id, id2));
   if (!ligne?.piece.chemin) throw new ErreurHttp(404, "Piece introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), ligne.compteId);
   if (!await fichierExiste(ligne.piece.chemin)) throw new ErreurHttp(404, "Fichier absent du stockage");
@@ -6991,13 +7522,13 @@ routesWebhookCollecte.post("/", async (req, res) => {
 // src/server/modules/brouillons/routes.ts
 var import_express15 = require("express");
 var import_zod14 = require("zod");
-var import_drizzle_orm29 = require("drizzle-orm");
+var import_drizzle_orm31 = require("drizzle-orm");
 init_client();
 init_http();
 
 // src/server/modules/brouillons/service.ts
-var import_drizzle_orm28 = require("drizzle-orm");
-var import_luxon8 = require("luxon");
+var import_drizzle_orm30 = require("drizzle-orm");
+var import_luxon10 = require("luxon");
 init_client();
 init_http();
 init_evenements();
@@ -7006,7 +7537,7 @@ init_tirets();
 init_heures_ouvrees();
 init_constantes();
 async function enregistrerBrouillon(entree, auteur) {
-  const [deja] = await db.select().from(schema_exports.brouillons).where((0, import_drizzle_orm28.eq)(schema_exports.brouillons.cleUnicite, entree.cleUnicite));
+  const [deja] = await db.select().from(schema_exports.brouillons).where((0, import_drizzle_orm30.eq)(schema_exports.brouillons.cleUnicite, entree.cleUnicite));
   if (deja) return { brouillon: deja, cree: false };
   const [brouillon] = await db.insert(schema_exports.brouillons).values({
     compteId: entree.compteId,
@@ -7031,9 +7562,9 @@ async function enregistrerBrouillon(entree, auteur) {
   return { brouillon, cree: true };
 }
 async function deciderBrouillon(id2, statut, auteur) {
-  const [maj] = await db.update(schema_exports.brouillons).set({ statut, decideLe: /* @__PURE__ */ new Date(), decideParId: auteur.utilisateurId, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.eq)(schema_exports.brouillons.id, id2), (0, import_drizzle_orm28.eq)(schema_exports.brouillons.statut, "prepare"))).returning();
+  const [maj] = await db.update(schema_exports.brouillons).set({ statut, decideLe: /* @__PURE__ */ new Date(), decideParId: auteur.utilisateurId, majLe: /* @__PURE__ */ new Date() }).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.eq)(schema_exports.brouillons.id, id2), (0, import_drizzle_orm30.eq)(schema_exports.brouillons.statut, "prepare"))).returning();
   if (!maj) {
-    const [existe] = await db.select({ statut: schema_exports.brouillons.statut }).from(schema_exports.brouillons).where((0, import_drizzle_orm28.eq)(schema_exports.brouillons.id, id2));
+    const [existe] = await db.select({ statut: schema_exports.brouillons.statut }).from(schema_exports.brouillons).where((0, import_drizzle_orm30.eq)(schema_exports.brouillons.id, id2));
     if (!existe) throw new ErreurHttp(404, "Brouillon introuvable");
     throw new ErreurHttp(409, `Ce brouillon a deja ete traite (${existe.statut === "utilise" ? "envoye" : "ecarte"}).`);
   }
@@ -7047,14 +7578,14 @@ async function deciderBrouillon(id2, statut, auteur) {
   return maj;
 }
 async function listerBrouillons(compteId, opts = {}) {
-  const conditions = [(0, import_drizzle_orm28.eq)(schema_exports.brouillons.compteId, compteId)];
-  if (opts.statut) conditions.push((0, import_drizzle_orm28.eq)(schema_exports.brouillons.statut, opts.statut));
-  if (opts.type) conditions.push((0, import_drizzle_orm28.eq)(schema_exports.brouillons.type, opts.type));
+  const conditions = [(0, import_drizzle_orm30.eq)(schema_exports.brouillons.compteId, compteId)];
+  if (opts.statut) conditions.push((0, import_drizzle_orm30.eq)(schema_exports.brouillons.statut, opts.statut));
+  if (opts.type) conditions.push((0, import_drizzle_orm30.eq)(schema_exports.brouillons.type, opts.type));
   return db.select({
     brouillon: schema_exports.brouillons,
     dossier: schema_exports.dossiers.libelle,
     objet: schema_exports.demandes.objet
-  }).from(schema_exports.brouillons).leftJoin(schema_exports.dossiers, (0, import_drizzle_orm28.eq)(schema_exports.dossiers.id, schema_exports.brouillons.dossierId)).leftJoin(schema_exports.demandes, (0, import_drizzle_orm28.eq)(schema_exports.demandes.id, schema_exports.brouillons.demandeId)).where((0, import_drizzle_orm28.and)(...conditions)).orderBy((0, import_drizzle_orm28.desc)(schema_exports.brouillons.prepareLe)).limit(Math.min(opts.limite ?? 100, 300));
+  }).from(schema_exports.brouillons).leftJoin(schema_exports.dossiers, (0, import_drizzle_orm30.eq)(schema_exports.dossiers.id, schema_exports.brouillons.dossierId)).leftJoin(schema_exports.demandes, (0, import_drizzle_orm30.eq)(schema_exports.demandes.id, schema_exports.brouillons.demandeId)).where((0, import_drizzle_orm30.and)(...conditions)).orderBy((0, import_drizzle_orm30.desc)(schema_exports.brouillons.prepareLe)).limit(Math.min(opts.limite ?? 100, 300));
 }
 function langueDe(adresse2) {
   const domaine = (adresse2 ?? "").split("@")[1]?.toLowerCase() ?? "";
@@ -7100,17 +7631,17 @@ function dureeLocalisee(minutes, langue, minutesParJour = 540) {
 async function relancesAPreparer(compteId, maintenant = /* @__PURE__ */ new Date()) {
   const parametres2 = await lireParametres();
   const seuils = parametres2.sla.relances;
-  const lignes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm28.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where(
-    (0, import_drizzle_orm28.and)(
-      (0, import_drizzle_orm28.eq)(schema_exports.demandes.compteId, compteId),
-      import_drizzle_orm28.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
+  const lignes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm30.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where(
+    (0, import_drizzle_orm30.and)(
+      (0, import_drizzle_orm30.eq)(schema_exports.demandes.compteId, compteId),
+      import_drizzle_orm30.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`,
       // Une relance ne concerne que ce qui attend quelqu'un d'autre que le poste.
-      (0, import_drizzle_orm28.inArray)(schema_exports.demandes.statut, ["attente_tiers", "attente_do"])
+      (0, import_drizzle_orm30.inArray)(schema_exports.demandes.statut, ["attente_tiers", "attente_do"])
     )
   );
   if (!lignes.length) return [];
   const horaires = await horairesDuCompte(compteId);
-  const debuts = await debutsDeStatut3(lignes.map((l) => l.demande));
+  const debuts = await debutsDeStatut4(lignes.map((l) => l.demande));
   const sorties = [];
   const eligibles = [];
   for (const { demande, dossier } of lignes) {
@@ -7122,7 +7653,7 @@ async function relancesAPreparer(compteId, maintenant = /* @__PURE__ */ new Date
     eligibles.push({ demande, dossier, niveau, minutesAttente: temps.statutCourant });
   }
   if (!eligibles.length) return [];
-  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm28.inArray)(schema_exports.evenements.demandeId, eligibles.map((e) => e.demande.id))).orderBy((0, import_drizzle_orm28.desc)(schema_exports.evenements.survenuLe));
+  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm30.inArray)(schema_exports.evenements.demandeId, eligibles.map((e) => e.demande.id))).orderBy((0, import_drizzle_orm30.desc)(schema_exports.evenements.survenuLe));
   const parDemande = /* @__PURE__ */ new Map();
   for (const e of evenements2) {
     if (!e.demandeId) continue;
@@ -7153,7 +7684,7 @@ function redigerRelance(relance) {
   if (relance.faits.length) {
     lignes.push("");
     for (const fait of relance.faits) {
-      lignes.push(`  ${import_luxon8.DateTime.fromJSDate(fait.le).toFormat("dd/MM/yyyy")} : ${fait.resume}`);
+      lignes.push(`  ${import_luxon10.DateTime.fromJSDate(fait.le).toFormat("dd/MM/yyyy")} : ${fait.resume}`);
     }
   }
   lignes.push("", f.attente(dureeLocalisee(relance.minutesAttente, langue, relance.minutesParJour)), "", f.fin);
@@ -7161,7 +7692,7 @@ function redigerRelance(relance) {
 }
 async function preparerRelances(compteId, auteur, maintenant = /* @__PURE__ */ new Date()) {
   const aPreparer = await relancesAPreparer(compteId, maintenant);
-  const jour = import_luxon8.DateTime.fromJSDate(maintenant).toISODate();
+  const jour = import_luxon10.DateTime.fromJSDate(maintenant).toISODate();
   let crees = 0;
   for (const relance of aPreparer) {
     const { cree } = await enregistrerBrouillon(
@@ -7187,7 +7718,7 @@ async function preparerRelances(compteId, auteur, maintenant = /* @__PURE__ */ n
 async function preparerDaily(compteId, jour, auteur) {
   const bloc = await construireBlocJour(compteId, jour);
   if (!bloc.lignes.length) return { cree: false, lignes: 0 };
-  const date2 = import_luxon8.DateTime.fromISO(jour).toFormat("dd/MM/yyyy");
+  const date2 = import_luxon10.DateTime.fromISO(jour).toFormat("dd/MM/yyyy");
   const corps = bloc.lignes.map((l) => `${l.description}
   ${l.client} | ${l.produit}${l.livrables ? `
   Livrables : ${l.livrables}` : ""}${l.prioriteLendemain && l.prioriteLendemain !== "Aucune" ? `
@@ -7217,14 +7748,14 @@ async function preparerDaily(compteId, jour, auteur) {
   return { cree, lignes: bloc.lignes.length };
 }
 async function preparerSemaine(compteId, jourDansLaSemaine, auteur) {
-  const reference = import_luxon8.DateTime.fromISO(jourDansLaSemaine);
+  const reference = import_luxon10.DateTime.fromISO(jourDansLaSemaine);
   const onglet = nomOngletSemaine(reference.weekNumber, reference.weekYear);
   const colonnes = [];
   for (let jourSemaine = 1; jourSemaine <= 5; jourSemaine++) {
     const jour = reference.set({ weekday: jourSemaine }).toISODate();
     colonnes.push({
       jour,
-      libelle: import_luxon8.DateTime.fromISO(jour).setLocale("fr").toFormat("cccc dd/MM"),
+      libelle: import_luxon10.DateTime.fromISO(jour).setLocale("fr").toFormat("cccc dd/MM"),
       donnees: await construireColonneSemaine(compteId, jour)
     });
   }
@@ -7280,20 +7811,20 @@ function complementActeur(acteur) {
   }
 }
 async function preparerSituationClient(compteId, client, auteur, maintenant = /* @__PURE__ */ new Date()) {
-  const dossiers2 = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.eq)(schema_exports.dossiers.compteId, compteId), (0, import_drizzle_orm28.eq)(schema_exports.dossiers.client, client))).orderBy((0, import_drizzle_orm28.asc)(schema_exports.dossiers.libelle));
+  const dossiers2 = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.eq)(schema_exports.dossiers.compteId, compteId), (0, import_drizzle_orm30.eq)(schema_exports.dossiers.client, client))).orderBy((0, import_drizzle_orm30.asc)(schema_exports.dossiers.libelle));
   if (!dossiers2.length) throw new ErreurHttp(404, `Aucun dossier pour le client \xAB ${client} \xBB`);
   const horaires = await horairesDuCompte(compteId);
   const ids = dossiers2.map((d) => d.id);
-  const toutesDemandes = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.inArray)(schema_exports.demandes.dossierId, ids), import_drizzle_orm28.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm28.desc)(schema_exports.demandes.ouverteLe));
-  const debuts = await debutsDeStatut3(toutesDemandes);
+  const toutesDemandes = await db.select().from(schema_exports.demandes).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.inArray)(schema_exports.demandes.dossierId, ids), import_drizzle_orm30.sql`${schema_exports.demandes.famille} <> ${FAMILLE_HORS_PERIMETRE}`)).orderBy((0, import_drizzle_orm30.desc)(schema_exports.demandes.ouverteLe));
+  const debuts = await debutsDeStatut4(toutesDemandes);
   const prochaines = toutesDemandes.length ? await db.select().from(schema_exports.echeances).where(
-    (0, import_drizzle_orm28.and)(
-      (0, import_drizzle_orm28.inArray)(schema_exports.echeances.dossierId, ids),
-      (0, import_drizzle_orm28.eq)(schema_exports.echeances.annulee, false),
-      import_drizzle_orm28.sql`${schema_exports.echeances.honoreeLe} IS NULL`
+    (0, import_drizzle_orm30.and)(
+      (0, import_drizzle_orm30.inArray)(schema_exports.echeances.dossierId, ids),
+      (0, import_drizzle_orm30.eq)(schema_exports.echeances.annulee, false),
+      import_drizzle_orm30.sql`${schema_exports.echeances.honoreeLe} IS NULL`
     )
-  ).orderBy((0, import_drizzle_orm28.asc)(schema_exports.echeances.echeanceLe)) : [];
-  const derniersEvenements = await db.select({ id: schema_exports.evenements.id, dossierId: schema_exports.evenements.dossierId }).from(schema_exports.evenements).where((0, import_drizzle_orm28.inArray)(schema_exports.evenements.dossierId, ids)).orderBy((0, import_drizzle_orm28.desc)(schema_exports.evenements.survenuLe));
+  ).orderBy((0, import_drizzle_orm30.asc)(schema_exports.echeances.echeanceLe)) : [];
+  const derniersEvenements = await db.select({ id: schema_exports.evenements.id, dossierId: schema_exports.evenements.dossierId }).from(schema_exports.evenements).where((0, import_drizzle_orm30.inArray)(schema_exports.evenements.dossierId, ids)).orderBy((0, import_drizzle_orm30.desc)(schema_exports.evenements.survenuLe));
   const parDossier = (liste) => {
     const carte = /* @__PURE__ */ new Map();
     for (const item of liste) {
@@ -7317,7 +7848,7 @@ async function preparerSituationClient(compteId, client, auteur, maintenant = /*
     const porteuse = ouvertes[0] ?? demandes2[0];
     const temps = tempsDemandeAvecHoraires(porteuse, debuts.get(porteuse.id) ?? porteuse.ouverteLe, horaires, maintenant);
     const echeance = (echeancesParDossier.get(dossier.id) ?? [])[0];
-    const prochaine = echeance ? `${echeance.libelle ?? LIBELLES_ECHEANCES[echeance.type] ?? echeance.type} le ${import_luxon8.DateTime.fromJSDate(echeance.echeanceLe).toFormat("dd/MM/yyyy")}` : null;
+    const prochaine = echeance ? `${echeance.libelle ?? LIBELLES_ECHEANCES[echeance.type] ?? echeance.type} le ${import_luxon10.DateTime.fromJSDate(echeance.echeanceLe).toFormat("dd/MM/yyyy")}` : null;
     lignes.push(
       [
         `${dossier.libelle}`,
@@ -7332,7 +7863,7 @@ async function preparerSituationClient(compteId, client, auteur, maintenant = /*
     sources.push(...(evenementsParDossier.get(dossier.id) ?? []).slice(0, 3).map((e) => e.id));
   }
   if (!lignes.length) throw new ErreurHttp(404, `Aucune demande en perimetre pour le client \xAB ${client} \xBB`);
-  const date2 = import_luxon8.DateTime.fromJSDate(maintenant).setLocale("fr").toFormat("dd/MM/yyyy");
+  const date2 = import_luxon10.DateTime.fromJSDate(maintenant).setLocale("fr").toFormat("dd/MM/yyyy");
   const contenu = [`Situation ${client} au ${date2}`, "", ...lignes, "", "Brouillon a relire avant envoi."].join("\n\n");
   const { cree, brouillon } = await enregistrerBrouillon(
     {
@@ -7342,7 +7873,7 @@ async function preparerSituationClient(compteId, client, auteur, maintenant = /*
       contenu,
       donnees: { client, dossiers: donnees },
       sources: [...new Set(sources)],
-      cleUnicite: `situation:${compteId}:${client}:${import_luxon8.DateTime.fromJSDate(maintenant).toISODate()}`
+      cleUnicite: `situation:${compteId}:${client}:${import_luxon10.DateTime.fromJSDate(maintenant).toISODate()}`
     },
     auteur
   );
@@ -7377,9 +7908,9 @@ function normaliserDevise(brut) {
   return brut.toUpperCase();
 }
 async function preparerComparatifCotations(dossierId, auteur, maintenant = /* @__PURE__ */ new Date()) {
-  const [dossier] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm28.eq)(schema_exports.dossiers.id, dossierId));
+  const [dossier] = await db.select().from(schema_exports.dossiers).where((0, import_drizzle_orm30.eq)(schema_exports.dossiers.id, dossierId));
   if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
-  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm28.and)((0, import_drizzle_orm28.eq)(schema_exports.evenements.dossierId, dossierId), (0, import_drizzle_orm28.eq)(schema_exports.evenements.sens, "entrant"), (0, import_drizzle_orm28.eq)(schema_exports.evenements.famille, "T01"))).orderBy((0, import_drizzle_orm28.asc)(schema_exports.evenements.survenuLe));
+  const evenements2 = await db.select().from(schema_exports.evenements).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.eq)(schema_exports.evenements.dossierId, dossierId), (0, import_drizzle_orm30.eq)(schema_exports.evenements.sens, "entrant"), (0, import_drizzle_orm30.eq)(schema_exports.evenements.famille, "T01"))).orderBy((0, import_drizzle_orm30.asc)(schema_exports.evenements.survenuLe));
   if (!evenements2.length) throw new ErreurHttp(404, "Aucune offre de fret recue sur ce dossier");
   const offres = evenements2.map(
     (e) => extraireOffre(`${e.objet ?? ""} ${e.contenu ?? e.resume ?? ""}`, e.id, (e.expediteur ?? "transitaire inconnu").split("@")[0], e.survenuLe)
@@ -7399,7 +7930,7 @@ async function preparerComparatifCotations(dossierId, auteur, maintenant = /* @_
   const manquants = offres.filter((o) => !o.prix).length;
   const contenu = [
     `Comparatif des cotations : ${dossier.libelle}`,
-    `Au ${import_luxon8.DateTime.fromJSDate(maintenant).toFormat("dd/MM/yyyy")}, ${offres.length} offre(s) recue(s).`,
+    `Au ${import_luxon10.DateTime.fromJSDate(maintenant).toFormat("dd/MM/yyyy")}, ${offres.length} offre(s) recue(s).`,
     "",
     ligneTexte(colonnes),
     largeurs.map((l) => "-".repeat(l)).join("  "),
@@ -7432,28 +7963,28 @@ async function preparerLeMatin(compteId, auteur, maintenant = /* @__PURE__ */ ne
     bilan.relances = (await preparerRelances(compteId, auteur, maintenant)).crees;
   }
   if (parametres2.automatisations.daily?.actif !== false) {
-    const veille = import_luxon8.DateTime.fromJSDate(maintenant).minus({ days: 1 }).toISODate();
+    const veille = import_luxon10.DateTime.fromJSDate(maintenant).minus({ days: 1 }).toISODate();
     if ((await preparerDaily(compteId, veille, auteur)).cree) bilan.daily++;
-    if (import_luxon8.DateTime.fromJSDate(maintenant).weekday === 1) {
+    if (import_luxon10.DateTime.fromJSDate(maintenant).weekday === 1) {
       if ((await preparerSemaine(compteId, veille, auteur)).cree) bilan.semaine++;
     }
   }
   return { ignore: false, ...bilan };
 }
-async function debutsDeStatut3(demandes2) {
+async function debutsDeStatut4(demandes2) {
   if (!demandes2.length) return /* @__PURE__ */ new Map();
-  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm28.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm28.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
+  const lignes = await db.select({ demandeId: schema_exports.transitionsStatut.demandeId, debut: import_drizzle_orm30.sql`max(${schema_exports.transitionsStatut.survenuLe})`.as("debut") }).from(schema_exports.transitionsStatut).where((0, import_drizzle_orm30.inArray)(schema_exports.transitionsStatut.demandeId, demandes2.map((d) => d.id))).groupBy(schema_exports.transitionsStatut.demandeId);
   return new Map(lignes.map((l) => [l.demandeId, new Date(l.debut)]));
 }
 async function evenementsDuJour(compteId, jour) {
-  const debut = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
-  const fin = import_luxon8.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
+  const debut = import_luxon10.DateTime.fromISO(jour, { zone: "utc" }).startOf("day").toJSDate();
+  const fin = import_luxon10.DateTime.fromISO(jour, { zone: "utc" }).plus({ days: 1 }).startOf("day").toJSDate();
   const lignes = await db.select({ id: schema_exports.evenements.id }).from(schema_exports.evenements).where(
-    (0, import_drizzle_orm28.and)(
-      (0, import_drizzle_orm28.eq)(schema_exports.evenements.compteId, compteId),
-      (0, import_drizzle_orm28.gte)(schema_exports.evenements.survenuLe, debut),
-      (0, import_drizzle_orm28.lt)(schema_exports.evenements.survenuLe, fin),
-      import_drizzle_orm28.sql`coalesce(${schema_exports.evenements.famille}, '') <> ${FAMILLE_HORS_PERIMETRE}`
+    (0, import_drizzle_orm30.and)(
+      (0, import_drizzle_orm30.eq)(schema_exports.evenements.compteId, compteId),
+      (0, import_drizzle_orm30.gte)(schema_exports.evenements.survenuLe, debut),
+      (0, import_drizzle_orm30.lt)(schema_exports.evenements.survenuLe, fin),
+      import_drizzle_orm30.sql`coalesce(${schema_exports.evenements.famille}, '') <> ${FAMILLE_HORS_PERIMETRE}`
     )
   ).limit(200);
   return lignes.map((l) => l.id);
@@ -7515,7 +8046,7 @@ routesBrouillons.post("/situation-client", exigerEcriture, async (req, res) => {
 });
 routesBrouillons.post("/comparatif-cotations", exigerEcriture, async (req, res) => {
   const d = valider(import_zod14.z.object({ dossierId: import_zod14.z.number().int().positive() }), req.body);
-  const [dossier] = await db.select({ compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm29.eq)(schema_exports.dossiers.id, d.dossierId));
+  const [dossier] = await db.select({ compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm31.eq)(schema_exports.dossiers.id, d.dossierId));
   if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), dossier.compteId);
   res.status(201).json(await preparerComparatifCotations(d.dossierId, auteurDe(req)));
@@ -7528,7 +8059,7 @@ routesBrouillons.post("/matin", exigerEcriture, async (req, res) => {
 routesBrouillons.post("/:id/decision", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
   const d = valider(import_zod14.z.object({ statut: import_zod14.z.enum(["utilise", "ecarte"]) }), req.body);
-  const [brouillon] = await db.select({ compteId: schema_exports.brouillons.compteId }).from(schema_exports.brouillons).where((0, import_drizzle_orm29.eq)(schema_exports.brouillons.id, id2));
+  const [brouillon] = await db.select({ compteId: schema_exports.brouillons.compteId }).from(schema_exports.brouillons).where((0, import_drizzle_orm31.eq)(schema_exports.brouillons.id, id2));
   if (!brouillon) throw new ErreurHttp(404, "Brouillon introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), brouillon.compteId);
   res.json(await deciderBrouillon(id2, d.statut, auteurDe(req)));
@@ -7566,7 +8097,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "b09886097786fc7bb3a332f2ea24adee1c9702b7",
+        version: "6d350faa2ef35a1108239f28b36eacb91ab948eb",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
@@ -7631,22 +8162,22 @@ init_config();
 init_journal();
 
 // src/server/taches-periodiques.ts
-var import_drizzle_orm30 = require("drizzle-orm");
+var import_drizzle_orm32 = require("drizzle-orm");
 init_client();
 init_journal();
 
 // src/shared/dates.ts
-var import_luxon9 = require("luxon");
+var import_luxon11 = require("luxon");
 init_heures_ouvrees();
 function maintenantTana() {
-  const dt = import_luxon9.DateTime.now().setZone(FUSEAU_TANA);
+  const dt = import_luxon11.DateTime.now().setZone(FUSEAU_TANA);
   return { jour: dt.toISODate(), heure: dt.hour, dt };
 }
 
 // src/server/taches-periodiques.ts
 var CLE_VERROU = 7340242;
 async function periodique(nom, periodicite, fn, forcer = false) {
-  const [etat] = await db.select().from(schema_exports.cronRuns).where((0, import_drizzle_orm30.eq)(schema_exports.cronRuns.tache, nom));
+  const [etat] = await db.select().from(schema_exports.cronRuns).where((0, import_drizzle_orm32.eq)(schema_exports.cronRuns.tache, nom));
   const maintenant = /* @__PURE__ */ new Date();
   let cle = null;
   if (!forcer) {
@@ -7687,7 +8218,7 @@ var TACHES = {
    * Rien n'est envoye, tout est enregistre en brouillon (phase 5).
    */
   preparation_matin: async () => {
-    const comptes = await db.select({ id: schema_exports.comptesClients.id }).from(schema_exports.comptesClients).where((0, import_drizzle_orm30.eq)(schema_exports.comptesClients.actif, true));
+    const comptes = await db.select({ id: schema_exports.comptesClients.id }).from(schema_exports.comptesClients).where((0, import_drizzle_orm32.eq)(schema_exports.comptesClients.actif, true));
     const bilans = {};
     for (const compte of comptes) {
       try {

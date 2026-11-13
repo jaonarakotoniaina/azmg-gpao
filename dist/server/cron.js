@@ -212,6 +212,13 @@ var demandes = (0, import_pg_core.pgTable)(
     /** Cible SLA en heures ouvrees du client, et instant correspondant. */
     slaHeures: (0, import_pg_core.doublePrecision)("sla_heures"),
     slaEcheanceLe: horodatage("sla_echeance_le"),
+    /**
+     * Cause d'une reprise, quand la demande en est une. Vide pour un travail ordinaire : seule
+     * une demande qui revient a cause d'un manquement porte une cause.
+     */
+    cause: (0, import_pg_core.text)("cause").$type(),
+    /** Vrai quand le suivi du manager a classe cette demande comme une reclamation. */
+    reprise: (0, import_pg_core.boolean)("reprise").notNull().default(false),
     niveauRelance: (0, import_pg_core.integer)("niveau_relance").notNull().default(0),
     derniereRelanceLe: horodatage("derniere_relance_le"),
     /** Horodatages de cycle de vie, en instants UTC. */
