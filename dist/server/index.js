@@ -850,7 +850,7 @@ function statutReporting(code) {
 function estFerme(statut) {
   return STATUTS_FERMES.includes(statut);
 }
-var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, LIBELLES_CAUSES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
+var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, CAUSES, LIBELLES_CAUSES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
 var init_constantes = __esm({
   "src/shared/constantes.ts"() {
     "use strict";
@@ -949,6 +949,14 @@ var init_constantes = __esm({
     STATUTS_OUVERTS = DEFINITIONS_STATUTS.filter((s) => !s.fermee).map((s) => s.code);
     STATUTS_FERMES = DEFINITIONS_STATUTS.filter((s) => s.fermee).map((s) => s.code);
     SOURCES = ["mail", "whatsapp", "vocal", "saisie", "import"];
+    CAUSES = [
+      "delai_reponse",
+      "procedure_non_suivie",
+      "erreur_document",
+      "classement_tracabilite",
+      "qualite_livrable",
+      "manque_autonomie"
+    ];
     LIBELLES_CAUSES = {
       delai_reponse: "Delai de reponse",
       procedure_non_suivie: "Procedure non suivie",
@@ -1155,6 +1163,7 @@ var init_parametres = __esm({
       { cle: "digest_do", libelle: "Digest de validation pour la DO", defaut: "brouillon" },
       { cle: "daily", libelle: "Reporting quotidien", defaut: "brouillon" },
       { cle: "typage_ia", libelle: "Typage des evenements par l\u2019IA", defaut: "auto" },
+      { cle: "synthese_demande", libelle: "Synthese des demandes recues (action attendue, type, priorite)", defaut: "auto" },
       { cle: "echantillon_qualite", libelle: "Tirage de l\u2019echantillon qualite hebdomadaire", defaut: "auto" }
     ];
     parametresSchema = import_zod3.z.object({
@@ -7088,7 +7097,7 @@ var import_express14 = __toESM(require("express"));
 var import_multer3 = __toESM(require("multer"));
 var import_express_rate_limit4 = __toESM(require("express-rate-limit"));
 var import_node_path4 = __toESM(require("node:path"));
-var import_zod13 = require("zod");
+var import_zod14 = require("zod");
 var import_drizzle_orm30 = require("drizzle-orm");
 init_client();
 init_config();
@@ -7301,11 +7310,148 @@ init_journal();
 init_http();
 init_evenements();
 init_service2();
+
+// src/server/modules/typage/synthese.ts
+var import_zod13 = require("zod");
+init_service();
+init_parametres2();
+
+// src/server/ai/prompts/synthetiser-demande.ts
+init_constantes();
+var VERSION_SYNTHETISER_DEMANDE = "synthetiser_demande@1";
+var TYPES_DEMANDE = ["demande", "reclamation", "urgence", "procedure", "consigne", "information"];
+var SCHEMA_SYNTHETISER_DEMANDE = {
+  type: "object",
+  properties: {
+    action: { type: "string", description: "Action qui debloque, a l\u2019infinitif, une phrase" },
+    type: { type: "string", enum: [...TYPES_DEMANDE] },
+    priorite: { type: "string", enum: ["haute", "normale", "basse"] },
+    cause: { type: ["string", "null"], enum: [...CAUSES, null] },
+    confiance: { type: "number", minimum: 0, maximum: 1 },
+    justificatifs: { type: "array", items: { type: "string" }, maxItems: 3 }
+  },
+  required: ["action", "type", "priorite", "confiance", "justificatifs"]
+};
+function promptSynthetiserDemande() {
+  const causes = CAUSES.map((c) => `  ${c} : ${LIBELLES_CAUSES[c]}`).join("\n");
+  return [
+    "Tu lis un message recu par une assistante placee chez un client, et tu en tires ce qu\u2019il reste",
+    "a faire. Le resultat alimente une GPAO de suivi d\u2019activite.",
+    "",
+    "Reponds par un seul objet JSON conforme au schema fourni. Rien avant, rien apres.",
+    "",
+    "ACTION ATTENDUE",
+    "  Une phrase a l\u2019infinitif, qui dit ce qui debloque le dossier.",
+    "  Ecris ce qu\u2019il faut faire, jamais ce qui a ete mal fait.",
+    "  \xAB Renvoyer la facture avec le NIF du client \xBB et non \xAB la facture a ete envoyee sans le NIF \xBB.",
+    "  Si le message n\u2019appelle aucune action, ecris exactement : Aucune action attendue.",
+    "",
+    "TYPE",
+    "  demande     : un travail est demande",
+    "  reclamation : le message signale un manquement, en plus de demander un travail",
+    "  urgence     : une echeance tombe dans la journee ou un tiers est bloque",
+    "  procedure   : une regle de travail est posee pour la suite",
+    "  consigne    : une instruction ponctuelle, sans reproche",
+    "  information : le message informe, sans rien attendre",
+    "",
+    "PRIORITE",
+    "  haute   : echeance sous 24 heures, ou un client ou un tiers reste bloque",
+    "  normale : le travail de la semaine",
+    "  basse   : forme, classement, procedure, sans echeance",
+    "  Ne mets pas tout en haute : une priorite qui ne trie plus rien ne sert a rien.",
+    "",
+    "CAUSE, seulement si le type est \xAB reclamation \xBB, sinon null :",
+    causes,
+    "",
+    "REGLES",
+    "  N\u2019invente rien. Ce que le message ne dit pas reste vide ou null.",
+    "  Les justificatifs sont des extraits courts du message, recopies tels quels.",
+    "  La confiance dit a quel point tu es sur : sous 0,8 un humain relira.",
+    "  N\u2019emploie jamais de tiret long."
+  ].join("\n");
+}
+
+// src/server/modules/typage/synthese.ts
+init_tirets();
+init_constantes();
+var sortieSchema = import_zod13.z.object({
+  action: import_zod13.z.string().trim().min(3).max(400),
+  type: import_zod13.z.enum(TYPES_DEMANDE),
+  priorite: import_zod13.z.enum(["haute", "normale", "basse"]),
+  cause: import_zod13.z.enum(CAUSES).nullish(),
+  confiance: import_zod13.z.number().min(0).max(1),
+  justificatifs: import_zod13.z.array(import_zod13.z.string()).max(3).default([])
+});
+async function synthetiserDemande(message, opts = {}) {
+  const parametres2 = await lireParametres();
+  if (parametres2.pauseAutomatisations || parametres2.automatisations.synthese_demande?.actif === false) return null;
+  const resultat = await demanderIa({
+    type: "synthetiser_demande",
+    versionPrompt: VERSION_SYNTHETISER_DEMANDE,
+    prompt: promptSynthetiserDemande(),
+    schema: SCHEMA_SYNTHETISER_DEMANDE,
+    entree: {
+      objet: message.objet ?? "",
+      corps: (message.corps ?? "").slice(0, 4e3),
+      expediteur: message.expediteur ?? "",
+      destinataires: message.destinataires ?? [],
+      famille: message.famille ?? null
+    },
+    contexte: { compteId: opts.compteId ?? null },
+    priorite: 25
+  });
+  if (resultat.statut !== "traite" || !resultat.sortie) return null;
+  const valide = sortieSchema.safeParse(resultat.sortie);
+  if (!valide.success) return null;
+  const sortie = valide.data;
+  const reprise = sortie.type === "reclamation";
+  return {
+    // Dernier filtre avant qu'un texte arrive sous les yeux d'un humain.
+    action: retirerTiretsLongs(sortie.action),
+    type: sortie.type,
+    priorite: sortie.priorite,
+    // Une cause n'a de sens que sur une reprise : ailleurs elle serait un jugement sans objet.
+    cause: reprise ? sortie.cause ?? null : null,
+    reprise,
+    confiance: sortie.confiance,
+    justificatifs: sortie.justificatifs.map(retirerTiretsLongs),
+    applicable: sortie.confiance >= parametres2.seuilConfianceTypage
+  };
+}
+enregistrerSimulateur("synthetiser_demande", (entree) => {
+  const e = entree;
+  const texte3 = normaliser(`${e.objet ?? ""} ${e.corps ?? ""}`);
+  const reclamation = /non fait|pas fait|pas repondu|sans repondre|erreur|toujours rien|a revoir|non conforme|plusieurs fois/.test(texte3);
+  const urgence = /urgent|aujourd hui|cut off|ce matin|immediat|des que possible|avant ce soir/.test(texte3);
+  const procedure = /procedure|desormais|a chaque fois|systematiquement|pour la suite|regle/.test(texte3);
+  const type = reclamation ? "reclamation" : urgence ? "urgence" : procedure ? "procedure" : "demande";
+  const priorite = urgence || reclamation ? "haute" : procedure ? "basse" : "normale";
+  const cause = reclamation ? causeSimulee(texte3) ?? "procedure_non_suivie" : null;
+  return {
+    action: (e.objet ?? "Traiter la demande").slice(0, 200),
+    type,
+    priorite,
+    cause,
+    confiance: 0.85,
+    justificatifs: [(e.objet ?? "").slice(0, 80)].filter(Boolean)
+  };
+});
+function causeSimulee(texte3) {
+  if (/classement|tracabilite|enregistre|introuvable/.test(texte3)) return "classement_tracabilite";
+  if (/procedure|consigne|sans validation/.test(texte3)) return "procedure_non_suivie";
+  if (/erreur|incoherence|incorrect/.test(texte3)) return "erreur_document";
+  if (/charte|qualite|non conforme/.test(texte3)) return "qualite_livrable";
+  if (/autonomie|sans attendre/.test(texte3)) return "manque_autonomie";
+  if (/sans repondre|pas repondu|toujours rien|retard/.test(texte3)) return "delai_reponse";
+  return null;
+}
+
+// src/server/modules/collecte/service.ts
 init_typage();
 init_constantes();
 var TAILLE_MAX_PIECE = 10 * 1024 * 1024;
 function bilanVide() {
-  return { lus: 0, crees: 0, doublons: 0, ignores: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
+  return { lus: 0, crees: 0, synthetisees: 0, doublons: 0, ignores: 0, horsPerimetre: 0, aClasser: 0, piecesRangees: 0, erreurs: [] };
 }
 function sensDuMessage(message, config2) {
   if (estUneDe(message.expediteur, config2.adressesPoste)) return "sortant";
@@ -7314,6 +7460,7 @@ function sensDuMessage(message, config2) {
   if (domaine && (config2.domainesInternes ?? []).some((d) => domaine.endsWith(d))) return "sortant";
   return "entrant";
 }
+var NATURES_A_SYNTHETISER = /* @__PURE__ */ new Set(["demande_entrante", "consigne_do", "relance_recue", "refus_do"]);
 function estIgnore(message, config2) {
   if (!config2.adressesIgnorees.length) return false;
   const correspondants = [message.expediteur, ...message.destinataires ?? []];
@@ -7400,6 +7547,10 @@ async function enregistrerMessage(message, opts, auteur) {
     );
     dossierId = dossier.id;
   }
+  const synthese = sens === "entrant" && typage.applicable && NATURES_A_SYNTHETISER.has(typage.typage.nature ?? "") ? await synthetiserDemande(
+    { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: typage.typage.famille },
+    { compteId: opts.compteId }
+  ) : null;
   const piecesRangees = [];
   for (const piece of message.pieces) {
     if (!extensionAcceptee(piece.nomFichier) || piece.contenu.length > TAILLE_MAX_PIECE) continue;
@@ -7444,13 +7595,36 @@ async function enregistrerMessage(message, opts, auteur) {
       empreinte: piece.empreinte
     });
   }
+  if (synthese?.applicable && resultat.demande && resultat.demandeCreee) {
+    await db.update(schema_exports.demandes).set({
+      objet: synthese.action,
+      priorite: synthese.priorite,
+      reprise: synthese.reprise,
+      cause: synthese.cause,
+      suivi: {
+        action: synthese.action,
+        type: synthese.type,
+        demande: (message.corps ?? "").slice(0, 2e3),
+        lienMail: lienGmail(message.messageId),
+        origine: "synthese_ia",
+        confiance: synthese.confiance,
+        justificatifs: synthese.justificatifs
+      },
+      majLe: /* @__PURE__ */ new Date()
+    }).where((0, import_drizzle_orm29.eq)(schema_exports.demandes.id, resultat.demande.id));
+  }
   return {
     evenementId: resultat.evenement.id,
     demandeId: resultat.demande?.id ?? null,
     horsPerimetre,
     aClasser: !typage.applicable,
+    synthetisee: Boolean(synthese?.applicable && resultat.demandeCreee),
     pieces: piecesRangees.length
   };
+}
+function lienGmail(messageId) {
+  const nu = messageId.replace(/^<|>$/g, "").split("@")[0];
+  return /^[a-f0-9]{8,}$/i.test(nu) ? `https://mail.google.com/mail/u/0/#all/${nu}` : "";
 }
 async function enregistrerLot(messages, opts, auteur) {
   const bilan = bilanVide();
@@ -7469,6 +7643,7 @@ async function enregistrerLot(messages, opts, auteur) {
         continue;
       }
       bilan.crees++;
+      if (resultat.synthetisee) bilan.synthetisees++;
       if (resultat.horsPerimetre) bilan.horsPerimetre++;
       if (resultat.aClasser) bilan.aClasser++;
       bilan.piecesRangees += resultat.pieces;
@@ -7511,10 +7686,10 @@ routesCollecte.post("/import", exigerRole("admin", "manager"), envoi3.array("fic
   const fichiers = req.files ?? [];
   if (!fichiers.length) throw new ErreurHttp(400, "Aucun fichier recu (champ \xAB fichiers \xBB attendu)");
   const d = valider(
-    import_zod13.z.object({
-      compteId: import_zod13.z.coerce.number().int().positive(),
-      posteId: import_zod13.z.coerce.number().int().positive().optional(),
-      dossierId: import_zod13.z.coerce.number().int().positive().optional()
+    import_zod14.z.object({
+      compteId: import_zod14.z.coerce.number().int().positive(),
+      posteId: import_zod14.z.coerce.number().int().positive().optional(),
+      dossierId: import_zod14.z.coerce.number().int().positive().optional()
     }),
     req.body
   );
@@ -7539,7 +7714,7 @@ routesCollecte.post("/import", exigerRole("admin", "manager"), envoi3.array("fic
   res.status(201).json({ bilan, illisibles });
 });
 routesCollecte.post("/relever", exigerRole("admin", "manager"), async (req, res) => {
-  const d = valider(import_zod13.z.object({ compteId: import_zod13.z.number().int().positive(), limite: import_zod13.z.number().int().min(1).max(200).optional() }), req.body);
+  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive(), limite: import_zod14.z.number().int().min(1).max(200).optional() }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   const adaptateur = adaptateurCollecte();
   if (adaptateur.mode === "mock") {
@@ -7562,21 +7737,21 @@ routesCollecte.get("/piece/:id", async (req, res) => {
 var routesWebhookCollecte = (0, import_express13.Router)();
 routesWebhookCollecte.use((0, import_express_rate_limit4.default)({ windowMs: 6e4, limit: config.test ? 1e4 : 300, standardHeaders: true, legacyHeaders: false }));
 routesWebhookCollecte.use(import_express14.default.text({ type: "*/*", limit: "25mb" }));
-var chargeSchema = import_zod13.z.object({
-  compteId: import_zod13.z.number().int().positive(),
-  posteId: import_zod13.z.number().int().positive().nullish(),
-  messages: import_zod13.z.array(
-    import_zod13.z.object({
+var chargeSchema = import_zod14.z.object({
+  compteId: import_zod14.z.number().int().positive(),
+  posteId: import_zod14.z.number().int().positive().nullish(),
+  messages: import_zod14.z.array(
+    import_zod14.z.object({
       /** Message complet au format RFC 5322, tel que Gmail le fournit. */
-      brut: import_zod13.z.string().min(10).optional(),
+      brut: import_zod14.z.string().min(10).optional(),
       /** Ou bien les champs deja extraits par le script. */
-      messageId: import_zod13.z.string().min(3).optional(),
-      filId: import_zod13.z.string().optional(),
-      expediteur: import_zod13.z.string().optional(),
-      destinataires: import_zod13.z.array(import_zod13.z.string()).optional(),
-      objet: import_zod13.z.string().optional(),
-      corps: import_zod13.z.string().optional(),
-      survenuLe: import_zod13.z.string().optional()
+      messageId: import_zod14.z.string().min(3).optional(),
+      filId: import_zod14.z.string().optional(),
+      expediteur: import_zod14.z.string().optional(),
+      destinataires: import_zod14.z.array(import_zod14.z.string()).optional(),
+      objet: import_zod14.z.string().optional(),
+      corps: import_zod14.z.string().optional(),
+      survenuLe: import_zod14.z.string().optional()
     })
   ).max(100)
 });
@@ -7631,7 +7806,7 @@ routesWebhookCollecte.post("/", async (req, res) => {
 
 // src/server/modules/brouillons/routes.ts
 var import_express15 = require("express");
-var import_zod14 = require("zod");
+var import_zod15 = require("zod");
 var import_drizzle_orm32 = require("drizzle-orm");
 init_client();
 init_http();
@@ -8101,17 +8276,17 @@ async function evenementsDuJour(compteId, jour) {
 }
 
 // src/server/modules/brouillons/routes.ts
-var typeSchema = import_zod14.z.enum(["relance", "daily", "semaine", "situation_client", "comparatif_cotations"]);
-var jourSchema2 = import_zod14.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date attendue au format AAAA-MM-JJ");
+var typeSchema = import_zod15.z.enum(["relance", "daily", "semaine", "situation_client", "comparatif_cotations"]);
+var jourSchema2 = import_zod15.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date attendue au format AAAA-MM-JJ");
 var routesBrouillons = (0, import_express15.Router)();
 routesBrouillons.use(exigerConnexion);
 routesBrouillons.get("/", async (req, res) => {
   const q = valider(
-    import_zod14.z.object({
-      compteId: import_zod14.z.coerce.number().int().positive(),
-      statut: import_zod14.z.enum(["prepare", "utilise", "ecarte"]).optional(),
+    import_zod15.z.object({
+      compteId: import_zod15.z.coerce.number().int().positive(),
+      statut: import_zod15.z.enum(["prepare", "utilise", "ecarte"]).optional(),
       type: typeSchema.optional(),
-      limite: import_zod14.z.coerce.number().int().min(1).max(300).optional()
+      limite: import_zod15.z.coerce.number().int().min(1).max(300).optional()
     }),
     req.query
   );
@@ -8119,7 +8294,7 @@ routesBrouillons.get("/", async (req, res) => {
   res.json(await listerBrouillons(q.compteId, { statut: q.statut ?? "prepare", type: q.type, limite: q.limite }));
 });
 routesBrouillons.get("/relances-a-preparer", async (req, res) => {
-  const q = valider(import_zod14.z.object({ compteId: import_zod14.z.coerce.number().int().positive() }), req.query);
+  const q = valider(import_zod15.z.object({ compteId: import_zod15.z.coerce.number().int().positive() }), req.query);
   exigerCompte(await perimetreDe(req.utilisateur), q.compteId);
   const relances = await relancesAPreparer(q.compteId);
   res.json(
@@ -8135,40 +8310,40 @@ routesBrouillons.get("/relances-a-preparer", async (req, res) => {
   );
 });
 routesBrouillons.post("/relances", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive() }), req.body);
+  const d = valider(import_zod15.z.object({ compteId: import_zod15.z.number().int().positive() }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   res.status(201).json(await preparerRelances(d.compteId, auteurDe(req)));
 });
 routesBrouillons.post("/daily", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive(), jour: jourSchema2 }), req.body);
+  const d = valider(import_zod15.z.object({ compteId: import_zod15.z.number().int().positive(), jour: jourSchema2 }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   res.status(201).json(await preparerDaily(d.compteId, d.jour, auteurDe(req)));
 });
 routesBrouillons.post("/semaine", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive(), jour: jourSchema2 }), req.body);
+  const d = valider(import_zod15.z.object({ compteId: import_zod15.z.number().int().positive(), jour: jourSchema2 }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   res.status(201).json(await preparerSemaine(d.compteId, d.jour, auteurDe(req)));
 });
 routesBrouillons.post("/situation-client", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive(), client: import_zod14.z.string().trim().min(1).max(200) }), req.body);
+  const d = valider(import_zod15.z.object({ compteId: import_zod15.z.number().int().positive(), client: import_zod15.z.string().trim().min(1).max(200) }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   res.status(201).json(await preparerSituationClient(d.compteId, d.client, auteurDe(req)));
 });
 routesBrouillons.post("/comparatif-cotations", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ dossierId: import_zod14.z.number().int().positive() }), req.body);
+  const d = valider(import_zod15.z.object({ dossierId: import_zod15.z.number().int().positive() }), req.body);
   const [dossier] = await db.select({ compteId: schema_exports.dossiers.compteId }).from(schema_exports.dossiers).where((0, import_drizzle_orm32.eq)(schema_exports.dossiers.id, d.dossierId));
   if (!dossier) throw new ErreurHttp(404, "Dossier introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), dossier.compteId);
   res.status(201).json(await preparerComparatifCotations(d.dossierId, auteurDe(req)));
 });
 routesBrouillons.post("/matin", exigerEcriture, async (req, res) => {
-  const d = valider(import_zod14.z.object({ compteId: import_zod14.z.number().int().positive() }), req.body);
+  const d = valider(import_zod15.z.object({ compteId: import_zod15.z.number().int().positive() }), req.body);
   exigerCompte(await perimetreDe(req.utilisateur), d.compteId);
   res.status(201).json(await preparerLeMatin(d.compteId, auteurDe(req)));
 });
 routesBrouillons.post("/:id/decision", exigerEcriture, async (req, res) => {
   const id2 = idParam(req);
-  const d = valider(import_zod14.z.object({ statut: import_zod14.z.enum(["utilise", "ecarte"]) }), req.body);
+  const d = valider(import_zod15.z.object({ statut: import_zod15.z.enum(["utilise", "ecarte"]) }), req.body);
   const [brouillon] = await db.select({ compteId: schema_exports.brouillons.compteId }).from(schema_exports.brouillons).where((0, import_drizzle_orm32.eq)(schema_exports.brouillons.id, id2));
   if (!brouillon) throw new ErreurHttp(404, "Brouillon introuvable");
   exigerCompte(await perimetreDe(req.utilisateur), brouillon.compteId);
@@ -8207,7 +8382,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "e72a9763ca8cc0430b9eef2f7ebc3222ad2ea40c",
+        version: "41939af9fea8a605d9ad586f2dfba0a9a296fefa",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()
