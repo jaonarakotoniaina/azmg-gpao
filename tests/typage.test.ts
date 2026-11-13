@@ -20,7 +20,7 @@ import { evaluer } from '../src/server/ai/evals/run';
 import { MAILS_ANNOTES } from '../src/server/ai/evals/mails-annotes';
 import { CODES_FAMILLES } from '../src/shared/constantes';
 import { MAILS_TEMOINS } from '../src/server/ai/evals/mails-temoins';
-import { contientExpression, normaliserTypage } from '../src/shared/typage';
+import { contientExpression, estExpediteurAutomatique, normaliserTypage } from '../src/shared/typage';
 import { lireParametres, modifierParametres } from '../src/server/lib/parametres';
 
 const AUTEUR = AUTEUR_SYSTEME;
@@ -179,6 +179,78 @@ describe('regles en base', () => {
 // ---------------------------------------------------------------------------
 // Typage d'un message et file « A classer »
 // ---------------------------------------------------------------------------
+
+describe('expediteurs automatiques et notifications', () => {
+  it('reconnait une boite a laquelle on ne peut pas repondre', () => {
+    for (const adresse of [
+      'no-reply@exemple-fictif.test',
+      'noreply@exemple-fictif.test',
+      'noresponder@exemple-fictif.test',
+      'ne-pas-repondre@exemple-fictif.test',
+      'MAILER-DAEMON@exemple-fictif.test',
+      'bounces+123@exemple-fictif.test',
+    ]) {
+      expect(estExpediteurAutomatique(adresse), adresse).toBe(true);
+    }
+  });
+
+  it('ne prend pas un humain, ni un avis de transporteur, pour un automate', () => {
+    // « tracking@ » et « notification@ » sont volontairement hors de la liste : un avis de
+    // transporteur porte sur un dossier reel, et le classer hors perimetre cacherait du travail.
+    for (const adresse of [
+      'export@exemple-fictif.test',
+      'marketing@exemple-fictif.test',
+      'tracking@transitaire-fictif.test',
+      'notification@transitaire-fictif.test',
+      'replay@exemple-fictif.test',
+    ]) {
+      expect(estExpediteurAutomatique(adresse), adresse).toBe(false);
+    }
+  });
+
+  it('classe hors perimetre un message venu d’un automate, sans passer par l’IA', async () => {
+    const resultat = await typerMessage({
+      objet: 'Votre rapport hebdomadaire est disponible',
+      corps: 'Consultez votre rapport en ligne.',
+      expediteur: 'no-reply@outil-fictif.test',
+      destinataires: ['info@client-fictif.test'],
+      sens: 'entrant',
+    });
+    expect(resultat.typage.famille).toBe('T00');
+    expect(resultat.applicable).toBe(true);
+    // Aucune tache IA n'est creee : le test est structurel et gratuit.
+    expect(resultat.tacheIaId).toBeNull();
+  });
+
+  it('classe hors perimetre les notifications du CRM, sur leur domaine d’envoi', () => {
+    const resultat = appliquerRegles(
+      {
+        objet: 'Societe fictive Dupont',
+        corps: 'Societe fictive https://exemple.clientify.test/contacts/details/1/ revision contact new warm lead',
+        expediteur: 'export@clientes.clientifymail.com',
+        destinataires: ['info@client-fictif.test'],
+        sens: 'entrant',
+      },
+      REGLES_INITIALES,
+    );
+    expect(resultat?.typage.famille).toBe('T00');
+  });
+
+  it('laisse passer une consigne de la donneuse d’ordre, elle n’est pas une notification', () => {
+    const resultat = appliquerRegles(
+      {
+        objet: 'RE: DAILY REPORT - Retouche du catalogue',
+        corps: 'Tu dois revoir le catalogue, les fiches techniques contiennent tous les details. Echeance le 15.',
+        expediteur: 'export@client-fictif.test',
+        destinataires: ['marketing@client-fictif.test'],
+        sens: 'entrant',
+      },
+      REGLES_INITIALES,
+    );
+    expect(resultat?.typage.famille).not.toBe('T00');
+    expect(resultat?.typage.confiance).toBeGreaterThanOrEqual(0.8);
+  });
+});
 
 describe('typage d’un message', () => {
   it('applique le typage au-dessus du seuil', async () => {

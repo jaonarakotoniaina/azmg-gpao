@@ -15,6 +15,27 @@ Deux idees a retenir avant de commencer :
 
 ---
 
+## Se reperer dans la GPAO
+
+Sept entrees dans la barre de gauche, une par moment de la journee. Chacune regroupe plusieurs
+pages, en onglets :
+
+| Entree | Onglets |
+|---|---|
+| File du jour | Ma file, A classer, Echeances |
+| Saisie rapide | (une seule page) |
+| Dossiers | Dossiers, Suivi des demandes |
+| Brouillons | Brouillons, Digest de validation |
+| Pilotage | Tableau de bord, Par collaborateur, Qualite |
+| Imports et exports | Import des mails, Import du classeur, Export du reporting |
+| Parametres | (une seule page) |
+
+Le chiffre a droite de « File du jour » compte les messages qui attendent d'etre classes. Chaque
+page garde son adresse propre : un lien vers le suivi des demandes ouvre le groupe « Dossiers »
+sur le bon onglet.
+
+---
+
 ## Collaborateur ou collaboratrice sur un poste
 
 Vous voyez vos comptes clients, vos dossiers et votre file. Vous saisissez et vous corrigez.
@@ -68,6 +89,8 @@ tient en une page, y compris sur telephone, et l'enregistrement prend moins de 3
   GPAO sert a piloter des dossiers, pas a vous noter.
 
 ### La file « A classer »
+
+Elle se trouve dans « File du jour », onglet « A classer ».
 
 Quand un message arrive, l'application essaie de le classer toute seule : famille, nature,
 interlocuteur. Elle y arrive dans la grande majorite des cas. Quand elle n'est pas assez sure,

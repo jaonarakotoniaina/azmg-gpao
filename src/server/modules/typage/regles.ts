@@ -82,6 +82,17 @@ export const REGLES_INITIALES: RegleTypage[] = [
     nature: 'information',
     priorite: 11,
   },
+  {
+    // Le CRM du compte envoie une notification par contact modifie, plusieurs dizaines par jour.
+    // Ce sont des avis sur un travail qui se fait dans le CRM, pas des demandes adressees au
+    // poste. Sans cette regle, elles remplissent la file « A classer » et y noient les vrais
+    // messages. Si le poste doit agir sur ces avis, la regle se bascule en T08 dans Parametres.
+    libelle: 'Notification du CRM (Clientify)',
+    domaine: 'clientifymail.com',
+    famille: 'T00',
+    nature: 'information',
+    priorite: 12,
+  },
   // --- Familles du poste de designer (D01 a D03) -----------------------------
   // Ce travail etait classe T00 tant qu'un seul poste etait pilote : il etait hors du perimetre
   // de l'assistante export, donc hors de tout. Il a desormais ses familles et son poste.

@@ -16,8 +16,8 @@ import { lireParametres } from '../../lib/parametres';
 import { demanderIa, enregistrerSimulateur } from '../../ai/service';
 import { promptTyperEvenement, SCHEMA_TYPER_EVENEMENT, VERSION_TYPER_EVENEMENT } from '../../ai/prompts/typer-evenement';
 import { appliquerRegles, REGLES_INITIALES, type RegleTypage } from './regles';
-import { domaineDe, normaliserTypage, type MessageAClasser, type Typage } from '@shared/typage';
-import { CODES_FAMILLES, estHorsPerimetre, INTERLOCUTEURS, NATURES, SENS, type Interlocuteur, type Nature, type Sens } from '@shared/constantes';
+import { domaineDe, estExpediteurAutomatique, normaliserTypage, type MessageAClasser, type Typage } from '@shared/typage';
+import { CODES_FAMILLES, estHorsPerimetre, FAMILLE_HORS_PERIMETRE, INTERLOCUTEURS, NATURES, SENS, type Interlocuteur, type Nature, type Sens } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
 // ---------------------------------------------------------------------------
@@ -102,6 +102,26 @@ export interface ResultatTypage {
 export async function typerMessage(message: MessageAClasser, opts: { compteId?: number; sansIa?: boolean } = {}): Promise<ResultatTypage> {
   const parametres = await lireParametres();
   const seuil = parametres.seuilConfianceTypage;
+
+  // Un automate qui n'attend pas de reponse n'emet pas de travail. Le test passe avant les regles
+  // et avant l'IA : il est structurel, gratuit, et il evite qu'un flot de notifications remplisse
+  // la file « A classer » au point d'y noyer les vraies demandes.
+  if (estExpediteurAutomatique(message.expediteur)) {
+    return {
+      typage: {
+        famille: FAMILLE_HORS_PERIMETRE,
+        nature: 'information',
+        interlocuteur: null,
+        sens: message.sens ?? null,
+        confiance: 0.95,
+        justificatifs: [`expediteur automatique : ${message.expediteur}`],
+        origine: 'regle',
+        regleId: null,
+      },
+      applicable: true,
+      tacheIaId: null,
+    };
+  }
 
   const parRegles = appliquerRegles(message, await reglesActives(opts.compteId));
   if (parRegles && (parRegles.typage.confiance >= seuil || estHorsPerimetre(parRegles.typage.famille))) {

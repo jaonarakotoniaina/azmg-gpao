@@ -660,3 +660,47 @@ ni `MERGE`, ni `NULLS NOT DISTINCT`, identifiants `bigserial`.
   general ; seul l'identifiant interne de la boite le permet, et seul le script le connait. Un lien
   deduit a tort ouvre la boite sur rien, ce qui coute plus cher qu'une absence de lien.
 - Retour arriere : la colonne peut rester vide, l'interface n'affiche alors aucun lien.
+
+---
+
+## 2026-11-13 (suite) : un expediteur automatique n'emet pas de travail
+
+- Sujet : la file « A classer » comptait une cinquantaine de messages, en grande partie des
+  notifications d'outils (un avis par contact modifie dans le CRM du compte). Les vraies demandes
+  y etaient noyees, et le commanditaire ne les retrouvait plus.
+- Options envisagees :
+  1. laisser l'humain classer, puisque c'est le role de la file ;
+  2. reconnaitre structurellement les boites auxquelles on ne peut pas repondre et les classer
+     hors perimetre, sans parametrage ;
+  3. demander au commanditaire d'ajouter une regle par outil dans Parametres.
+- Choix : l'option 2, completee par une regle de domaine livree pour le CRM du compte.
+- Raison : une boite dont la partie locale est `no-reply`, `noresponder`, `mailer-daemon` ou
+  `bounce` n'attend pas de reponse, donc n'emet pas une demande de travail. C'est vrai pour tous
+  les comptes clients et ne se parametre pas. La liste est volontairement courte : `notification@`
+  et `tracking@` en sont absents, parce qu'un avis de transporteur porte sur un dossier reel et
+  que le classer hors perimetre cacherait du travail. Mieux vaut laisser passer du bruit que faire
+  disparaitre une demande.
+- Point ouvert, a trancher par le commanditaire : les notifications du CRM sont classees T00. Si
+  le poste doit agir dessus, elles relevent de T08 et la regle « Notification du CRM (Clientify) »
+  se bascule dans Parametres, sans toucher au code.
+- Retour arriere : vider `PARTIES_AUTOMATIQUES` dans `src/shared/typage.ts`, desactiver la regle
+  de domaine dans Parametres.
+
+## 2026-11-13 (suite) : quinze entrees de navigation ramenees a sept
+
+- Sujet : la barre de gauche portait une entree par fonction livree (File du jour, Tableau de
+  bord, Saisie rapide, Dossiers, Suivi, A classer, Echeancier, Digest, Brouillons, Qualite,
+  Pilotage, Export, Import des mails, Import du classeur, Parametres).
+- Options envisagees : supprimer des ecrans ; les regrouper en onglets ; laisser en l'etat.
+- Choix : les regrouper, sans rien supprimer. Sept entrees, chacune un moment de la journee de
+  travail : File du jour (ma file, a classer, echeances), Saisie rapide, Dossiers (dossiers,
+  suivi des demandes), Brouillons (brouillons, digest de validation), Pilotage (tableau de bord,
+  par collaborateur, qualite), Imports et exports, Parametres.
+- Raison : une entree par fonction livree n'est pas une entree par question posee. Aucun ecran ne
+  meritait d'etre supprime : chacun repond a un besoin reel du poste ou du manager, et les
+  supprimer aurait perdu du travail deja fait et teste.
+- Chaque page garde son adresse propre (`/suivi`, `/qualite`, `/export`...), elle ouvre simplement
+  le groupe sur le bon onglet : les liens envoyes, les favoris et les parcours de test continuent
+  de marcher, et le bouton « precedent » du navigateur aussi.
+- Retour arriere : le composant `GroupePages` est un conteneur, les pages n'ont pas ete touchees.
+  Remettre une entree par page dans `Layout.tsx` et une route par page dans `App.tsx` suffit.
