@@ -857,7 +857,7 @@ function statutReporting(code) {
 function estFerme(statut) {
   return STATUTS_FERMES.includes(statut);
 }
-var ROLES, FAMILLES, ACTIONS_PAR_FAMILLE, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, CAUSES, LIBELLES_CAUSES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
+var ROLES, FAMILLES, ACTIONS_PAR_FAMILLE, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLE_A_CLASSER, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS, ACTEURS, STATUTS_REPORTING, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, CAUSES, LIBELLES_CAUSES, PRIORITES, POIDS_PRIORITES, TYPES_ECHEANCE, LIBELLES_ECHEANCES, STATUTS_DOSSIER;
 var init_constantes = __esm({
   "src/shared/constantes.ts"() {
     "use strict";
@@ -883,7 +883,13 @@ var init_constantes = __esm({
       // hors de tout. Il a desormais ses propres familles, et son propre poste.
       { code: "D01", libelle: "Publications et reseaux sociaux (LinkedIn, pages)", validation: "la DO valide avant publication", tempsStandardMinutes: 30, slaHeures: 16 },
       { code: "D02", libelle: "Visuels et supports (brochures, bannieres, PLV, packaging)", validation: "la DO valide le visuel", tempsStandardMinutes: 45, slaHeures: 24 },
-      { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 }
+      { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 },
+      // Famille de repli, pour un message de travail dont la famille n'est pas encore etablie.
+      //
+      // Elle existe parce que l'alternative etait pire : sans famille, aucune demande n'etait ouverte,
+      // et le message n'apparaissait que dans la chronologie de son dossier. Le travail existait et
+      // restait invisible. Une famille a confirmer se voit et se corrige ; un travail absent, non.
+      { code: "T99", libelle: "A classer (famille a confirmer)", validation: "a confirmer", tempsStandardMinutes: 15, slaHeures: 24 }
     ];
     ACTIONS_PAR_FAMILLE = {
       T01: "Obtenir ou relancer la cotation fret",
@@ -910,6 +916,7 @@ var init_constantes = __esm({
     };
     CODES_FAMILLES = FAMILLES.map((f) => f.code);
     FAMILLE_HORS_PERIMETRE = "T00";
+    FAMILLE_A_CLASSER = "T99";
     FAMILLES_PILOTAGE = FAMILLES.filter((f) => !f.horsPerimetre);
     SENS = ["entrant", "sortant", "interne"];
     NATURES = [
@@ -1641,7 +1648,7 @@ function completerParDefaut(typage, message) {
       typage.nature = "demande_validation_do";
       typage.justificatifs.push("envoi a la donneuse d\u2019ordre, decision attendue");
     } else {
-      typage.nature = message.sens === "sortant" ? "envoi_livrable" : "information";
+      typage.nature = message.sens === "sortant" ? "envoi_livrable" : "demande_entrante";
       typage.justificatifs.push(`nature deduite du sens \xAB ${message.sens} \xBB`);
     }
   }
@@ -2147,7 +2154,7 @@ var init_service2 = __esm({
       const message = entree;
       const parRegles = appliquerRegles(message, REGLES_INITIALES);
       if (!parRegles?.typage.famille || !parRegles.typage.nature) {
-        return { famille: "T00", nature: "information", confiance: 0.1, justificatifs: ["aucune regle ne tranche"] };
+        return { famille: FAMILLE_A_CLASSER, nature: "demande_entrante", confiance: 0.1, justificatifs: ["aucune regle ne tranche"] };
       }
       return {
         famille: parRegles.typage.famille,
@@ -4046,19 +4053,19 @@ function effetNature(nature, interlocuteur) {
     case "consigne_do":
       return { creation: true, statut: "en_cours", acteur: "poste" };
     case "envoi_livrable":
-      return { creation: false, statut: "attente_tiers", acteur: interlocuteur === "client" ? "client" : "tiers", premiereReponse: true };
+      return { creation: true, statut: "attente_tiers", acteur: interlocuteur === "client" ? "client" : "tiers", premiereReponse: true };
     case "demande_validation_do":
-      return { creation: false, statut: "attente_do", acteur: "do", premiereReponse: true };
+      return { creation: true, statut: "attente_do", acteur: "do", premiereReponse: true };
     case "validation_do":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "refus_do":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "relance_emise":
-      return { creation: false, relance: true };
+      return { creation: true, relance: true };
     case "relance_recue":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "reponse_tiers":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "information":
       return { creation: false };
   }
@@ -7788,6 +7795,9 @@ function posteDuMessage(message, postes2, famille2) {
   }
   return null;
 }
+function objetNormalise(objet) {
+  return objet.replace(/^((re|re\s*:|rep|tr|fw|fwd|transf)\s*:\s*)+/i, "").trim();
+}
 async function demandeDuFil(filId, compteId) {
   const [ligne] = await db.select({ demandeId: schema_exports.evenements.demandeId, dossierId: schema_exports.evenements.dossierId }).from(schema_exports.evenements).where((0, import_drizzle_orm30.and)((0, import_drizzle_orm30.eq)(schema_exports.evenements.filId, filId), (0, import_drizzle_orm30.eq)(schema_exports.evenements.compteId, compteId), (0, import_drizzle_orm30.isNotNull)(schema_exports.evenements.demandeId))).orderBy((0, import_drizzle_orm30.desc)(schema_exports.evenements.survenuLe)).limit(1);
   if (!ligne?.demandeId || !ligne.dossierId) return null;
@@ -7812,14 +7822,21 @@ async function enregistrerMessage(message, opts, auteur) {
     },
     { compteId: opts.compteId }
   );
-  const horsPerimetre = estHorsPerimetre(typage.typage.famille);
+  const horsPerimetre = typage.applicable && estHorsPerimetre(typage.typage.famille);
+  const familleRetenue = horsPerimetre ? FAMILLE_HORS_PERIMETRE : typage.typage.famille && !estHorsPerimetre(typage.typage.famille) ? typage.typage.famille : FAMILLE_A_CLASSER;
   const posteId = opts.posteId ?? posteDuMessage(message, config2.postes, typage.applicable ? typage.typage.famille : null);
   const parFil = horsPerimetre ? null : await demandeDuFil(message.filId, opts.compteId);
   let dossierId = parFil?.dossierId ?? opts.dossierParDefautId ?? null;
   if (!dossierId) {
-    const client = message.expediteur ? message.expediteur.split("@")[0] : "Expediteur inconnu";
     const { dossier } = await trouverOuCreerDossier(
-      { compteId: opts.compteId, posteId, client, produit: null, operation: null, notes: "Dossier ouvert automatiquement par la collecte des mails, a reclasser." },
+      {
+        compteId: opts.compteId,
+        posteId,
+        client: interlocuteurLisible(message, sens),
+        produit: null,
+        operation: objetNormalise(message.objet ?? "").slice(0, 120) || null,
+        notes: "Dossier ouvert automatiquement par la collecte des mails, a reclasser."
+      },
       auteur
     );
     dossierId = dossier.id;
@@ -7839,9 +7856,17 @@ async function enregistrerMessage(message, opts, auteur) {
       demandeId: parFil?.demandeId ?? null,
       dossierId,
       sens,
-      nature: (typage.applicable ? typage.typage.nature : null) ?? "information",
-      famille: typage.applicable ? typage.typage.famille : null,
-      interlocuteur: typage.applicable ? typage.typage.interlocuteur : null,
+      // Ce que les regles ont trouve est retenu **meme sous le seuil de confiance**, et complete
+      // par un repli quand elles n'ont rien trouve.
+      //
+      // La version precedente jetait un typage incertain et retombait sur « information », une
+      // nature qui n'ouvre aucune demande : le message etait enregistre, le travail perdu. Il
+      // n'apparaissait ni dans la file, ni dans le suivi, ni dans les indicateurs, et il fallait
+      // ouvrir la chronologie de son dossier pour le voir. La confiance reste basse, donc
+      // l'evenement reste dans « A classer » : on signale le doute sans effacer le travail.
+      nature: (horsPerimetre ? "information" : typage.typage.nature) ?? natureParDefaut(sens),
+      famille: familleRetenue,
+      interlocuteur: typage.typage.interlocuteur,
       source: opts.source ?? "mail",
       filId: message.filId,
       messageId: message.messageId,
@@ -7911,6 +7936,17 @@ function lienGmail(messageId) {
 }
 function lienDuMessage(message) {
   return message.lienExterne || lienGmail(message.messageId);
+}
+function interlocuteurLisible(message, sens) {
+  const adresse2 = sens === "sortant" ? message.destinataires?.[0] ?? "" : message.expediteur;
+  const domaine = domaineDe(adresse2);
+  if (domaine) return domaine.replace(/\.[a-z]{2,}$/i, "");
+  return adresse2?.split("@")[0] || "Interlocuteur inconnu";
+}
+function natureParDefaut(sens) {
+  if (sens === "entrant") return "demande_entrante";
+  if (sens === "sortant") return "envoi_livrable";
+  return "information";
 }
 async function enregistrerLot(messages, opts, auteur) {
   const bilan = bilanVide();
@@ -8713,7 +8749,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "8c8445e7009fa3a00c7cde608f881d429c0e9e6a",
+        version: "991b08dae62f0a2eef4f79e5efe0f1e303ff4d0e",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()

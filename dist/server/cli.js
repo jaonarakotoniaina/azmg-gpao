@@ -781,7 +781,7 @@ function definitionStatut(code) {
 function estFerme(statut) {
   return STATUTS_FERMES.includes(statut);
 }
-var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, ACTEURS, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, LIBELLES_SOURCES, TYPES_ECHEANCE, LIBELLES_ECHEANCES;
+var ROLES, FAMILLES, FAMILLES_PAR_METIER, CODES_FAMILLES, FAMILLE_HORS_PERIMETRE, FAMILLE_A_CLASSER, FAMILLES_PILOTAGE, SENS, NATURES, DEFINITIONS_NATURES, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, ACTEURS, DEFINITIONS_STATUTS, STATUTS_OUVERTS, STATUTS_FERMES, SOURCES, LIBELLES_SOURCES, TYPES_ECHEANCE, LIBELLES_ECHEANCES;
 var init_constantes = __esm({
   "src/shared/constantes.ts"() {
     "use strict";
@@ -807,7 +807,13 @@ var init_constantes = __esm({
       // hors de tout. Il a desormais ses propres familles, et son propre poste.
       { code: "D01", libelle: "Publications et reseaux sociaux (LinkedIn, pages)", validation: "la DO valide avant publication", tempsStandardMinutes: 30, slaHeures: 16 },
       { code: "D02", libelle: "Visuels et supports (brochures, bannieres, PLV, packaging)", validation: "la DO valide le visuel", tempsStandardMinutes: 45, slaHeures: 24 },
-      { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 }
+      { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 },
+      // Famille de repli, pour un message de travail dont la famille n'est pas encore etablie.
+      //
+      // Elle existe parce que l'alternative etait pire : sans famille, aucune demande n'etait ouverte,
+      // et le message n'apparaissait que dans la chronologie de son dossier. Le travail existait et
+      // restait invisible. Une famille a confirmer se voit et se corrige ; un travail absent, non.
+      { code: "T99", libelle: "A classer (famille a confirmer)", validation: "a confirmer", tempsStandardMinutes: 15, slaHeures: 24 }
     ];
     FAMILLES_PAR_METIER = {
       export: ["T01", "T02", "T03", "T04", "T05", "T06", "T07", "T08", "T09", "T10", "T11", "T12", "T13", "T14"],
@@ -815,6 +821,7 @@ var init_constantes = __esm({
     };
     CODES_FAMILLES = FAMILLES.map((f) => f.code);
     FAMILLE_HORS_PERIMETRE = "T00";
+    FAMILLE_A_CLASSER = "T99";
     FAMILLES_PILOTAGE = FAMILLES.filter((f) => !f.horsPerimetre);
     SENS = ["entrant", "sortant", "interne"];
     NATURES = [
@@ -1605,7 +1612,7 @@ function completerParDefaut(typage, message) {
       typage.nature = "demande_validation_do";
       typage.justificatifs.push("envoi a la donneuse d\u2019ordre, decision attendue");
     } else {
-      typage.nature = message.sens === "sortant" ? "envoi_livrable" : "information";
+      typage.nature = message.sens === "sortant" ? "envoi_livrable" : "demande_entrante";
       typage.justificatifs.push(`nature deduite du sens \xAB ${message.sens} \xBB`);
     }
   }
@@ -2111,7 +2118,7 @@ var init_service2 = __esm({
       const message = entree;
       const parRegles = appliquerRegles(message, REGLES_INITIALES);
       if (!parRegles?.typage.famille || !parRegles.typage.nature) {
-        return { famille: "T00", nature: "information", confiance: 0.1, justificatifs: ["aucune regle ne tranche"] };
+        return { famille: FAMILLE_A_CLASSER, nature: "demande_entrante", confiance: 0.1, justificatifs: ["aucune regle ne tranche"] };
       }
       return {
         famille: parRegles.typage.famille,
@@ -2604,19 +2611,19 @@ function effetNature(nature, interlocuteur) {
     case "consigne_do":
       return { creation: true, statut: "en_cours", acteur: "poste" };
     case "envoi_livrable":
-      return { creation: false, statut: "attente_tiers", acteur: interlocuteur === "client" ? "client" : "tiers", premiereReponse: true };
+      return { creation: true, statut: "attente_tiers", acteur: interlocuteur === "client" ? "client" : "tiers", premiereReponse: true };
     case "demande_validation_do":
-      return { creation: false, statut: "attente_do", acteur: "do", premiereReponse: true };
+      return { creation: true, statut: "attente_do", acteur: "do", premiereReponse: true };
     case "validation_do":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "refus_do":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "relance_emise":
-      return { creation: false, relance: true };
+      return { creation: true, relance: true };
     case "relance_recue":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "reponse_tiers":
-      return { creation: false, statut: "en_cours", acteur: "poste" };
+      return { creation: true, statut: "en_cours", acteur: "poste" };
     case "information":
       return { creation: false };
   }

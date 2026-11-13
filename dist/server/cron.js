@@ -875,7 +875,13 @@ var FAMILLES = [
   // hors de tout. Il a desormais ses propres familles, et son propre poste.
   { code: "D01", libelle: "Publications et reseaux sociaux (LinkedIn, pages)", validation: "la DO valide avant publication", tempsStandardMinutes: 30, slaHeures: 16 },
   { code: "D02", libelle: "Visuels et supports (brochures, bannieres, PLV, packaging)", validation: "la DO valide le visuel", tempsStandardMinutes: 45, slaHeures: 24 },
-  { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 }
+  { code: "D03", libelle: "Catalogue, fiches produits et contenus marketing", validation: "la DO pour les textes et les prix", tempsStandardMinutes: 40, slaHeures: 24 },
+  // Famille de repli, pour un message de travail dont la famille n'est pas encore etablie.
+  //
+  // Elle existe parce que l'alternative etait pire : sans famille, aucune demande n'etait ouverte,
+  // et le message n'apparaissait que dans la chronologie de son dossier. Le travail existait et
+  // restait invisible. Une famille a confirmer se voit et se corrige ; un travail absent, non.
+  { code: "T99", libelle: "A classer (famille a confirmer)", validation: "a confirmer", tempsStandardMinutes: 15, slaHeures: 24 }
 ];
 var CODES_FAMILLES = FAMILLES.map((f) => f.code);
 var FAMILLE_HORS_PERIMETRE = "T00";
