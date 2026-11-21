@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowRight, ArrowUp } from 'lucide-react';
 import { api, messageErreur } from '../lib/api';
-import { complementActeur, duree, jour, libelleActeur, libelleFamilleCourt, libelleStatut } from '../lib/format';
+import { complementActeur, dateHeure, duree, jour, libelleActeur, libelleFamilleCourt, libelleStatut } from '../lib/format';
 import { Alerte, Badge, Carte, ChampSelect, Chargement, EntetePage, Indicateur, Vide } from '../composants/ui';
 import { LIBELLES_ECHEANCES, type Acteur, type TypeEcheance } from '@shared/constantes';
 
@@ -51,6 +51,15 @@ interface TableauDeBordReponse {
   precedent: { flux: Flux; delais: Delais; charge: { totalJours: number } };
   echeancesProches: { dossierId: number; dossier: string; type: TypeEcheance; libelle: string | null; echeanceLe: string; joursRestants: number }[];
   attentesDoLongues: { demandeId: number; objet: string; dossier: string; minutesAttente: number }[];
+  sansMouvement: {
+    demandeId: number;
+    objet: string;
+    dossier: string;
+    statut: string;
+    acteurAttendu: string | null;
+    heuresSansMouvement: number;
+  }[];
+  collecte: { dernierPassageLe: string | null; heuresDepuis: number | null; silencieuse: boolean };
 }
 
 /**
@@ -167,6 +176,23 @@ export default function TableauDeBord() {
       </Carte>
 
       {error && <Alerte>{messageErreur(error)}</Alerte>}
+
+      {/*
+        Une GPAO qui ne recoit plus affiche exactement la meme chose qu'une journee calme : des
+        compteurs bas et un tableau tranquille. La banniere dit laquelle des deux on regarde, sans
+        quoi on decouvre l'arret a la premiere reclamation du client.
+      */}
+      {data?.collecte?.silencieuse && (
+        <Alerte ton="ambre">
+          <p className="font-medium">La collecte des mails est muette depuis {data.collecte.heuresDepuis} h ouvrees.</p>
+          <p className="mt-1">
+            {data.collecte.dernierPassageLe ? `Dernier message recu le ${dateHeure(data.collecte.dernierPassageLe)}. ` : ''}
+            Sur un poste qui en recoit des dizaines par jour, ce n&rsquo;est pas une journee calme : les chiffres ci-dessous sont
+            incomplets tant que la chaine est arretee. Le <Link to="/import-mails">journal de collecte</Link> dit ou elle
+            s&rsquo;est arretee.
+          </p>
+        </Alerte>
+      )}
       {!compteId && comptes?.length !== 0 ? (
         <Vide>Choisissez un compte client. Les indicateurs ne se cumulent pas entre comptes.</Vide>
       ) : isLoading ? (
@@ -424,6 +450,34 @@ export default function TableauDeBord() {
                         <span className="block truncate text-xs text-texte-discret">{a.dossier}</span>
                       </span>
                       <Badge ton="ambre">{duree(a.minutesAttente)}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Carte>
+
+            <Carte titre={`Ce qui ne bouge plus (${data.sansMouvement?.length ?? 0})`} id="sans-mouvement">
+              <p className="aide">
+                Demandes ouvertes sur lesquelles rien n&rsquo;est arrive depuis plus que le seuil d&rsquo;attente. Une demande
+                qui attend depuis douze jours ressemble a une demande qui attend depuis deux heures : seule l&rsquo;anciennete
+                du dernier mouvement les separe.
+              </p>
+              {!data.sansMouvement?.length ? (
+                <Vide>Aucune demande ne depasse le seuil.</Vide>
+              ) : (
+                <ul className="mt-3 space-y-2 text-sm">
+                  {data.sansMouvement.slice(0, 12).map((d) => (
+                    <li key={d.demandeId} className="flex items-start justify-between gap-3 border-b border-ligne pb-2 last:border-0">
+                      <span className="min-w-0">
+                        <Link to={`/demandes/${d.demandeId}`} className="block truncate font-medium">
+                          {d.objet}
+                        </Link>
+                        <span className="block truncate text-xs text-texte-discret">
+                          {d.dossier} : {libelleStatut(d.statut)}
+                          {d.acteurAttendu ? `, ${libelleActeur(d.acteurAttendu)}` : ''}
+                        </span>
+                      </span>
+                      <Badge ton={d.heuresSansMouvement >= 24 ? 'rouge' : 'ambre'}>{d.heuresSansMouvement} h</Badge>
                     </li>
                   ))}
                 </ul>

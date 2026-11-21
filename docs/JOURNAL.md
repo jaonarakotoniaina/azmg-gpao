@@ -1257,3 +1257,46 @@ question posee tous les jours.
 3 tests de plus (416 au total) : les quatre colonnes se remplissent sans routine IA, un accuse de
 lecture et un envoi de masse ne creent aucune demande mais restent traces en T00, et une
 reclamation se distingue d'une demande ordinaire pour qu'un filtre serve.
+
+---
+
+## 2026-11-21 (audit de manager) : l'outil mesure, il n'alerte pas
+
+Audit demande depuis le poste de manager du compte, pas depuis celui du developpeur. La question
+n'est plus « est-ce que ca marche » mais « est-ce que je peux tenir le compte avec ca ».
+
+**Ce que la GPAO fait bien.** Elle enregistre, elle classe, elle calcule des delais en heures
+ouvrees, elle garde l'historique et elle exporte au format du client. Le socle est la.
+
+**Ce qu'elle ne fait pas, et qui est le travail du manager.** Trois documents partent chaque jour
+ou chaque semaine depuis AZMG vers le poste et vers la donneuse d'ordre : le brief du matin, le
+point du soir avec le classeur, le reporting hebdomadaire. La GPAO detient les donnees des trois
+et n'en produit aucun. Le manager les ecrit a la main, en relisant Gmail.
+
+**Deux trous corriges tout de suite, parce qu'ils portent du risque et non du confort.**
+
+1. **On ne savait pas quand la collecte se taisait.** Une GPAO qui ne recoit plus affiche
+   exactement la meme chose qu'une journee calme : des compteurs bas et un tableau tranquille. Le
+   tableau de bord porte desormais l'etat de la collecte, et une banniere s'affiche au-dela de
+   quatre heures ouvrees sans le moindre message. Sur un poste qui en recoit des dizaines par
+   jour, ce n'est pas du calme, c'est une chaine arretee.
+
+2. **Rien ne disait ce qui ne bouge plus.** Une demande qui attend depuis deux heures et une autre
+   depuis douze jours se ressemblent dans un tableau : seule l'anciennete du dernier mouvement les
+   separe. La carte « Ce qui ne bouge plus » les classe par silence decroissant, tous acteurs
+   confondus. Le bloc des attentes DO existait deja, mais il ne couvrait qu'un acteur sur quatre.
+
+**Et un defaut qui n'est pas dans le produit : la CI s'est cassee toute seule.** GitHub a bascule
+`ubuntu-latest` sur Ubuntu 26.04, que la version de Playwright du depot ne sait pas installer. La
+verification est passee au rouge sans qu'une ligne de code ait bouge. Le runner est fixe a
+`ubuntu-24.04` : une chaine de deploiement ne doit pas dependre d'un socle qui change sous elle.
+
+**Ce qui reste, par ordre de valeur pour le manager :** le brief du matin produit par l'outil, le
+reporting hebdomadaire, et un objet « point a confirmer » pour les questions ouvertes adressees a
+la donneuse d'ordre, qui ne sont ni des demandes ni des alertes.
+
+**Verifications**
+
+2 tests de plus (418 au total), dont celui qui verifie qu'un passage de collecte recent ne
+declenche aucune alerte et qu'une absence de passage n'en declenche pas non plus : on n'alarme pas
+sur une chaine dont on ne sait rien.

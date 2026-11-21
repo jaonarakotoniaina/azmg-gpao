@@ -10,7 +10,7 @@
  * Tous les delais sont en minutes ouvrees du client. Les comparaisons se font a periode egale
  * (meme nombre de jours), pour que la semaine precedente soit vraiment comparable.
  */
-import { and, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, lte, notInArray, sql, type SQL } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 import { db, schema } from '../../db/client';
 import { horairesDuCompte, lireParametres } from '../../lib/parametres';
@@ -23,7 +23,7 @@ import {
   type Acteur,
   type Statut,
 } from '@shared/constantes';
-import { minutesParJourOuvre, type HorairesOuvres } from '@shared/heures-ouvrees';
+import { minutesOuvrees, minutesParJourOuvre, type HorairesOuvres } from '@shared/heures-ouvrees';
 
 export interface Periode {
   debut: Date;
@@ -345,6 +345,30 @@ export interface TableauDeBord {
   /** Demandes en attente DO depuis plus que le seuil des parametres. */
   attentesDoLongues: { demandeId: number; objet: string; dossier: string; minutesAttente: number }[];
   /**
+   * Demandes ouvertes sur lesquelles plus rien n'est arrive depuis trop longtemps.
+   *
+   * C'est la question du manager, et aucune vue n'y repondait. Une demande en attente d'un tiers
+   * depuis deux heures et une autre depuis douze jours se ressemblent dans un tableau : seule
+   * l'anciennete du dernier mouvement les separe. Le silence est le symptome d'un dossier oublie,
+   * et il ne se voit pas tant qu'on ne le compte pas.
+   */
+  sansMouvement: {
+    demandeId: number;
+    objet: string;
+    dossier: string;
+    statut: string;
+    acteurAttendu: string | null;
+    heuresSansMouvement: number;
+  }[];
+  /**
+   * Etat de la collecte des mails : quand la boite a pousse pour la derniere fois.
+   *
+   * Une GPAO qui ne recoit plus affiche exactement la meme chose qu'une journee calme : des
+   * compteurs bas et un tableau tranquille. Sans ce bloc, le silence passe pour du calme, et on
+   * decouvre le probleme a la premiere reclamation du client.
+   */
+  collecte: { dernierPassageLe: Date | null; heuresDepuis: number | null; silencieuse: boolean };
+  /**
    * Vrai quand le compte n'a jamais recu la moindre demande, toutes periodes confondues.
    *
    * Des zeros partout veulent dire deux choses tres differentes : une semaine sans activite, ou
@@ -402,6 +426,51 @@ export async function tableauDeBord(jours: number, filtres: FiltresIndicateurs =
     .filter((l) => l.minutesAttente >= seuilAttenteMinutes)
     .sort((a, b) => b.minutesAttente - a.minutesAttente);
 
+  // Ce qui ne bouge plus. Le seuil est celui de l'attente DO, applique a tous les acteurs : une
+  // demande qui n'a rien recu depuis ce delai est en train d'etre oubliee, quel que soit celui
+  // qui la retient.
+  const ouvertes = await db
+    .select({ demande: schema.demandes, dossier: schema.dossiers.libelle })
+    .from(schema.demandes)
+    .innerJoin(schema.dossiers, eq(schema.dossiers.id, schema.demandes.dossierId))
+    .where(and(...conditionsCommunes(filtres), notInArray(schema.demandes.statut, ['termine', 'annule'])));
+  const horairesOuvertes = await horairesParCompte(ouvertes.map((l) => l.demande));
+  const sansMouvement = ouvertes
+    .map((l) => {
+      const depuis = l.demande.dernierEvenementLe ?? l.demande.ouverteLe;
+      const horaires = horairesOuvertes.get(l.demande.compteId)!;
+      return {
+        demandeId: l.demande.id,
+        objet: l.demande.objet,
+        dossier: l.dossier,
+        statut: l.demande.statut as string,
+        acteurAttendu: l.demande.acteurAttendu,
+        heuresSansMouvement: Math.round(minutesOuvrees(horaires, depuis, maintenant) / 6) / 10,
+      };
+    })
+    .filter((l) => l.heuresSansMouvement * 60 >= seuilAttenteMinutes)
+    .sort((a, b) => b.heuresSansMouvement - a.heuresSansMouvement)
+    .slice(0, 50);
+
+  // Etat de la collecte : la derniere fois que la boite a pousse quelque chose.
+  const [dernierePasse] = await db
+    .select({ le: schema.journalActions.creeLe })
+    .from(schema.journalActions)
+    .where(eq(schema.journalActions.action, 'mails_collectes'))
+    .orderBy(desc(schema.journalActions.creeLe))
+    .limit(1);
+  const horairesCompte = filtres.compteId ? await horairesDuCompte(filtres.compteId) : null;
+  const heuresDepuis = dernierePasse
+    ? Math.round((horairesCompte ? minutesOuvrees(horairesCompte, dernierePasse.le, maintenant) : (maintenant.getTime() - dernierePasse.le.getTime()) / 60_000) / 6) / 10
+    : null;
+  const collecte = {
+    dernierPassageLe: dernierePasse?.le ?? null,
+    heuresDepuis,
+    // Quatre heures ouvrees sans le moindre message : sur un poste qui en recoit des dizaines
+    // par jour, ce n'est pas une journee calme, c'est une chaine arretee.
+    silencieuse: heuresDepuis !== null && heuresDepuis >= 4,
+  };
+
   // Une seule demande suffit a dire que le compte a deja vecu : on ne compte pas au-dela.
   const [premiere] = await db
     .select({ id: schema.demandes.id })
@@ -422,6 +491,8 @@ export async function tableauDeBord(jours: number, filtres: FiltresIndicateurs =
       joursRestants: Math.floor((e.echeanceLe.getTime() - maintenant.getTime()) / 86_400_000),
     })),
     attentesDoLongues,
+    sansMouvement,
+    collecte,
   };
 }
 
