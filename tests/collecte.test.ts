@@ -50,6 +50,7 @@ function mailBrut(o: {
   date?: string;
   references?: string;
   inReplyTo?: string;
+  entetes?: string[];
 }): Buffer {
   const lignes = [
     `Message-ID: ${o.messageId}`,
@@ -59,6 +60,7 @@ function mailBrut(o: {
     `Date: ${o.date ?? 'Mon, 02 Mar 2026 09:00:00 +0100'}`,
     o.references ? `References: ${o.references}` : null,
     o.inReplyTo ? `In-Reply-To: ${o.inReplyTo}` : null,
+    ...(o.entetes ?? []),
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
   ].filter((l): l is string => l !== null);
@@ -919,6 +921,118 @@ describe('le tableau de suivi se remplit depuis les mails', () => {
     await enregistrerLot([premier, reponse], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
     const lignes = await suiviDesDemandes({ compteId });
     expect(lignes).toHaveLength(1);
+  });
+});
+
+describe('le tableau de suivi est lisible, pas seulement rempli', () => {
+  beforeEach(async () => {
+    await db.update(schema.postes).set({ adresses: ['info@client-fictif.test'] }).where(eq(schema.postes.id, posteId));
+    await db
+      .update(schema.comptesClients)
+      .set({ donneurOrdreEmail: 'export@client-fictif.test' })
+      .where(eq(schema.comptesClients.id, compteId));
+  });
+
+  it('remplit action, type, priorite et cause sans attendre la routine IA', async () => {
+    // Le cas qui comptait : sans routine, la synthese etait quand meme conditionnee au typage
+    // sur. Les demandes se creaient avec l'objet brut du mail et quatre colonnes vides.
+    config.ia.fournisseur = 'agent';
+    try {
+      const message = await analyserMessage(
+        mailBrut({
+          messageId: '<lis1@exemple-fictif.test>',
+          de: 'export@client-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'DAILY REPORT 20-11',
+          corps: 'Il faut corriger le tableau, il comporte une erreur de reference. Je l’avais deja signale.',
+          date: 'Fri, 20 Nov 2026 19:42:00 +0100',
+        }),
+      );
+      await enregistrerLot([message], { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+
+      const [ligne] = await suiviDesDemandes({ compteId });
+      expect(ligne.action, 'action attendue').not.toBe('DAILY REPORT 20-11');
+      expect(ligne.action.length).toBeGreaterThan(10);
+      expect(ligne.type, 'type').toBe('reclamation');
+      expect(ligne.priorite, 'priorite').toBe('haute');
+      expect(ligne.causeLibelle, 'cause').not.toBeNull();
+      expect(ligne.demande, 'demande').not.toBe('');
+    } finally {
+      config.ia.fournisseur = 'mock';
+    }
+  });
+
+  it('n’ouvre aucune demande pour un accuse de lecture ni pour un envoi de masse', async () => {
+    const messages = await Promise.all([
+      analyserMessage(
+        mailBrut({
+          messageId: '<lis2@exemple-fictif.test>',
+          de: 'contact@fournisseur-fictif.test',
+          a: 'info@client-fictif.test',
+          objet: 'Leido: Seguimiento : solicitud de presupuesto',
+          corps: 'Su mensaje ha sido leido.',
+          date: 'Fri, 20 Nov 2026 15:48:00 +0100',
+        }),
+      ),
+      analyserMessage(
+        mailBrut({
+          messageId: '<lis3@exemple-fictif.test>',
+          de: 'empresas@enseigne-fictive.test',
+          a: 'info@client-fictif.test',
+          objet: 'CATALOGO SEMANA BLACK FRIDAY',
+          corps: 'Descubra nuestras ofertas de la semana.',
+          date: 'Fri, 20 Nov 2026 19:21:00 +0100',
+          entetes: ['List-Unsubscribe: <https://enseigne-fictive.test/unsubscribe>'],
+        }),
+      ),
+    ]);
+    await enregistrerLot(messages, { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+
+    // Les deux sont traces, aucun n'ouvre de demande : une file de travail n'est pas une boite mail.
+    expect(await suiviDesDemandes({ compteId })).toHaveLength(0);
+    const evenements = await db.select().from(schema.evenements);
+    expect(evenements).toHaveLength(2);
+    for (const e of evenements) expect(e.famille).toBe('T00');
+  });
+
+  it('distingue une reclamation d’une demande ordinaire, pour qu’un filtre serve', async () => {
+    config.ia.fournisseur = 'agent';
+    try {
+      const messages = await Promise.all([
+        analyserMessage(
+          mailBrut({
+            messageId: '<lis4@exemple-fictif.test>',
+            de: 'export@client-fictif.test',
+            a: 'info@client-fictif.test',
+            objet: 'Proforma',
+            corps: 'Pourriez vous etablir la proforma en dollars ?',
+            date: 'Fri, 20 Nov 2026 09:00:00 +0100',
+          }),
+        ),
+        analyserMessage(
+          mailBrut({
+            messageId: '<lis5@exemple-fictif.test>',
+            de: 'export@client-fictif.test',
+            a: 'info@client-fictif.test',
+            objet: 'Proforma a refaire',
+            corps: 'Il faut refaire la proforma, elle comporte une erreur. Cela a deja ete signale plusieurs fois.',
+            date: 'Fri, 20 Nov 2026 10:00:00 +0100',
+          }),
+        ),
+      ]);
+      await enregistrerLot(messages, { compteId, posteId, dossierParDefautId: dossierId }, AUTEUR);
+
+      const lignes = await suiviDesDemandes({ compteId });
+      expect(lignes.filter((l) => l.type === 'reclamation')).toHaveLength(1);
+      expect(lignes.filter((l) => l.type === 'demande')).toHaveLength(1);
+
+      // Et le filtre des reprises isole la reclamation : c'est la vue « ce sur quoi on est revenu ».
+      const reprises = await suiviDesDemandes({ compteId, reprisesSeules: true });
+      expect(reprises).toHaveLength(1);
+      expect(reprises[0].type).toBe('reclamation');
+    } finally {
+      config.ia.fournisseur = 'mock';
+    }
   });
 });
 

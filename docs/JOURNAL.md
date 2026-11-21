@@ -1217,3 +1217,86 @@ manque.**
 (une consigne, un message que rien ne permet de classer, un envoi du poste, une notification
 d'automate) produit **trois lignes** dans le tableau de suivi, et l'automate seul en est absent.
 Avant ce changement, une seule ligne apparaissait.
+
+---
+
+## 2026-11-21 : la meme erreur, deux fois, au meme endroit
+
+Capture du tableau de suivi a l'appui, le commanditaire releve cinq defauts : la priorite vaut
+« normale » dans 99 % des lignes, le type est vide, le sujet est incomprehensible, la demande est
+quasi vide, et l'action attendue ne veut rien dire.
+
+Quatre de ces cinq defauts ont **une seule cause**. La synthese etait appelee sous la condition
+`typage.applicable`. C'est exactement le drapeau auquel j'avais cesse de me fier une semaine plus
+tot, quand j'ai rendu le typage incertain utilisable pour que le travail existe. J'ai corrige le
+typage et laisse la synthese derriere la meme porte. Sans routine IA, elle ne tournait donc
+jamais : la demande se creait avec l'objet brut du mail comme action attendue, et les colonnes
+type, cause et demande restaient vides. Un tableau ou la priorite vaut « normale » partout et ou
+le type ne dit rien ne trie rien, donc ne sert a rien.
+
+La synthese tourne desormais des qu'un message entrant cree une demande, et elle lit la nature
+**retenue**, repli compris, au lieu de celle que les regles avaient trouvee.
+
+**Le cinquieme defaut etait du bruit.** Depuis que le hors perimetre exige un typage sur, les
+accuses de lecture (« Leido: », « Read: »), les reponses d'absence, les avis de non remise et les
+envois de masse ouvraient des demandes. J'avais echange un defaut contre un autre.
+
+Deux signaux structurels les ecartent, du meme genre que `estExpediteurAutomatique` :
+
+- `estObjetMachine` : un objet prefixe par un accuse de lecture, une reponse automatique ou un
+  avis de non remise, dans les langues rencontrees, apres les marques de reponse et de transfert ;
+- l'en-tete `List-Unsubscribe` ou `List-Id`, lu dans `headerLines` : une personne qui ecrit a un
+  collegue n'ajoute pas de lien de desabonnement. C'est plus sur qu'une liste de mots-cles, qui
+  confond une promotion avec un vrai mail parlant de catalogue.
+
+**Et un filtre par type** dans le tableau, pour isoler les reclamations en un geste : c'est la
+question posee tous les jours.
+
+**Verifications**
+
+3 tests de plus (416 au total) : les quatre colonnes se remplissent sans routine IA, un accuse de
+lecture et un envoi de masse ne creent aucune demande mais restent traces en T00, et une
+reclamation se distingue d'une demande ordinaire pour qu'un filtre serve.
+
+---
+
+## 2026-11-21 (audit de manager) : l'outil mesure, il n'alerte pas
+
+Audit demande depuis le poste de manager du compte, pas depuis celui du developpeur. La question
+n'est plus « est-ce que ca marche » mais « est-ce que je peux tenir le compte avec ca ».
+
+**Ce que la GPAO fait bien.** Elle enregistre, elle classe, elle calcule des delais en heures
+ouvrees, elle garde l'historique et elle exporte au format du client. Le socle est la.
+
+**Ce qu'elle ne fait pas, et qui est le travail du manager.** Trois documents partent chaque jour
+ou chaque semaine depuis AZMG vers le poste et vers la donneuse d'ordre : le brief du matin, le
+point du soir avec le classeur, le reporting hebdomadaire. La GPAO detient les donnees des trois
+et n'en produit aucun. Le manager les ecrit a la main, en relisant Gmail.
+
+**Deux trous corriges tout de suite, parce qu'ils portent du risque et non du confort.**
+
+1. **On ne savait pas quand la collecte se taisait.** Une GPAO qui ne recoit plus affiche
+   exactement la meme chose qu'une journee calme : des compteurs bas et un tableau tranquille. Le
+   tableau de bord porte desormais l'etat de la collecte, et une banniere s'affiche au-dela de
+   quatre heures ouvrees sans le moindre message. Sur un poste qui en recoit des dizaines par
+   jour, ce n'est pas du calme, c'est une chaine arretee.
+
+2. **Rien ne disait ce qui ne bouge plus.** Une demande qui attend depuis deux heures et une autre
+   depuis douze jours se ressemblent dans un tableau : seule l'anciennete du dernier mouvement les
+   separe. La carte « Ce qui ne bouge plus » les classe par silence decroissant, tous acteurs
+   confondus. Le bloc des attentes DO existait deja, mais il ne couvrait qu'un acteur sur quatre.
+
+**Et un defaut qui n'est pas dans le produit : la CI s'est cassee toute seule.** GitHub a bascule
+`ubuntu-latest` sur Ubuntu 26.04, que la version de Playwright du depot ne sait pas installer. La
+verification est passee au rouge sans qu'une ligne de code ait bouge. Le runner est fixe a
+`ubuntu-24.04` : une chaine de deploiement ne doit pas dependre d'un socle qui change sous elle.
+
+**Ce qui reste, par ordre de valeur pour le manager :** le brief du matin produit par l'outil, le
+reporting hebdomadaire, et un objet « point a confirmer » pour les questions ouvertes adressees a
+la donneuse d'ordre, qui ne sont ni des demandes ni des alertes.
+
+**Verifications**
+
+2 tests de plus (418 au total), dont celui qui verifie qu'un passage de collecte recent ne
+declenche aucune alerte et qu'une absence de passage n'en declenche pas non plus : on n'alarme pas
+sur une chaine dont on ne sait rien.

@@ -15,6 +15,7 @@ import { compteSchema, modificationCompteSchema, modificationPosteSchema, posteS
 import { parametresSchema } from '@shared/parametres';
 import { auteurDe } from '../../lib/auteur';
 import { FAMILLES, DEFINITIONS_NATURES, DEFINITIONS_STATUTS, INTERLOCUTEURS, LIBELLES_INTERLOCUTEURS, STATUTS } from '@shared/constantes';
+import { TYPES_DEMANDE } from '../../ai/prompts/synthetiser-demande';
 
 export const routesComptes = Router();
 routesComptes.use(exigerConnexion);
@@ -96,6 +97,7 @@ routesComptes.get('/:id/suivi', async (req, res) => {
       posteId: z.coerce.number().int().positive().optional(),
       statut: z.enum(STATUTS).optional(),
       reprisesSeules: z.coerce.boolean().optional(),
+      type: z.enum(TYPES_DEMANDE).optional(),
     }),
     req.query,
   );

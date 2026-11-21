@@ -29,6 +29,14 @@ export interface MessageCollecte {
   /** Horodatage d'origine du message, conserve tel quel. */
   survenuLe: Date;
   /**
+   * Vrai quand le message porte un en-tete de liste de diffusion (`List-Unsubscribe`).
+   *
+   * C'est le signal le plus sur qu'un envoi est une communication de masse : une personne qui
+   * ecrit a un collegue n'ajoute pas de lien de desabonnement. Il vaut mieux qu'une liste de
+   * mots-cles, qui confond une promotion avec un vrai mail parlant de catalogue.
+   */
+  listeDiffusion?: boolean;
+  /**
    * Lien vers le message dans sa boite d'origine, quand la source le connait.
    *
    * Seul le script installe sur la boite peut le construire : l'identifiant RFC 5322 ne suffit
@@ -100,6 +108,17 @@ export function identifiantFil(messageId: string, references?: string | string[]
   return premier || inReplyTo?.trim() || messageId;
 }
 
+/**
+ * Vrai quand le message porte un en-tete de liste de diffusion.
+ *
+ * La lecture se fait sur `headerLines`, la liste brute : `headers` ne retient pas tous les
+ * en-tetes et ne rendait rien pour `List-Unsubscribe`.
+ */
+function porteEnteteDeListe(mail: ParsedMail): boolean {
+  const cles = new Set(['list-unsubscribe', 'list-id', 'list-unsubscribe-post']);
+  return (mail.headerLines ?? []).some((ligne) => cles.has(ligne.key.toLowerCase()));
+}
+
 /** Transforme un message brut (RFC 5322) en message collecte. */
 export async function analyserMessage(brut: Buffer | string): Promise<MessageCollecte> {
   const mail = await simpleParser(brut, { skipImageLinks: true });
@@ -114,6 +133,7 @@ export async function analyserMessage(brut: Buffer | string): Promise<MessageCol
     corps: corpsTexte(mail),
     // L'horodatage d'origine est conserve tel quel : c'est lui qui fait foi pour les delais.
     survenuLe: mail.date ?? new Date(),
+    listeDiffusion: porteEnteteDeListe(mail),
     pieces: (mail.attachments ?? [])
       .filter((p) => p.content && p.filename)
       .map((p) => ({ nomFichier: p.filename!, contenu: p.content as Buffer, typeMime: p.contentType ?? 'application/octet-stream' })),

@@ -12,7 +12,11 @@ concurrency:
 
 jobs:
   controler:
-    runs-on: ubuntu-latest
+    # Version fixee, pas « latest » : GitHub a bascule « latest » sur Ubuntu 26.04, que la
+    # version de Playwright du depot ne sait pas installer. La CI est devenue rouge sans qu'une
+    # ligne de code ait bouge. Une chaine de deploiement ne doit pas dependre d'un socle qui
+    # change sous elle.
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:9.6

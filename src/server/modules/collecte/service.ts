@@ -262,6 +262,7 @@ export async function enregistrerMessage(
       expediteur: message.expediteur,
       destinataires: message.destinataires,
       sens,
+      listeDiffusion: message.listeDiffusion,
       adressesPoste: config.adressesPoste,
       adresseDo: config.adresseDo,
     },
@@ -277,6 +278,7 @@ export async function enregistrerMessage(
     : typage.typage.famille && !estHorsPerimetre(typage.typage.famille)
       ? typage.typage.famille
       : FAMILLE_A_CLASSER;
+  const natureRetenue: Nature = (horsPerimetre ? 'information' : typage.typage.nature) ?? natureParDefaut(sens);
 
   // 3. Poste concerne : un compte peut porter plusieurs postes (assistante export, designer).
   const posteId = opts.posteId ?? posteDuMessage(message, config.postes, typage.applicable ? typage.typage.famille : null);
@@ -333,7 +335,7 @@ export async function enregistrerMessage(
       // n'apparaissait ni dans la file, ni dans le suivi, ni dans les indicateurs, et il fallait
       // ouvrir la chronologie de son dossier pour le voir. La confiance reste basse, donc
       // l'evenement reste dans « A classer » : on signale le doute sans effacer le travail.
-      nature: (horsPerimetre ? 'information' : typage.typage.nature) ?? natureParDefaut(sens),
+      nature: natureRetenue,
       famille: familleRetenue,
       interlocuteur: typage.typage.interlocuteur,
       source: opts.source ?? 'mail',
@@ -373,16 +375,18 @@ export async function enregistrerMessage(
   //
   // Elle n'est demandee que pour un message entrant qui appelle un travail, et seulement pour une
   // demande que ce message vient de creer : elle ne touche jamais a ce qu'un humain a pose.
+  //
+  // La synthese ne depend **pas** de `typage.applicable`. C'est l'erreur commise deux fois : le
+  // typage incertain est conserve pour que le travail existe, puis la synthese etait quand meme
+  // conditionnee au typage sur. Resultat, sans routine IA, les demandes se creaient avec leur
+  // objet brut (l'objet du mail) et les colonnes action, type, cause et priorite restaient vides.
+  // Un tableau de suivi ou la priorite vaut « normale » partout et le type rien ne trie rien.
+  //
+  // La nature lue ici est celle **retenue**, repli compris, pas celle que les regles ont trouvee.
   let synthese: Synthese | null = null;
-  if (
-    sens === 'entrant' &&
-    typage.applicable &&
-    NATURES_A_SYNTHETISER.has(typage.typage.nature ?? '') &&
-    resultat.demande &&
-    resultat.demandeCreee
-  ) {
+  if (sens === 'entrant' && NATURES_A_SYNTHETISER.has(natureRetenue) && resultat.demande && resultat.demandeCreee) {
     synthese = await synthetiserDemande(
-      { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: typage.typage.famille },
+      { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: familleRetenue },
       { compteId: opts.compteId, demandeId: resultat.demande.id },
     );
     if (synthese?.applicable) {

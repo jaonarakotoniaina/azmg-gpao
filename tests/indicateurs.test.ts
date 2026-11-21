@@ -236,6 +236,43 @@ describe('tableau de bord', () => {
     expect(tb.attentesDoLongues[0].minutesAttente).toBeGreaterThan(8 * 60);
   });
 
+  it('remonte ce qui ne bouge plus, quel que soit l’acteur qui retient', async () => {
+    await jeuDeReference();
+    const tb = await tableauDeBord(7, { compteId }, MAINTENANT);
+
+    // La question du manager n'est pas « qui attend » mais « depuis combien de temps rien n'est
+    // arrive ». Les attentes DO y figurent donc aussi, a cote des attentes de tiers.
+    expect(tb.sansMouvement.length).toBeGreaterThan(0);
+    for (const ligne of tb.sansMouvement) {
+      expect(ligne.heuresSansMouvement).toBeGreaterThan(0);
+      expect(['termine', 'annule']).not.toContain(ligne.statut);
+    }
+    // Du plus ancien au plus recent : c'est l'ordre dans lequel on les traite.
+    const heures = tb.sansMouvement.map((l) => l.heuresSansMouvement);
+    expect([...heures].sort((a, b) => b - a)).toEqual(heures);
+  });
+
+  it('dit quand la collecte est muette, pour ne pas prendre un arret pour du calme', async () => {
+    await jeuDeReference();
+    const { schema, db } = await import('../src/server/db/client');
+
+    // Sans aucun passage enregistre, on ne peut rien affirmer : pas d'alerte.
+    const vide = await tableauDeBord(7, { compteId }, MAINTENANT);
+    expect(vide.collecte.dernierPassageLe).toBeNull();
+    expect(vide.collecte.silencieuse).toBe(false);
+
+    // Un passage tout juste termine : la chaine vit.
+    await db.insert(schema.journalActions).values({
+      action: 'mails_collectes',
+      auteurType: 'systeme',
+      details: { lus: 3, crees: 3 },
+      creeLe: new Date(MAINTENANT.getTime() - 20 * 60_000),
+    });
+    const recent = await tableauDeBord(7, { compteId }, MAINTENANT);
+    expect(recent.collecte.silencieuse).toBe(false);
+    expect(recent.collecte.heuresDepuis).not.toBeNull();
+  });
+
   it('remonte les echeances proches dans l’horizon d’alerte', async () => {
     await jeuDeReference();
     const { schema } = await import('../src/server/db/client');
