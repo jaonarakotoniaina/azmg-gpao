@@ -17,11 +17,11 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from, except, desc13) => {
+var __copyProps = (to, from, except, desc14) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
       if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc13 = __getOwnPropDesc(from, key)) || desc13.enumerable });
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc14 = __getOwnPropDesc(from, key)) || desc14.enumerable });
   }
   return to;
 };
@@ -1502,6 +1502,11 @@ function estUneDe(brut, liste) {
 function normaliserTypage(texte3) {
   return texte3.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").replace(/\.(?![a-z0-9])/g, " ").replace(/(?<![a-z0-9])\./g, " ").replace(/\s+/g, " ").trim();
 }
+function estObjetMachine(objet) {
+  if (!objet) return false;
+  const nu = objet.replace(/^((re|rep|tr|fw|fwd|transf)\s*:\s*)+/i, "").trim();
+  return PREFIXES_MACHINE.some((motif) => motif.test(nu));
+}
 function estExpediteurAutomatique(adresse2) {
   if (!adresse2) return false;
   const partieLocale = adresse2.trim().toLowerCase().split("@")[0];
@@ -1530,7 +1535,7 @@ function texteDuMessage(message) {
   const corps = normaliserTypage(message.corps ?? "");
   return `${objet} ${objet} ${corps}`.trim();
 }
-var DOMAINES_INTERNES_PAR_DEFAUT, PARTIES_AUTOMATIQUES;
+var DOMAINES_INTERNES_PAR_DEFAUT, PARTIES_AUTOMATIQUES, PREFIXES_MACHINE;
 var init_typage = __esm({
   "src/shared/typage.ts"() {
     "use strict";
@@ -1552,6 +1557,14 @@ var init_typage = __esm({
       "postmaster",
       "bounce",
       "bounces"
+    ];
+    PREFIXES_MACHINE = [
+      // Accuses de lecture.
+      /^(lu|leido|le[ií]do|read|gelesen|letto|lido)\s*:/i,
+      // Reponses d'absence.
+      /^(reponse automatique|r[ée]ponse automatique|respuesta autom[áa]tica|automatic reply|out of office|autoreply|risposta automatica|abwesenheit)\s*:/i,
+      // Avis de non remise.
+      /^(delivery status notification|undeliverable|mail delivery (failed|subsystem)|returned mail|echec de remise|[ée]chec de remise)\b/i
     ];
   }
 });
@@ -2012,7 +2025,7 @@ async function initialiserRegles() {
 async function typerMessage(message, opts = {}) {
   const parametres2 = await lireParametres();
   const seuil = parametres2.seuilConfianceTypage;
-  if (estExpediteurAutomatique(message.expediteur)) {
+  if (estExpediteurAutomatique(message.expediteur) || estObjetMachine(message.objet) || message.listeDiffusion) {
     return {
       typage: {
         famille: FAMILLE_HORS_PERIMETRE,
@@ -2020,7 +2033,7 @@ async function typerMessage(message, opts = {}) {
         interlocuteur: null,
         sens: message.sens ?? null,
         confiance: 0.95,
-        justificatifs: [`expediteur automatique : ${message.expediteur}`],
+        justificatifs: [raisonHorsPerimetre(message)],
         origine: "regle",
         regleId: null
       },
@@ -2066,6 +2079,11 @@ async function typerMessage(message, opts = {}) {
     }
   }
   return { typage: parRegles?.typage ?? typageVide(message), applicable: false, tacheIaId: resultat.tacheId };
+}
+function raisonHorsPerimetre(message) {
+  if (estExpediteurAutomatique(message.expediteur)) return `expediteur automatique : ${message.expediteur}`;
+  if (estObjetMachine(message.objet)) return `message emis par une messagerie : \xAB ${(message.objet ?? "").slice(0, 60)} \xBB`;
+  return "en-tete de liste de diffusion (desabonnement propose)";
 }
 function typageVide(message) {
   return {
@@ -3361,6 +3379,7 @@ async function suiviDesDemandes(filtres, maintenant = /* @__PURE__ */ new Date()
   if (filtres.posteId) conditions.push((0, import_drizzle_orm9.eq)(schema_exports.demandes.posteId, filtres.posteId));
   if (filtres.statut) conditions.push((0, import_drizzle_orm9.eq)(schema_exports.demandes.statut, filtres.statut));
   if (filtres.reprisesSeules) conditions.push((0, import_drizzle_orm9.eq)(schema_exports.demandes.reprise, true));
+  if (filtres.type) conditions.push(import_drizzle_orm9.sql`${schema_exports.demandes.suivi} ->> 'type' = ${filtres.type}`);
   const lignes = await db.select({
     demande: schema_exports.demandes,
     dossier: schema_exports.dossiers.libelle,
@@ -3426,6 +3445,63 @@ function auteurClaude(utilisateurId) {
 
 // src/server/modules/pilotage/routes.ts
 init_constantes();
+
+// src/server/ai/prompts/synthetiser-demande.ts
+init_constantes();
+var VERSION_SYNTHETISER_DEMANDE = "synthetiser_demande@1";
+var TYPES_DEMANDE = ["demande", "reclamation", "urgence", "procedure", "consigne", "information"];
+var SCHEMA_SYNTHETISER_DEMANDE = {
+  type: "object",
+  properties: {
+    action: { type: "string", description: "Action qui debloque, a l\u2019infinitif, une phrase" },
+    type: { type: "string", enum: [...TYPES_DEMANDE] },
+    priorite: { type: "string", enum: ["haute", "normale", "basse"] },
+    cause: { type: ["string", "null"], enum: [...CAUSES, null] },
+    confiance: { type: "number", minimum: 0, maximum: 1 },
+    justificatifs: { type: "array", items: { type: "string" }, maxItems: 3 }
+  },
+  required: ["action", "type", "priorite", "confiance", "justificatifs"]
+};
+function promptSynthetiserDemande() {
+  const causes = CAUSES.map((c) => `  ${c} : ${LIBELLES_CAUSES[c]}`).join("\n");
+  return [
+    "Tu lis un message recu par une assistante placee chez un client, et tu en tires ce qu\u2019il reste",
+    "a faire. Le resultat alimente une GPAO de suivi d\u2019activite.",
+    "",
+    "Reponds par un seul objet JSON conforme au schema fourni. Rien avant, rien apres.",
+    "",
+    "ACTION ATTENDUE",
+    "  Une phrase a l\u2019infinitif, qui dit ce qui debloque le dossier.",
+    "  Ecris ce qu\u2019il faut faire, jamais ce qui a ete mal fait.",
+    "  \xAB Renvoyer la facture avec le NIF du client \xBB et non \xAB la facture a ete envoyee sans le NIF \xBB.",
+    "  Si le message n\u2019appelle aucune action, ecris exactement : Aucune action attendue.",
+    "",
+    "TYPE",
+    "  demande     : un travail est demande",
+    "  reclamation : le message signale un manquement, en plus de demander un travail",
+    "  urgence     : une echeance tombe dans la journee ou un tiers est bloque",
+    "  procedure   : une regle de travail est posee pour la suite",
+    "  consigne    : une instruction ponctuelle, sans reproche",
+    "  information : le message informe, sans rien attendre",
+    "",
+    "PRIORITE",
+    "  haute   : echeance sous 24 heures, ou un client ou un tiers reste bloque",
+    "  normale : le travail de la semaine",
+    "  basse   : forme, classement, procedure, sans echeance",
+    "  Ne mets pas tout en haute : une priorite qui ne trie plus rien ne sert a rien.",
+    "",
+    "CAUSE, seulement si le type est \xAB reclamation \xBB, sinon null :",
+    causes,
+    "",
+    "REGLES",
+    "  N\u2019invente rien. Ce que le message ne dit pas reste vide ou null.",
+    "  Les justificatifs sont des extraits courts du message, recopies tels quels.",
+    "  La confiance dit a quel point tu es sur : sous 0,8 un humain relira.",
+    "  N\u2019emploie jamais de tiret long."
+  ].join("\n");
+}
+
+// src/server/modules/pilotage/routes.ts
 var routesComptes = (0, import_express2.Router)();
 routesComptes.use(exigerConnexion);
 routesComptes.get("/", async (req, res) => {
@@ -3488,7 +3564,8 @@ routesComptes.get("/:id/suivi", async (req, res) => {
     import_zod4.z.object({
       posteId: import_zod4.z.coerce.number().int().positive().optional(),
       statut: import_zod4.z.enum(STATUTS).optional(),
-      reprisesSeules: import_zod4.z.coerce.boolean().optional()
+      reprisesSeules: import_zod4.z.coerce.boolean().optional(),
+      type: import_zod4.z.enum(TYPES_DEMANDE).optional()
     }),
     req.query
   );
@@ -3594,6 +3671,10 @@ function identifiantFil(messageId, references, inReplyTo) {
   const premier = liste.map((r) => r.trim()).find((r) => r.startsWith("<"));
   return premier || inReplyTo?.trim() || messageId;
 }
+function porteEnteteDeListe(mail) {
+  const cles = /* @__PURE__ */ new Set(["list-unsubscribe", "list-id", "list-unsubscribe-post"]);
+  return (mail.headerLines ?? []).some((ligne) => cles.has(ligne.key.toLowerCase()));
+}
 async function analyserMessage(brut) {
   const mail = await (0, import_mailparser.simpleParser)(brut, { skipImageLinks: true });
   const messageId = (mail.messageId ?? "").trim() || `<sans-id-${import_node_crypto3.default.createHash("sha256").update(String(brut)).digest("hex").slice(0, 32)}@azmg-gpao>`;
@@ -3606,6 +3687,7 @@ async function analyserMessage(brut) {
     corps: corpsTexte(mail),
     // L'horodatage d'origine est conserve tel quel : c'est lui qui fait foi pour les delais.
     survenuLe: mail.date ?? /* @__PURE__ */ new Date(),
+    listeDiffusion: porteEnteteDeListe(mail),
     pieces: (mail.attachments ?? []).filter((p) => p.content && p.filename).map((p) => ({ nomFichier: p.filename, contenu: p.content, typeMime: p.contentType ?? "application/octet-stream" }))
   };
 }
@@ -5512,6 +5594,30 @@ async function tableauDeBord(jours, filtres = {}, maintenant = /* @__PURE__ */ n
     const temps = tempsDemandeAvecHoraires(l.demande, debutsDo.get(l.demande.id) ?? l.demande.ouverteLe, horairesDo.get(l.demande.compteId), maintenant);
     return { demandeId: l.demande.id, objet: l.demande.objet, dossier: l.dossier, minutesAttente: temps.statutCourant };
   }).filter((l) => l.minutesAttente >= seuilAttenteMinutes).sort((a, b) => b.minutesAttente - a.minutesAttente);
+  const ouvertes = await db.select({ demande: schema_exports.demandes, dossier: schema_exports.dossiers.libelle }).from(schema_exports.demandes).innerJoin(schema_exports.dossiers, (0, import_drizzle_orm21.eq)(schema_exports.dossiers.id, schema_exports.demandes.dossierId)).where((0, import_drizzle_orm21.and)(...conditionsCommunes(filtres), (0, import_drizzle_orm21.notInArray)(schema_exports.demandes.statut, ["termine", "annule"])));
+  const horairesOuvertes = await horairesParCompte(ouvertes.map((l) => l.demande));
+  const sansMouvement = ouvertes.map((l) => {
+    const depuis = l.demande.dernierEvenementLe ?? l.demande.ouverteLe;
+    const horaires = horairesOuvertes.get(l.demande.compteId);
+    return {
+      demandeId: l.demande.id,
+      objet: l.demande.objet,
+      dossier: l.dossier,
+      statut: l.demande.statut,
+      acteurAttendu: l.demande.acteurAttendu,
+      heuresSansMouvement: Math.round(minutesOuvrees(horaires, depuis, maintenant) / 6) / 10
+    };
+  }).filter((l) => l.heuresSansMouvement * 60 >= seuilAttenteMinutes).sort((a, b) => b.heuresSansMouvement - a.heuresSansMouvement).slice(0, 50);
+  const [dernierePasse] = await db.select({ le: schema_exports.journalActions.creeLe }).from(schema_exports.journalActions).where((0, import_drizzle_orm21.eq)(schema_exports.journalActions.action, "mails_collectes")).orderBy((0, import_drizzle_orm21.desc)(schema_exports.journalActions.creeLe)).limit(1);
+  const horairesCompte = filtres.compteId ? await horairesDuCompte(filtres.compteId) : null;
+  const heuresDepuis = dernierePasse ? Math.round((horairesCompte ? minutesOuvrees(horairesCompte, dernierePasse.le, maintenant) : (maintenant.getTime() - dernierePasse.le.getTime()) / 6e4) / 6) / 10 : null;
+  const collecte = {
+    dernierPassageLe: dernierePasse?.le ?? null,
+    heuresDepuis,
+    // Quatre heures ouvrees sans le moindre message : sur un poste qui en recoit des dizaines
+    // par jour, ce n'est pas une journee calme, c'est une chaine arretee.
+    silencieuse: heuresDepuis !== null && heuresDepuis >= 4
+  };
   const [premiere] = await db.select({ id: schema_exports.demandes.id }).from(schema_exports.demandes).where((0, import_drizzle_orm21.and)(...conditionsCommunes(filtres))).limit(1);
   return {
     miseEnRoute: !premiere,
@@ -5525,7 +5631,9 @@ async function tableauDeBord(jours, filtres = {}, maintenant = /* @__PURE__ */ n
       ...e,
       joursRestants: Math.floor((e.echeanceLe.getTime() - maintenant.getTime()) / 864e5)
     })),
-    attentesDoLongues
+    attentesDoLongues,
+    sansMouvement,
+    collecte
   };
 }
 async function debutsDeStatut3(demandes2) {
@@ -7274,63 +7382,6 @@ init_service2();
 var import_zod12 = require("zod");
 init_service();
 init_parametres2();
-
-// src/server/ai/prompts/synthetiser-demande.ts
-init_constantes();
-var VERSION_SYNTHETISER_DEMANDE = "synthetiser_demande@1";
-var TYPES_DEMANDE = ["demande", "reclamation", "urgence", "procedure", "consigne", "information"];
-var SCHEMA_SYNTHETISER_DEMANDE = {
-  type: "object",
-  properties: {
-    action: { type: "string", description: "Action qui debloque, a l\u2019infinitif, une phrase" },
-    type: { type: "string", enum: [...TYPES_DEMANDE] },
-    priorite: { type: "string", enum: ["haute", "normale", "basse"] },
-    cause: { type: ["string", "null"], enum: [...CAUSES, null] },
-    confiance: { type: "number", minimum: 0, maximum: 1 },
-    justificatifs: { type: "array", items: { type: "string" }, maxItems: 3 }
-  },
-  required: ["action", "type", "priorite", "confiance", "justificatifs"]
-};
-function promptSynthetiserDemande() {
-  const causes = CAUSES.map((c) => `  ${c} : ${LIBELLES_CAUSES[c]}`).join("\n");
-  return [
-    "Tu lis un message recu par une assistante placee chez un client, et tu en tires ce qu\u2019il reste",
-    "a faire. Le resultat alimente une GPAO de suivi d\u2019activite.",
-    "",
-    "Reponds par un seul objet JSON conforme au schema fourni. Rien avant, rien apres.",
-    "",
-    "ACTION ATTENDUE",
-    "  Une phrase a l\u2019infinitif, qui dit ce qui debloque le dossier.",
-    "  Ecris ce qu\u2019il faut faire, jamais ce qui a ete mal fait.",
-    "  \xAB Renvoyer la facture avec le NIF du client \xBB et non \xAB la facture a ete envoyee sans le NIF \xBB.",
-    "  Si le message n\u2019appelle aucune action, ecris exactement : Aucune action attendue.",
-    "",
-    "TYPE",
-    "  demande     : un travail est demande",
-    "  reclamation : le message signale un manquement, en plus de demander un travail",
-    "  urgence     : une echeance tombe dans la journee ou un tiers est bloque",
-    "  procedure   : une regle de travail est posee pour la suite",
-    "  consigne    : une instruction ponctuelle, sans reproche",
-    "  information : le message informe, sans rien attendre",
-    "",
-    "PRIORITE",
-    "  haute   : echeance sous 24 heures, ou un client ou un tiers reste bloque",
-    "  normale : le travail de la semaine",
-    "  basse   : forme, classement, procedure, sans echeance",
-    "  Ne mets pas tout en haute : une priorite qui ne trie plus rien ne sert a rien.",
-    "",
-    "CAUSE, seulement si le type est \xAB reclamation \xBB, sinon null :",
-    causes,
-    "",
-    "REGLES",
-    "  N\u2019invente rien. Ce que le message ne dit pas reste vide ou null.",
-    "  Les justificatifs sont des extraits courts du message, recopies tels quels.",
-    "  La confiance dit a quel point tu es sur : sous 0,8 un humain relira.",
-    "  N\u2019emploie jamais de tiret long."
-  ].join("\n");
-}
-
-// src/server/modules/typage/synthese.ts
 init_tirets();
 init_constantes();
 
@@ -7817,6 +7868,7 @@ async function enregistrerMessage(message, opts, auteur) {
       expediteur: message.expediteur,
       destinataires: message.destinataires,
       sens,
+      listeDiffusion: message.listeDiffusion,
       adressesPoste: config2.adressesPoste,
       adresseDo: config2.adresseDo
     },
@@ -7824,6 +7876,7 @@ async function enregistrerMessage(message, opts, auteur) {
   );
   const horsPerimetre = typage.applicable && estHorsPerimetre(typage.typage.famille);
   const familleRetenue = horsPerimetre ? FAMILLE_HORS_PERIMETRE : typage.typage.famille && !estHorsPerimetre(typage.typage.famille) ? typage.typage.famille : FAMILLE_A_CLASSER;
+  const natureRetenue = (horsPerimetre ? "information" : typage.typage.nature) ?? natureParDefaut(sens);
   const posteId = opts.posteId ?? posteDuMessage(message, config2.postes, typage.applicable ? typage.typage.famille : null);
   const parFil = horsPerimetre ? null : await demandeDuFil(message.filId, opts.compteId);
   let dossierId = parFil?.dossierId ?? opts.dossierParDefautId ?? null;
@@ -7864,7 +7917,7 @@ async function enregistrerMessage(message, opts, auteur) {
       // n'apparaissait ni dans la file, ni dans le suivi, ni dans les indicateurs, et il fallait
       // ouvrir la chronologie de son dossier pour le voir. La confiance reste basse, donc
       // l'evenement reste dans « A classer » : on signale le doute sans effacer le travail.
-      nature: (horsPerimetre ? "information" : typage.typage.nature) ?? natureParDefaut(sens),
+      nature: natureRetenue,
       famille: familleRetenue,
       interlocuteur: typage.typage.interlocuteur,
       source: opts.source ?? "mail",
@@ -7895,9 +7948,9 @@ async function enregistrerMessage(message, opts, auteur) {
     });
   }
   let synthese = null;
-  if (sens === "entrant" && typage.applicable && NATURES_A_SYNTHETISER.has(typage.typage.nature ?? "") && resultat.demande && resultat.demandeCreee) {
+  if (sens === "entrant" && NATURES_A_SYNTHETISER.has(natureRetenue) && resultat.demande && resultat.demandeCreee) {
     synthese = await synthetiserDemande(
-      { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: typage.typage.famille },
+      { objet: message.objet, corps: message.corps, expediteur: message.expediteur, destinataires: message.destinataires, famille: familleRetenue },
       { compteId: opts.compteId, demandeId: resultat.demande.id }
     );
     if (synthese?.applicable) {
@@ -8749,7 +8802,7 @@ function creerApplication() {
       res.json({
         statut: "ok",
         service: "AZMG GPAO",
-        version: "991b08dae62f0a2eef4f79e5efe0f1e303ff4d0e",
+        version: "c45aa95daa6bd600ee01784a3b1ed309eb15955f",
         deploiement,
         migrations: await etatMigrations(),
         mcp: etatMcp()

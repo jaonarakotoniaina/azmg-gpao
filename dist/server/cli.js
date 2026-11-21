@@ -1466,6 +1466,11 @@ function estUneDe(brut, liste) {
 function normaliserTypage(texte) {
   return texte.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9@.]+/g, " ").replace(/\.(?![a-z0-9])/g, " ").replace(/(?<![a-z0-9])\./g, " ").replace(/\s+/g, " ").trim();
 }
+function estObjetMachine(objet) {
+  if (!objet) return false;
+  const nu = objet.replace(/^((re|rep|tr|fw|fwd|transf)\s*:\s*)+/i, "").trim();
+  return PREFIXES_MACHINE.some((motif) => motif.test(nu));
+}
 function estExpediteurAutomatique(adresse) {
   if (!adresse) return false;
   const partieLocale = adresse.trim().toLowerCase().split("@")[0];
@@ -1494,7 +1499,7 @@ function texteDuMessage(message) {
   const corps = normaliserTypage(message.corps ?? "");
   return `${objet} ${objet} ${corps}`.trim();
 }
-var DOMAINES_INTERNES_PAR_DEFAUT, PARTIES_AUTOMATIQUES;
+var DOMAINES_INTERNES_PAR_DEFAUT, PARTIES_AUTOMATIQUES, PREFIXES_MACHINE;
 var init_typage = __esm({
   "src/shared/typage.ts"() {
     "use strict";
@@ -1516,6 +1521,14 @@ var init_typage = __esm({
       "postmaster",
       "bounce",
       "bounces"
+    ];
+    PREFIXES_MACHINE = [
+      // Accuses de lecture.
+      /^(lu|leido|le[ií]do|read|gelesen|letto|lido)\s*:/i,
+      // Reponses d'absence.
+      /^(reponse automatique|r[ée]ponse automatique|respuesta autom[áa]tica|automatic reply|out of office|autoreply|risposta automatica|abwesenheit)\s*:/i,
+      // Avis de non remise.
+      /^(delivery status notification|undeliverable|mail delivery (failed|subsystem)|returned mail|echec de remise|[ée]chec de remise)\b/i
     ];
   }
 });
@@ -1976,7 +1989,7 @@ async function initialiserRegles() {
 async function typerMessage(message, opts = {}) {
   const parametres2 = await lireParametres();
   const seuil = parametres2.seuilConfianceTypage;
-  if (estExpediteurAutomatique(message.expediteur)) {
+  if (estExpediteurAutomatique(message.expediteur) || estObjetMachine(message.objet) || message.listeDiffusion) {
     return {
       typage: {
         famille: FAMILLE_HORS_PERIMETRE,
@@ -1984,7 +1997,7 @@ async function typerMessage(message, opts = {}) {
         interlocuteur: null,
         sens: message.sens ?? null,
         confiance: 0.95,
-        justificatifs: [`expediteur automatique : ${message.expediteur}`],
+        justificatifs: [raisonHorsPerimetre(message)],
         origine: "regle",
         regleId: null
       },
@@ -2030,6 +2043,11 @@ async function typerMessage(message, opts = {}) {
     }
   }
   return { typage: parRegles?.typage ?? typageVide(message), applicable: false, tacheIaId: resultat.tacheId };
+}
+function raisonHorsPerimetre(message) {
+  if (estExpediteurAutomatique(message.expediteur)) return `expediteur automatique : ${message.expediteur}`;
+  if (estObjetMachine(message.objet)) return `message emis par une messagerie : \xAB ${(message.objet ?? "").slice(0, 60)} \xBB`;
+  return "en-tete de liste de diffusion (desabonnement propose)";
 }
 function typageVide(message) {
   return {
