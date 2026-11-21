@@ -55,6 +55,8 @@ export interface FiltresSuivi {
   posteId?: number;
   statut?: Statut;
   reprisesSeules?: boolean;
+  /** Type de demande (`reclamation`, `urgence`, `procedure`, `demande`...), tel que la synthese l'a pose. */
+  type?: string;
 }
 
 function texte(suivi: unknown, cle: string): string {
@@ -71,6 +73,9 @@ export async function suiviDesDemandes(filtres: FiltresSuivi, maintenant = new D
   if (filtres.posteId) conditions.push(eq(schema.demandes.posteId, filtres.posteId));
   if (filtres.statut) conditions.push(eq(schema.demandes.statut, filtres.statut));
   if (filtres.reprisesSeules) conditions.push(eq(schema.demandes.reprise, true));
+  // Le type vit dans le suivi de la demande : c'est lui qui distingue une reclamation d'une
+  // demande ordinaire, et c'est la question posee tous les jours au tableau.
+  if (filtres.type) conditions.push(sql`${schema.demandes.suivi} ->> 'type' = ${filtres.type}`);
 
   const lignes = await db
     .select({

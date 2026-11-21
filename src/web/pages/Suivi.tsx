@@ -55,6 +55,7 @@ export default function Suivi() {
   const [compteId, setCompteId] = useState('');
   const [posteId, setPosteId] = useState('');
   const [reprisesSeules, setReprisesSeules] = useState(false);
+  const [type, setType] = useState('');
 
   const { data: comptes } = useQuery({ queryKey: ['comptes'], queryFn: () => api.get<Compte[]>('/api/comptes') });
   const { data: postes } = useQuery({ queryKey: ['postes'], queryFn: () => api.get<Poste[]>('/api/postes') });
@@ -66,9 +67,10 @@ export default function Suivi() {
   const parametres = new URLSearchParams();
   if (posteId) parametres.set('posteId', posteId);
   if (reprisesSeules) parametres.set('reprisesSeules', 'true');
+  if (type) parametres.set('type', type);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['suivi', compteId, posteId, reprisesSeules],
+    queryKey: ['suivi', compteId, posteId, reprisesSeules, type],
     queryFn: () => api.get<Ligne[]>(`/api/comptes/${compteId}/suivi?${parametres.toString()}`),
     enabled: Boolean(compteId),
   });
@@ -85,7 +87,7 @@ export default function Suivi() {
       />
 
       <Carte className="mb-6">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <ChampSelect libelle="Compte client" value={compteId} onChange={(e) => setCompteId(e.target.value)}>
             <option value="">Choisir un compte</option>
             {comptes?.map((c) => (
@@ -112,6 +114,15 @@ export default function Suivi() {
           >
             <option value="toutes">Toutes les demandes</option>
             <option value="reprises">Les reprises seulement</option>
+          </ChampSelect>
+          <ChampSelect libelle="Type" value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">Tous les types</option>
+            <option value="reclamation">Reclamations</option>
+            <option value="urgence">Urgences</option>
+            <option value="demande">Demandes</option>
+            <option value="procedure">Procedures</option>
+            <option value="consigne">Consignes</option>
+            <option value="information">Informations</option>
           </ChampSelect>
         </div>
       </Carte>

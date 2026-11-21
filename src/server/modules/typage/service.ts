@@ -16,7 +16,7 @@ import { lireParametres } from '../../lib/parametres';
 import { demanderIa, enregistrerSimulateur } from '../../ai/service';
 import { promptTyperEvenement, SCHEMA_TYPER_EVENEMENT, VERSION_TYPER_EVENEMENT } from '../../ai/prompts/typer-evenement';
 import { appliquerRegles, REGLES_INITIALES, type RegleTypage } from './regles';
-import { domaineDe, estExpediteurAutomatique, normaliserTypage, type MessageAClasser, type Typage } from '@shared/typage';
+import { domaineDe, estExpediteurAutomatique, estObjetMachine, normaliserTypage, type MessageAClasser, type Typage } from '@shared/typage';
 import { CODES_FAMILLES, estHorsPerimetre, FAMILLE_A_CLASSER, FAMILLE_HORS_PERIMETRE, INTERLOCUTEURS, NATURES, SENS, type Interlocuteur, type Nature, type Sens } from '@shared/constantes';
 import type { Auteur } from '../demandes/service';
 
@@ -106,7 +106,7 @@ export async function typerMessage(message: MessageAClasser, opts: { compteId?: 
   // Un automate qui n'attend pas de reponse n'emet pas de travail. Le test passe avant les regles
   // et avant l'IA : il est structurel, gratuit, et il evite qu'un flot de notifications remplisse
   // la file « A classer » au point d'y noyer les vraies demandes.
-  if (estExpediteurAutomatique(message.expediteur)) {
+  if (estExpediteurAutomatique(message.expediteur) || estObjetMachine(message.objet) || message.listeDiffusion) {
     return {
       typage: {
         famille: FAMILLE_HORS_PERIMETRE,
@@ -114,7 +114,7 @@ export async function typerMessage(message: MessageAClasser, opts: { compteId?: 
         interlocuteur: null,
         sens: message.sens ?? null,
         confiance: 0.95,
-        justificatifs: [`expediteur automatique : ${message.expediteur}`],
+        justificatifs: [raisonHorsPerimetre(message)],
         origine: 'regle',
         regleId: null,
       },
@@ -167,6 +167,14 @@ export async function typerMessage(message: MessageAClasser, opts: { compteId?: 
   // L'IA n'a pas repondu (elle attend la routine) ou sa sortie est invalide : on garde ce que
   // les regles ont trouve, non applicable, et l'evenement part dans la file « A classer ».
   return { typage: parRegles?.typage ?? typageVide(message), applicable: false, tacheIaId: resultat.tacheId };
+}
+
+
+/** Dit laquelle des trois marques de machine a joue, pour que le classement reste verifiable. */
+function raisonHorsPerimetre(message: MessageAClasser): string {
+  if (estExpediteurAutomatique(message.expediteur)) return `expediteur automatique : ${message.expediteur}`;
+  if (estObjetMachine(message.objet)) return `message emis par une messagerie : « ${(message.objet ?? '').slice(0, 60)} »`;
+  return 'en-tete de liste de diffusion (desabonnement propose)';
 }
 
 function typageVide(message: MessageAClasser): Typage {

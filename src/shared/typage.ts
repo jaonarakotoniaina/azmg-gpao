@@ -31,6 +31,8 @@ export interface MessageAClasser {
   expediteur?: string | null;
   destinataires?: string[];
   sens?: Sens | null;
+  /** Vrai quand le message porte un en-tete de liste de diffusion : communication de masse. */
+  listeDiffusion?: boolean;
   /**
    * Adresses depuis lesquelles le poste ecrit. Le poste travaille souvent depuis une adresse du
    * client (par exemple la boite « info »), sur le meme domaine que la donneuse d'ordre : le
@@ -103,6 +105,34 @@ const PARTIES_AUTOMATIQUES = [
   'bounce',
   'bounces',
 ];
+
+/**
+ * Prefixes d'objet qu'une messagerie ajoute elle-meme, dans les langues rencontrees.
+ *
+ * Un accuse de lecture, une reponse d'absence ou un avis de non remise sont emis par un serveur,
+ * pas par une personne. Ils arrivent dans le fil du dossier, portent son objet, et ressemblent
+ * donc a du travail : sans ce filtre, chacun ouvrait une demande.
+ */
+const PREFIXES_MACHINE = [
+  // Accuses de lecture.
+  /^(lu|leido|le[ií]do|read|gelesen|letto|lido)\s*:/i,
+  // Reponses d'absence.
+  /^(reponse automatique|r[ée]ponse automatique|respuesta autom[áa]tica|automatic reply|out of office|autoreply|risposta automatica|abwesenheit)\s*:/i,
+  // Avis de non remise.
+  /^(delivery status notification|undeliverable|mail delivery (failed|subsystem)|returned mail|echec de remise|[ée]chec de remise)\b/i,
+];
+
+/**
+ * Vrai quand l'objet est celui d'un message emis par une messagerie, pas par une personne.
+ *
+ * Le test porte sur le prefixe, apres les marques de reponse et de transfert : un accuse de
+ * lecture transfere reste un accuse de lecture.
+ */
+export function estObjetMachine(objet: string | null | undefined): boolean {
+  if (!objet) return false;
+  const nu = objet.replace(/^((re|rep|tr|fw|fwd|transf)\s*:\s*)+/i, '').trim();
+  return PREFIXES_MACHINE.some((motif) => motif.test(nu));
+}
 
 /**
  * Vrai quand l'adresse est celle d'un automate qui n'attend pas de reponse.

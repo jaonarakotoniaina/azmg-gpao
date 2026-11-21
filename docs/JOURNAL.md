@@ -1217,3 +1217,43 @@ manque.**
 (une consigne, un message que rien ne permet de classer, un envoi du poste, une notification
 d'automate) produit **trois lignes** dans le tableau de suivi, et l'automate seul en est absent.
 Avant ce changement, une seule ligne apparaissait.
+
+---
+
+## 2026-11-21 : la meme erreur, deux fois, au meme endroit
+
+Capture du tableau de suivi a l'appui, le commanditaire releve cinq defauts : la priorite vaut
+« normale » dans 99 % des lignes, le type est vide, le sujet est incomprehensible, la demande est
+quasi vide, et l'action attendue ne veut rien dire.
+
+Quatre de ces cinq defauts ont **une seule cause**. La synthese etait appelee sous la condition
+`typage.applicable`. C'est exactement le drapeau auquel j'avais cesse de me fier une semaine plus
+tot, quand j'ai rendu le typage incertain utilisable pour que le travail existe. J'ai corrige le
+typage et laisse la synthese derriere la meme porte. Sans routine IA, elle ne tournait donc
+jamais : la demande se creait avec l'objet brut du mail comme action attendue, et les colonnes
+type, cause et demande restaient vides. Un tableau ou la priorite vaut « normale » partout et ou
+le type ne dit rien ne trie rien, donc ne sert a rien.
+
+La synthese tourne desormais des qu'un message entrant cree une demande, et elle lit la nature
+**retenue**, repli compris, au lieu de celle que les regles avaient trouvee.
+
+**Le cinquieme defaut etait du bruit.** Depuis que le hors perimetre exige un typage sur, les
+accuses de lecture (« Leido: », « Read: »), les reponses d'absence, les avis de non remise et les
+envois de masse ouvraient des demandes. J'avais echange un defaut contre un autre.
+
+Deux signaux structurels les ecartent, du meme genre que `estExpediteurAutomatique` :
+
+- `estObjetMachine` : un objet prefixe par un accuse de lecture, une reponse automatique ou un
+  avis de non remise, dans les langues rencontrees, apres les marques de reponse et de transfert ;
+- l'en-tete `List-Unsubscribe` ou `List-Id`, lu dans `headerLines` : une personne qui ecrit a un
+  collegue n'ajoute pas de lien de desabonnement. C'est plus sur qu'une liste de mots-cles, qui
+  confond une promotion avec un vrai mail parlant de catalogue.
+
+**Et un filtre par type** dans le tableau, pour isoler les reclamations en un geste : c'est la
+question posee tous les jours.
+
+**Verifications**
+
+3 tests de plus (416 au total) : les quatre colonnes se remplissent sans routine IA, un accuse de
+lecture et un envoi de masse ne creent aucune demande mais restent traces en T00, et une
+reclamation se distingue d'une demande ordinaire pour qu'un filtre serve.
